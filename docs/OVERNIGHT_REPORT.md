@@ -99,7 +99,12 @@ Coverage mapped to SPEC §10: `docs/TEST_MATRIX.md`.
     that.
   - The M1A run passed both jobs, but there were no instrumented tests yet.
   - Later runs were cancelled by newer pushes, which is intended (`cancel-in-progress`).
-  - The final run's result for commit `aaefdb7` is recorded at the end of this file.
+  - **Run #7 (commit `5f6b418`, final code + report):** build job ✅ **success** on GitHub's
+    runner (lint, all unit/Robolectric tests, debug + release APKs uploaded as `apks`).
+    Instrumented job ❌ **failed: “Timeout waiting for emulator to boot”**, so no instrumented test
+    executed (this is not a test failure). The API 33 / pixel_6 / swiftshader config I added had
+    not booted, while the original API 34 config booted on the M1A run. I reverted to API 34 with a
+    longer boot timeout. The outcome of that run is in “CI follow-up” at the end of this file.
 
 ## APK location
 
@@ -174,3 +179,9 @@ and the result.
 - Maven Central rate-limited this container (HTTP 429 with a retry-after of about 17 h). I routed
   it through Google's official Maven Central mirror using `~/.gradle/init.d` and
   `~/.gradle/gradle.properties`. Neither file is committed.
+
+## CI follow-up
+
+- Run for the emulator-config revert: see the latest Actions run on this branch. If the emulator
+  job is still red, the 3 instrumented tests (`app/src/androidTest`) have **not been executed
+  anywhere**. Run them locally with `./gradlew connectedDebugAndroidTest` with a device attached.
