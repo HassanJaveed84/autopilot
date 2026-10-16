@@ -50,6 +50,10 @@ class FakeNotificationPublisher : NotificationPublisher {
         visible[notification.taskId] = notification
         return PostResult.POSTED
     }
-    override fun postSummary(title: String, body: String): PostResult { summaries += title to body; return PostResult.POSTED }
+    override fun postSummary(title: String, body: String): PostResult {
+        if (!health.permissionGranted || !health.summaryChannelEnabled) return PostResult.BLOCKED_CHANNEL_DISABLED
+        summaries += title to body
+        return PostResult.POSTED
+    }
     override fun cancelForTask(taskId: String) { visible.remove(taskId) }
 }

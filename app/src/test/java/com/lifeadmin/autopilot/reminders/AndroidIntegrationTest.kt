@@ -126,8 +126,9 @@ class AndroidIntegrationTest {
     @Test fun duplicateAlarmBroadcastPostsOnce() {
         taskDueNow("Renew passport")
         val alarm = scheduledAlarms().single()
+        val duplicate = shadowOf(alarm.operation!!).savedIntent // same broadcast, re-delivered by the OS
         fireAlarm(alarm)
-        fireAlarm(alarm)
+        app.sendBroadcast(Intent(duplicate))
         await { shadowOf(notificationManager).allNotifications.isNotEmpty() }
         Thread.sleep(300); shadowOf(Looper.getMainLooper()).idle()
         assertEquals(1, shadowOf(notificationManager).allNotifications.size)

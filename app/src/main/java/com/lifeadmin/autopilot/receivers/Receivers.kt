@@ -11,16 +11,17 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 
 private const val TAG = "LifeAdminReceivers"
 
-/** Runs [block] off the main thread within the broadcast time budget; never crashes the process. */
+/** Runs [block] off the main thread while the broadcast is kept alive; never crashes the process. */
 internal fun BroadcastReceiver.runAsync(block: suspend () -> Unit) {
     val pending = goAsync()
     CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
         try {
-            withTimeoutOrNull(9_000) { block() }
+            // No timeout here: engine work is non-cancellable and short; cutting it off could
+            // drop a reminder. goAsync allows the process to finish it.
+            block()
         } catch (t: Throwable) {
             // Log only the type: never task contents.
             Log.w(TAG, "Receiver work failed: ${t.javaClass.simpleName}")

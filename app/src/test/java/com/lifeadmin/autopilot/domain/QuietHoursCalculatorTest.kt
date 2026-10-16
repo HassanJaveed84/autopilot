@@ -41,6 +41,15 @@ class QuietHoursCalculatorTest {
         assertEquals(at(CHICAGO, 2026, 10, 17, 13), lunch.nextAllowed(at(CHICAGO, 2026, 10, 17, 12, 30), CHICAGO))
     }
 
+    @Test fun quietEndInsideRepeatedFallBackHourUsesSameNight() {
+        val berlin = java.time.ZoneId.of("Europe/Berlin")
+        val calc = QuietHoursCalculator(QuietHours(enabled = true, start = t(22), end = t(2, 30)))
+        // 2026-10-25: 03:00 CEST -> 02:00 CET. 02:15 CET is the second 02:15 (00:15Z... 01:15Z).
+        val secondQuarterPastTwo = java.time.Instant.parse("2026-10-25T01:15:00Z")
+        val end = calc.nextAllowed(secondQuarterPastTwo, berlin)
+        assertEquals(java.time.Instant.parse("2026-10-25T01:30:00Z"), end) // 02:30 CET, same night
+    }
+
     @Test fun disabledOrEmptyWindowNeverQuiet() {
         assertFalse(QuietHoursCalculator(QuietHours(enabled = false)).isQuiet(at(CHICAGO, 2026, 10, 16, 23), CHICAGO))
         assertFalse(QuietHoursCalculator(QuietHours(true, t(9), t(9))).isQuiet(at(CHICAGO, 2026, 10, 16, 9), CHICAGO))

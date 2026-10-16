@@ -30,7 +30,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        handleIntent(intent)
+        // Only act on a fresh launch: not after rotation/process restore or a launch from Recents,
+        // which would replay the original notification intent.
+        val fromHistory = (intent?.flags ?: 0) and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
+        if (savedInstanceState == null && !fromHistory) handleIntent(intent)
         val container = appContainer
         setContent {
             LifeAdminTheme {

@@ -141,3 +141,27 @@ Validation (M1C):
   (~2.2 MB, `apksigner verify` OK, debug certificate). Not committed (gitignored); CI uploads them as the
   `apks` artifact.
 - Not done here: physical-device verification (SPEC M1C definition of done) — requires the user's phone.
+
+## Quality pass (independent code review) ✅
+
+A separate read-only review of the scheduler found no high-severity issues; all 8 findings were
+fixed with regression tests where testable:
+1. Receiver timeout could cancel engine work mid-way (claimed-but-unposted reminder, half-applied
+   Done, partial boot reconcile) → engine critical sections are `NonCancellable`; receiver timeout removed.
+2. Occurrence due < 60 s before a reboot had no alarm → re-registered during reconcile
+   (`reminderDueJustBeforeRebootIsReRegistered`).
+3. Coalesced late reminders marked DELIVERED although the Summaries channel was off → checked and
+   downgraded to SUPPRESSED (`coalescedRemindersAreNotClaimedWhenSummaryChannelIsOff`).
+4. Unexpected `notify()` exceptions → `PostResult.FAILED` (row becomes SUPPRESSED).
+5. Quiet-hours end inside a repeated fall-back hour deferred by a day → later offset tried first
+   (`quietEndInsideRepeatedFallBackHourUsesSameNight`).
+6. Import follow-up reconcile could be skipped on cancellation → runs `NonCancellable`; closed tasks'
+   notifications are dismissed on reconcile.
+7. Rotation / launch from Recents replayed the notification deep link → ignored.
+8. "Late" label now consistent (> 15 min) across paths.
+Also found by a new smoke test: **cold start from a notification tap crashed** (navigation before
+the graph was set) → fixed in `b03d0c2`.
+
+Validation: `./gradlew lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest`
+→ BUILD SUCCESSFUL, lint **No issues found**, **129 tests, 0 failures** (suite re-run 2× with
+`--rerun-tasks`: 0 failures both times).

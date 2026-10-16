@@ -27,6 +27,7 @@ import com.lifeadmin.autopilot.notifications.NotificationPublisher
 import com.lifeadmin.autopilot.notifications.PostResult
 import com.lifeadmin.autopilot.notifications.ReminderNotification
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -78,7 +79,11 @@ class ReminderEngine(
     private val mutex = Mutex()
 
     /** All engine work (Room + AlarmManager + NotificationManager) runs off the main thread. */
-    private suspend fun <T> locked(block: suspend () -> T): T = withContext(Dispatchers.Default) { mutex.withLock { block() } }
+    // NonCancellable: once started, a mutation/delivery/reconcile always runs to completion, so a
+    // cancelled caller (e.g. a receiver's scope) can never leave a claimed-but-unposted reminder,
+    // a committed-but-unreconciled Done, or a half-finished boot reconcile.
+    private suspend fun <T> locked(block: suspend () -> T): T =
+        withContext(Dispatchers.Default + NonCancellable) { mutex.withLock { block() } }
     private val taskDao = db.taskDao()
     private val policyDao = db.policyDao()
     private val occurrenceDao = db.occurrenceDao()
@@ -120,7 +125,8 @@ class ReminderEngine(
             }
         } else {
             // Avoid a notification storm: one summary instead of many late reminders.
-            val canPost = c.settings.allowReminderNotifications && notifications.health().canPostReminders
+            val health = notifications.health()
+            val canPost = c.settings.allowReminderNotifications && health.canPostReminders && health.summaryChannelEnabled
             for (occ in catchUp.late) {
                 val status = if (canPost) OccurrenceStatus.DELIVERED else OccurrenceStatus.SUPPRESSED
                 occurrenceDao.update(occ.copy(status = status, deliveredAt = if (canPost) c.now else null, note = if (canPost) "coalesced" else "notifications_blocked"))
@@ -135,7 +141,15 @@ class ReminderEngine(
                 if (catchUp.missed > 0) append("${catchUp.missed} older reminders were skipped. ")
                 append("Open Today to review.")
             }
-            notifications.postSummary("Reminders while you were away", body)
+            val posted = notifications.postSummary("Reminders while you were away", body) == PostResult.POSTED
+            if (!posted && coalesced > 0) {
+                // Never claim delivery that didn't happen.
+                for (occ in catchUp.late) {
+                    occurrenceDao.get(occ.id)?.takeIf { it.status == OccurrenceStatus.DELIVERED }?.let {
+                        occurrenceDao.update(it.copy(status = OccurrenceStatus.SUPPRESSED, deliveredAt = null, note = "summary_not_shown"))
+                    }
+                }
+            }
         }
         // Tasks whose late occurrence was just settled still have their next one planned.
         if (catchUp.late.isNotEmpty()) catchUp.late.map { it.taskId }.distinct().forEach { reconcileTaskLocked(it, emptyList(), c, null) }
@@ -209,7 +223,11 @@ class ReminderEngine(
             val overdueBy = Duration.between(occ.plannedAt, c.now)
             when {
                 !eligible -> cancel(occ)
-                overdueBy <= IN_FLIGHT_TOLERANCE -> Unit // alarm is (about to be) delivered; leave for the receiver
+                overdueBy <= IN_FLIGHT_TOLERANCE -> {
+                    // Presumably in flight; re-register anyway in case the OS dropped it (reboot,
+                    // force-stop). A duplicate broadcast is ignored by the delivery claim.
+                    alarms.schedule(AlarmRequest(occ.id, taskId, occ.generation, occ.plannedAt, preferExact = c.settings.precisionMode))
+                }
                 overdueBy > Duration.ofMinutes(c.settings.graceWindowMinutes.toLong()) -> {
                     occurrenceDao.update(occ.copy(status = OccurrenceStatus.MISSED, note = "beyond_grace"))
                     alarms.cancel(occ.id)
@@ -217,7 +235,7 @@ class ReminderEngine(
                     catchUp?.let { it.missed++ }
                 }
                 catchUp != null -> catchUp.late += occ
-                else -> deliverLocked(occ, taskEntity, c, late = true)
+                else -> deliverLocked(occ, taskEntity, c, late = overdueBy > LATE_LABEL)
             }
         }
 
@@ -229,7 +247,11 @@ class ReminderEngine(
             if (occ.plannedAt <= c.now) continue // handled above / in flight
             if (plan == null || occ.plannedAt != plan.plannedAt) cancel(occ)
         }
-        if (plan == null) return
+        if (plan == null) {
+            // Closed or paused tasks must not keep a stale reminder on screen (e.g. after import).
+            if (taskEntity.status.isTerminal || taskEntity.archivedAt != null) notifications.cancelForTask(taskId)
+            return
+        }
 
         val existing = occurrenceDao.findByPlanned(policy.id, plan.plannedAt)
         val occ = when {

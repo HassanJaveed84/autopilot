@@ -80,7 +80,6 @@ class BackupRepository(
     private val appVersion: String,
     /** Hook for the database→alarms reconciliation after a successful import. */
     private val afterImport: suspend () -> Unit = {},
-    private val beforeImport: suspend (taskIds: Set<String>) -> Unit = {},
 ) {
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true; encodeDefaults = true }
 
@@ -124,9 +123,9 @@ class BackupRepository(
             throw ImportException("Not a valid backup file")
         }
         val validated = validate(file)
-        beforeImport(validated.tasks.map { it.id }.toSet())
         val result = db.withTransaction { write(validated) }
-        afterImport()
+        // The data is committed; always rebuild the alarm projection even if the caller is cancelled.
+        kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { afterImport() }
         return result
     }
 

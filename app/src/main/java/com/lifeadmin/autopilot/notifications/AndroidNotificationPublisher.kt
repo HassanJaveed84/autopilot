@@ -81,6 +81,8 @@ class AndroidNotificationPublisher(private val context: Context) : NotificationP
             PostResult.POSTED
         } catch (e: SecurityException) {
             PostResult.BLOCKED_PERMISSION
+        } catch (e: RuntimeException) {
+            PostResult.FAILED
         }
     }
 
@@ -108,6 +110,8 @@ class AndroidNotificationPublisher(private val context: Context) : NotificationP
             PostResult.POSTED
         } catch (e: SecurityException) {
             PostResult.BLOCKED_PERMISSION
+        } catch (e: RuntimeException) {
+            PostResult.FAILED
         }
     }
 

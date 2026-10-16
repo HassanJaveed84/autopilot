@@ -295,6 +295,32 @@ class ReminderEngineTest {
         assertEquals(6, alarms.alarms.size)
     }
 
+    @Test fun reminderDueJustBeforeRebootIsReRegistered() {
+        train()
+        val a = alarms.single()
+        alarms.clearAll() // reboot at 09:00:40, 40 s after the slot: inside the in-flight window
+        clock.instant = a.triggerAt.plusSeconds(40)
+        runBlocking { engine.reconcileAll("boot") }
+        val again = alarms.alarms[a.occurrenceId]
+        assertTrue("in-flight occurrence re-registered", again != null)
+        assertEquals(at(CHICAGO, 2026, 10, 16, 18), alarms.forTask(a.taskId).maxOf { it.triggerAt }) // next one planned too
+        alarms.fired(a.occurrenceId)
+        assertEquals(AlarmOutcome.DELIVERED, runBlocking { engine.onAlarm(again!!.occurrenceId, again.generation) })
+        assertEquals(1, notifications.posted.size)
+    }
+
+    @Test fun coalescedRemindersAreNotClaimedWhenSummaryChannelIsOff() {
+        notifications.health = NotificationHealth(permissionGranted = true, appNotificationsEnabled = true, reminderChannelEnabled = true, summaryChannelEnabled = false)
+        repeat(5) { runBlocking { repo.createTask(NewTask("T$it", status = TaskStatus.ACTIONABLE, preset = ReminderPreset.PERSISTENT)) } }
+        alarms.clearAll()
+        clock.instant = at(CHICAGO, 2026, 10, 16, 9, 30)
+        runBlocking { engine.reconcileAll("boot") }
+        val all = runBlocking { db.occurrenceDao().getAll() }
+        assertEquals(0, all.count { it.status == OccurrenceStatus.DELIVERED })
+        assertEquals(5, all.count { it.status == OccurrenceStatus.SUPPRESSED })
+        assertEquals(5, alarms.alarms.size)
+    }
+
     @Test fun multiDayOutageDoesNotReplayEveryMissedSlot() {
         train()
         alarms.clearAll()

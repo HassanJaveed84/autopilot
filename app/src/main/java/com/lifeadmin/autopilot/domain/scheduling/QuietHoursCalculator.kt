@@ -34,7 +34,10 @@ class QuietHoursCalculator(private val quietHours: QuietHours) {
         val end = quietHours.end
         val endDate = if (start < end) date else if (t >= start) date.plusDays(1) else date
         val candidate = LocalTimeResolver.resolve(endDate, end, zone)
-        // DST edge: if resolution lands on/before the input, step one more day.
-        return if (candidate > instant) candidate else LocalTimeResolver.resolve(endDate.plusDays(1), end, zone)
+        if (candidate > instant) return candidate
+        // Fall-back overlap: the end time may occur a second time (later offset) on the same date.
+        val later = java.time.ZonedDateTime.ofLocal(java.time.LocalDateTime.of(endDate, end), zone, null).withLaterOffsetAtOverlap().toInstant()
+        if (later > instant) return later
+        return LocalTimeResolver.resolve(endDate.plusDays(1), end, zone)
     }
 }
