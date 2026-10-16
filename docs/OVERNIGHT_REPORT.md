@@ -9,8 +9,11 @@ Session date: 2026-10-16 · Branch: `ccr-016fbc2f-7v3dn7` · Repo: `HassanJaveed
   09:00 and 18:00 every day until Done* — works through the real engine and the Android adapters.
 - **129 JVM/Robolectric tests pass, with 0 failures** (re-run twice to check for flakiness).
   Android lint reports **No issues found**. Debug and minified release APKs build locally.
-- **Nothing has been run on a physical device or a local emulator.** This container has no
-  KVM. GitHub Actions runs 3 instrumented tests on an emulator; see “CI” below for their status.
+- **Nothing has been run on a physical device.** This container has no KVM, so there was no local
+  emulator either. On GitHub Actions the final run (#8) is **fully green**: the build job passed,
+  and all **3 instrumented tests passed on an Android 14 (API 34) emulator**. They cover a real
+  AlarmManager → notification → Done flow, the v1→v2 migration via MigrationTestHelper, and
+  typing in the Waiting dialog.
 - **Draft PR not opened:** the GitHub repo had no commits and no `main` branch, so a PR has
   nothing to target. I did not create `main` myself (it is outside my authorized branch). See
   “Next actions”.
@@ -75,7 +78,7 @@ The SPEC’s *definition of done* for M1B/M1C includes verifying on a real phone
 | TaskRepositoryTest / BackupRepositoryTest / DaoTest / MigrationTest | 11 / 7 / 5 / 1 | Robolectric Room/SQLite |
 | AppUiTest / AccessibilityUiTest / MainActivitySmokeTest | 7 / 3 / 3 | Compose UI on Robolectric |
 | ManifestContractTest / PerformanceAndDiagnosticsTest | 5 / 1 | manifest & performance baseline |
-| androidTest (CI emulator only): InstrumentedDatabaseTest, InstrumentedReminderTest, InstrumentedUiTest | 3 | 🟦 not run locally |
+| androidTest: InstrumentedDatabaseTest, InstrumentedReminderTest, InstrumentedUiTest | 3 | 🟦 passed on CI emulator API 34 (run #8); not run locally |
 
 Bugs that these tests and the review caught and that were fixed tonight:
 - `LocalDate.ofInstant` needs API 34 (minSdk is 26);
@@ -182,6 +185,17 @@ and the result.
 
 ## CI follow-up
 
-- Run for the emulator-config revert: see the latest Actions run on this branch. If the emulator
-  job is still red, the 3 instrumented tests (`app/src/androidTest`) have **not been executed
-  anywhere**. Run them locally with `./gradlew connectedDebugAndroidTest` with a device attached.
+- **Run #8** (commit `61fbc6d`, emulator config reverted to API 34 google_apis x86_64 + 900 s boot
+  timeout): **success for both jobs.**
+  - Build job: lint, unit/Robolectric tests, debug + release APKs (the `apks` artifact). Passed.
+  - Instrumented job: “Starting 3 tests on emulator-5554 - 14 … Finished 3 tests”, 0 failed,
+    0 skipped, `BUILD SUCCESSFUL`. Reports are in the `instrumented-reports` artifact.
+  - Link: https://github.com/HassanJaveed84/autopilot/actions/runs/38892525845
+- Non-blocking notes from the log:
+  - `createAndroidComposeRule` (junit4 v1) is deprecated in favour of the v2 API; migrating is a
+    small follow-up.
+  - Emulator graphics warnings (“Failed to find ColorBuffer”) did not affect the results.
+- The emulator boot proved flaky across runs: the API 34 config booted on runs #2 and #8, while
+  #1 and #7 timed out. A red instrumented job caused by a “Timeout waiting for emulator to boot”
+  is infrastructure, not a test result. Re-run the job in that case.
+- Still outstanding: physical-device verification (checklist above).

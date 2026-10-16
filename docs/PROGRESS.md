@@ -165,3 +165,10 @@ the graph was set) → fixed in `b03d0c2`.
 Validation: `./gradlew lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest`
 → BUILD SUCCESSFUL, lint **No issues found**, **129 tests, 0 failures** (suite re-run 2× with
 `--rerun-tasks`: 0 failures both times).
+
+## CI result (final)
+
+GitHub Actions run #8 (`61fbc6d`): build job ✅, instrumented job ✅ — 3/3 instrumented tests passed on
+an API 34 emulator (real alarm → notification → Done, MigrationTestHelper v1→v2, typing in the
+Waiting dialog). Earlier emulator-job failures were boot timeouts (no tests executed). Physical
+device verification remains outstanding.

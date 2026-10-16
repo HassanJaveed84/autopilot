@@ -1,6 +1,6 @@
 # Test matrix
 
-Legend: ✅ automated & passing in this container · 🟦 automated, runs on CI emulator only ·
+Legend: ✅ automated & passing in this container · 🟦 automated, passed on the CI emulator (API 34, run #8) ·
 📱 manual on a physical device (not yet performed) · — not applicable.
 
 Commands: `./gradlew testDebugUnitTest` (JVM + Robolectric, 123 tests), `./gradlew
