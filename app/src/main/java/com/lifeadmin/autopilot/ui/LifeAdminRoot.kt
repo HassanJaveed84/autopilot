@@ -73,11 +73,13 @@ fun LifeAdminRoot(
     val topLevel = TopLevelDestination.entries.firstOrNull { d -> currentDestination?.hierarchy?.any { it.route == d.route } == true }
 
     val pendingTask by openTaskRequests.collectAsStateWithLifecycle()
-    LaunchedEffect(pendingTask) {
-        pendingTask?.let { id ->
-            navController.navigate(Routes.taskDetail(id)) { launchSingleTop = true }
-            onOpenTaskHandled()
-        }
+    // Wait until NavHost has installed its graph (cold start from a notification tap).
+    val graphReady = backStack != null
+    LaunchedEffect(pendingTask, graphReady) {
+        val id = pendingTask ?: return@LaunchedEffect
+        if (!graphReady) return@LaunchedEffect
+        navController.navigate(Routes.taskDetail(id)) { launchSingleTop = true }
+        onOpenTaskHandled()
     }
 
     fun openTask(id: String) = navController.navigate(Routes.taskDetail(id)) { launchSingleTop = true }
