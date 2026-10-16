@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Runtime permission on Android 13+; requested contextually when the first reminder is set. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Rebuild alarms after reboot (alarms do not survive a restart). -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Special access, OFF unless the user opts into precision mode and grants it in Settings.
+         USE_EXACT_ALARM is intentionally NOT declared (restricted to alarm/calendar apps). -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- No INTERNET permission: the MVP is fully offline. (WorkManager merges its own
+         WAKE_LOCK / ACCESS_NETWORK_STATE entries; neither grants network access.) -->
+
+    <application
+        android:name=".LifeAdminApp"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="false"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.LifeAdmin"
+        tools:targetApi="36">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
