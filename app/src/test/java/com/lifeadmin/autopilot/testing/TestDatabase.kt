@@ -13,3 +13,12 @@ fun inMemoryDatabase(): AppDatabase {
         .setQueryCoroutineContext(Dispatchers.IO)
         .build()
 }
+
+/** File-backed database (WAL, multiple connections) — matches production for UI tests. */
+fun fileDatabase(name: String = "ui-test.db"): AppDatabase {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    context.deleteDatabase(name)
+    return Room.databaseBuilder(context, AppDatabase::class.java, name)
+        .setQueryCoroutineContext(Dispatchers.IO)
+        .build()
+}

@@ -34,5 +34,40 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Alarm deliveries: only our own AlarmManager PendingIntents target this receiver. -->
+        <receiver
+            android:name=".receivers.ReminderAlarmReceiver"
+            android:exported="false">
+            <!-- Filter documents the contract; exported=false keeps it unreachable from other apps. -->
+            <intent-filter>
+                <action android:name="com.lifeadmin.autopilot.action.REMINDER_FIRE" />
+                <data android:scheme="lifeadmin" android:host="occurrence" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Notification Done/Snooze buttons (explicit, immutable PendingIntents). -->
+        <receiver
+            android:name=".receivers.NotificationActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.lifeadmin.autopilot.action.DONE" />
+                <action android:name="com.lifeadmin.autopilot.action.SNOOZE" />
+                <data android:scheme="lifeadmin" android:host="task" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Protected system broadcasts that clear or invalidate alarms. Handler is an idempotent reconcile. -->
+        <receiver
+            android:name=".receivers.SystemEventReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

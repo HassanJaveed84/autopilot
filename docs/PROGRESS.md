@@ -73,3 +73,47 @@ Validation (M1A):
 - Known test-environment limitation: an `OutlinedTextField` inside an `AlertDialog` never reports idle
   under Robolectric (verified by bisection), so the Waiting-dialog typing flow is covered by repository
   tests plus an instrumented test for CI rather than a Robolectric UI test.
+
+## M1B — Reminder engine and notifications ✅ (JVM/Robolectric-verified; device verification pending)
+
+Completed:
+- `ReminderEngine` (implements `ScheduleCoordinator`): single next occurrence per task, durable ledger,
+  generation-checked + compare-and-set delivery claims, mutex-serialized mutations/deliveries (run on
+  `Dispatchers.Default`), eligibility re-check against Room on every broadcast, grace window (4 h)
+  with MISSED status, coalesced summary after downtime (> 3 late), daily notification cap, PLANNED
+  retry when the OS refuses an alarm, early-fire (clock moved back) detection.
+- `AndroidAlarmDriver`: `setAndAllowWhileIdle` default; `setExactAndAllowWhileIdle` only in precision
+  mode with granted special access; SecurityException fallback to inexact; immutable PendingIntents
+  keyed by occurrence URI.
+- `AndroidNotificationPublisher`: channels `action_reminders` (default importance) and
+  `summary_updates` (low); Done / Snooze / Open actions; tap deep-links to the task; optional
+  lock-screen redaction; one notification per task (tag = task id); honest PostResult when blocked.
+- Receivers: alarm (not exported), notification actions (not exported, validated ids/actions),
+  system recovery (boot, package replaced, time set, time-zone change, exact-alarm permission change).
+- `ReconcileWorker`: 6-hourly WorkManager safety net + ledger pruning (not used for delivery).
+- App start + foreground (debounced) reconcile; contextual POST_NOTIFICATIONS request the first time a
+  reminder is enabled (Android 13+), never repeated; health panel in Settings (permission, app/channel
+  state, in-app master toggle, delivery mode + precision toggle with explanation and exact-alarm
+  settings link, battery caveat + app settings link, next reminder, last reconcile, re-check button);
+  Today banner when reminders exist but cannot be shown.
+- Instrumented tests (`app/src/androidTest`) for CI emulator: MigrationTestHelper v1→v2, real alarm →
+  notification → Done, typing inside the Waiting dialog.
+
+Validation (M1B):
+- `./gradlew lintDebug testDebugUnitTest assembleDebug assembleDebugAndroidTest` → BUILD SUCCESSFUL;
+  lint: **No issues found**.
+- 119 JVM tests, 0 failures. New: `ReminderEngineTest` (30: canonical 09:00/18:00 for 3 days then Done,
+  swipe ≠ done, stale/duplicate broadcasts, reopen generation, snooze variants incl. in-flight, paused,
+  waiting check-in, archive/cancel/delete, once, quiet-hours coalescing, reboot within/beyond grace,
+  no-storm coalescing, multi-day outage, idempotent reconcile, time-zone change, clock set back,
+  early fire, OS refusal retry, denied permission recorded honestly, in-app toggle, daily cap,
+  exact/inexact fallback, 20-round concurrent Done vs delivery), `AndroidIntegrationTest` (9, real
+  adapters on Robolectric shadows: allow-while-idle alarm, alarm → notification with 3 actions → Done,
+  Snooze action, duplicate broadcast, denied permission, boot rebuild, malformed/unknown intents
+  ignored), `ManifestContractTest` (5: permissions allowlist, no USE_EXACT_ALARM/INTERNET, receivers
+  not exported, protected actions only, backup disabled).
+- Bugs found and fixed by these tests: engine work on the main thread stalled Room transactions under
+  Compose tests → engine now always switches to `Dispatchers.Default`; spent PendingIntents are now
+  released when an occurrence settles.
+- **Not verified here:** real-device delivery timing, Doze, OEM battery behaviour, actual reboot
+  (no emulator/KVM in this container). See OVERNIGHT_REPORT.md for the device checklist.

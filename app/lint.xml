@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- aapt2 rejects adaptive icons in plain mipmap-anydpi for this build (verified), so the
+         -v26 qualifier is kept deliberately. -->
+    <issue id="ObsoleteSdkInt">
+        <ignore path="src/main/res/mipmap-anydpi-v26" />
+    </issue>
+</lint>

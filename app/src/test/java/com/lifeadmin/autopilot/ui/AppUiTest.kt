@@ -6,6 +6,7 @@ import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -24,7 +25,7 @@ import com.lifeadmin.autopilot.testing.FakeClock
 import com.lifeadmin.autopilot.testing.FakeZoneProvider
 import com.lifeadmin.autopilot.testing.SequentialIds
 import com.lifeadmin.autopilot.testing.at
-import com.lifeadmin.autopilot.testing.inMemoryDatabase
+import com.lifeadmin.autopilot.testing.fileDatabase
 import com.lifeadmin.autopilot.ui.theme.LifeAdminTheme
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -49,7 +50,7 @@ class AppUiTest {
             clock = clock,
             zoneProvider = FakeZoneProvider(CHICAGO),
             ids = SequentialIds(),
-            database = inMemoryDatabase(),
+            database = fileDatabase(),
             settingsRepository = InMemorySettingsRepository(AppSettings(onboardingCompleted = true)),
         )
         compose.setContent { LifeAdminTheme(dynamicColor = false) { LifeAdminRoot(container) } }
@@ -77,8 +78,10 @@ class AppUiTest {
         compose.onNodeWithTag("fab_capture").performClick()
         compose.onNodeWithTag("capture_title").performTextInput("Book train ride")
         compose.onNodeWithTag("capture_save_remind").performClick()
+        compose.waitUntil(10_000) { runBlocking { container.database.taskDao().count() == 1 } }
         waitForText("Book train ride")
-        compose.onNodeWithText("Book train ride").assertIsDisplayed()
+        // Shown under "Needs action" and "Upcoming reminders".
+        compose.onAllNodesWithText("Book train ride")[0].assertIsDisplayed()
         val task = runBlocking { container.database.taskDao().getAll().single() }
         assertEquals(TaskStatus.ACTIONABLE, task.status)
         val policy = runBlocking { container.taskRepository.getPolicy(task.id)!! }
@@ -89,7 +92,7 @@ class AppUiTest {
         createTask("Call the bank")
         waitForDescription("Mark Call the bank done")
         compose.onNodeWithContentDescription("Mark Call the bank done").performClick()
-        compose.waitUntil(3_000) { runBlocking { container.database.taskDao().getAll().single().status == TaskStatus.DONE } }
+        compose.waitUntil(10_000) { runBlocking { container.database.taskDao().getAll().single().status == TaskStatus.DONE } }
         compose.onNodeWithTag("nav_tasks").performClick()
         waitForText("Completed 1")
         compose.onNodeWithText("Completed 1").performClick()
@@ -97,7 +100,7 @@ class AppUiTest {
         compose.onNodeWithText("Call the bank").performClick()
         waitForTag("action_reopen")
         compose.onNodeWithTag("action_reopen").performClick()
-        compose.waitUntil(3_000) { runBlocking { container.database.taskDao().getAll().single().status == TaskStatus.ACTIONABLE } }
+        compose.waitUntil(10_000) { runBlocking { container.database.taskDao().getAll().single().status == TaskStatus.ACTIONABLE } }
     }
 
     // The Waiting dialog contains a text field inside an AlertDialog; under Robolectric that
