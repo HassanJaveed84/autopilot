@@ -22,7 +22,9 @@ class ManifestContractTest {
     private fun Element.attr(name: String) = getAttributeNS(ns, name)
 
     @Test fun onlyNecessaryPermissionsAreRequested() {
-        val permissions = elements("uses-permission").map { it.attr("name") }.toSet()
+        val permissions = elements("uses-permission").filter { it.getAttributeNS("http://schemas.android.com/tools", "node") != "remove" }.map { it.attr("name") }.toSet()
+        val removed = elements("uses-permission").filter { it.getAttributeNS("http://schemas.android.com/tools", "node") == "remove" }.map { it.attr("name") }
+        assertEquals(listOf("android.permission.FOREGROUND_SERVICE"), removed)
         assertEquals(
             setOf("android.permission.POST_NOTIFICATIONS", "android.permission.RECEIVE_BOOT_COMPLETED", "android.permission.SCHEDULE_EXACT_ALARM"),
             permissions,

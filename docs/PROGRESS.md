@@ -117,3 +117,27 @@ Validation (M1B):
   released when an occurrence settles.
 - **Not verified here:** real-device delivery timing, Doze, OEM battery behaviour, actual reboot
   (no emulator/KVM in this container). See OVERNIGHT_REPORT.md for the device checklist.
+
+## M1C — Hardening and packaging ✅ (container-verifiable parts)
+
+Completed:
+- Accessibility: Robolectric UI tests at 2× font scale, ≥ 48 dp touch targets (touch bounds),
+  heading semantics on sections, merged TalkBack descriptions for task rows, labelled icon buttons.
+- Privacy-safe **diagnostics** (Settings → Reminder health → Copy diagnostics): versions, schema,
+  counts, scheduler/notification state; tested to contain no titles/notes.
+- Performance baseline: 100 tasks × 3 slots → exactly 100 OS alarms; `reconcileAll` ≈ 0.5 s (JVM).
+- Manifest: WorkManager's merged `FOREGROUND_SERVICE` removed (`tools:node="remove"`), verified with
+  `aapt2 dump permissions` on the release APK; manifest contract tests.
+- Release build: R8 minify + resource shrinking; signed with the debug key for personal sideloading.
+- CI emulator job hardened (API 33, longer boot timeout, swiftshader, no snapshot).
+- Docs: README (features, build/install, permissions, limitations, troubleshooting),
+  ARCHITECTURE.md, REMINDER_ENGINE.md, TEST_MATRIX.md.
+- Lint baseline: one justified suppression (`ObsoleteSdkInt` on `mipmap-anydpi-v26`, aapt2 needs it).
+
+Validation (M1C):
+- `./gradlew lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest` → BUILD
+  SUCCESSFUL; lint **No issues found**; **123 tests, 0 failures**.
+- APKs: `app/build/outputs/apk/debug/app-debug.apk` (~14 MB), `app/build/outputs/apk/release/app-release.apk`
+  (~2.2 MB, `apksigner verify` OK, debug certificate). Not committed (gitignored); CI uploads them as the
+  `apks` artifact.
+- Not done here: physical-device verification (SPEC M1C definition of done) — requires the user's phone.

@@ -121,6 +121,7 @@ fun HealthSection(container: AppContainer, requestPermission: () -> Unit) {
     val settings by container.settingsRepository.settings.collectAsStateWithLifecycle(AppSettings())
     val h = rememberHealth(container, settings)
     var explainExact by remember { mutableStateOf(false) }
+    var copied by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp).testTag("health_section")) {
         Text("Reminder health", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.semantics { heading() })
@@ -207,6 +208,17 @@ fun HealthSection(container: AppContainer, requestPermission: () -> Unit) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { scope.launch { container.reconcileAll("manual") } }, modifier = Modifier.testTag("reconcile_now")) { Text("Re-check schedule") }
         }
+        OutlinedButton(
+            onClick = {
+                scope.launch {
+                    val text = container.diagnostics.report()
+                    val clip = context.getSystemService(android.content.ClipboardManager::class.java)
+                    clip?.setPrimaryClip(android.content.ClipData.newPlainText("Diagnostics", text))
+                    copied = true
+                }
+            },
+            modifier = Modifier.testTag("copy_diagnostics"),
+        ) { Text(if (copied) "Diagnostics copied" else "Copy diagnostics (no task contents)") }
         Text(
             "If you force-stop the app, Android cancels its alarms until you open it again.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp),

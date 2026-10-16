@@ -9,6 +9,11 @@
     <!-- Special access, OFF unless the user opts into precision mode and grants it in Settings.
          USE_EXACT_ALARM is intentionally NOT declared (restricted to alarm/calendar apps). -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- WorkManager declares FOREGROUND_SERVICE for foreground workers; this app never runs a
+         foreground service (SPEC §5.4), so the merged permission is removed. -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE"
+        tools:node="remove" />
     <!-- No INTERNET permission: the MVP is fully offline. (WorkManager merges its own
          WAKE_LOCK / ACCESS_NETWORK_STATE entries; neither grants network access.) -->
 

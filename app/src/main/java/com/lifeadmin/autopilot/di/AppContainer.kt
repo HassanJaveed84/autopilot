@@ -17,6 +17,7 @@ import com.lifeadmin.autopilot.notifications.AndroidNotificationPublisher
 import com.lifeadmin.autopilot.notifications.NotificationPublisher
 import com.lifeadmin.autopilot.reminders.AlarmDriver
 import com.lifeadmin.autopilot.reminders.AndroidAlarmDriver
+import com.lifeadmin.autopilot.reminders.Diagnostics
 import com.lifeadmin.autopilot.reminders.ReconcileWorker
 import com.lifeadmin.autopilot.reminders.ReminderEngine
 import kotlinx.coroutines.CoroutineScope
@@ -50,6 +51,11 @@ class AppContainer(
     val backupRepository: BackupRepository = BackupRepository(
         database, clock, ids, BuildConfig.VERSION_NAME,
         afterImport = { reconcileAll("import") },
+    )
+
+    val diagnostics: Diagnostics = Diagnostics(
+        database, settingsRepository, alarmDriver, notificationPublisher, clock, zoneProvider,
+        "${BuildConfig.VERSION_NAME} (${BuildConfig.BUILD_TYPE})", android.os.Build.VERSION.SDK_INT,
     )
 
     /** Re-derives OS alarms from the database. */
