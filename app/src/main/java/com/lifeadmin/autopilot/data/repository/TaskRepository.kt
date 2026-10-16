@@ -263,7 +263,7 @@ class TaskRepository(
                 require(!t.status.isTerminal) { "Done or Canceled tasks cannot be snoozed" }
                 val now = clock.now()
                 require(until > now) { "Snooze must end in the future" }
-                taskDao.update(t.copy(snoozedUntil = until, updatedAt = now))
+                taskDao.update(t.copy(snoozedUntil = until, snoozeRemindAtEnd = remindAtEnd, updatedAt = now))
                 bumpGeneration(taskId)
                 log(
                     taskId, now, EventType.SNOOZED,

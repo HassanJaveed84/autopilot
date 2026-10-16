@@ -14,7 +14,7 @@ fun TaskEntity.toDomain() = Task(
     id = id, title = title, notes = notes, status = status, priority = priority,
     createdAt = createdAt, updatedAt = updatedAt, completedAt = completedAt, archivedAt = archivedAt,
     deadlineType = deadlineType, deadlineLocalDate = deadlineLocalDate, deadlineInstant = deadlineInstant,
-    deadlineZoneId = deadlineZoneId, snoozedUntil = snoozedUntil,
+    deadlineZoneId = deadlineZoneId, snoozedUntil = snoozedUntil, snoozeRemindAtEnd = snoozeRemindAtEnd,
     waitingReason = waitingReason, waitingCheckInAt = waitingCheckInAt,
 )
 
@@ -22,7 +22,7 @@ fun Task.toEntity() = TaskEntity(
     id = id, title = title, notes = notes, status = status, priority = priority,
     createdAt = createdAt, updatedAt = updatedAt, completedAt = completedAt, archivedAt = archivedAt,
     deadlineType = deadlineType, deadlineLocalDate = deadlineLocalDate, deadlineInstant = deadlineInstant,
-    deadlineZoneId = deadlineZoneId, snoozedUntil = snoozedUntil,
+    deadlineZoneId = deadlineZoneId, snoozedUntil = snoozedUntil, snoozeRemindAtEnd = snoozeRemindAtEnd,
     waitingReason = waitingReason, waitingCheckInAt = waitingCheckInAt,
 )
 
@@ -46,6 +46,7 @@ fun ReminderPolicy.toEntity() = ReminderPolicyEntity(
 fun ReminderOccurrenceEntity.toDomain() = ReminderOccurrence(
     id = id, policyId = policyId, taskId = taskId, kind = kind, plannedAt = plannedAt, slotAt = slotAt,
     scheduledAt = scheduledAt, deliveredAt = deliveredAt, status = status, generation = generation,
+    exact = exact, note = note,
 )
 
 private val metadataJson = Json { ignoreUnknownKeys = true }

@@ -1,0 +1,60 @@
+package com.lifeadmin.autopilot.ui.components
+
+import com.lifeadmin.autopilot.domain.model.DeadlineType
+import com.lifeadmin.autopilot.domain.model.Task
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
+import java.util.Locale
+
+object Format {
+    // Resolved per call so a locale change while the app runs is respected.
+    private val time get() = DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())
+    private val dayDate get() = DateTimeFormatter.ofPattern("EEE d MMM", Locale.getDefault())
+    private val dayDateYear get() = DateTimeFormatter.ofPattern("EEE d MMM yyyy", Locale.getDefault())
+    private val full get() = DateTimeFormatter.ofPattern("EEE d MMM yyyy, HH:mm", Locale.getDefault())
+
+    fun time(instant: Instant, zone: ZoneId): String = instant.atZone(zone).format(time)
+
+    /** "Today 18:00", "Tomorrow 09:00", "Tue 20 Oct, 09:00", "Tue 20 Oct 2027, 09:00". */
+    fun relative(instant: Instant, now: Instant, zone: ZoneId): String {
+        val date = instant.atZone(zone).toLocalDate()
+        val today = now.atZone(zone).toLocalDate()
+        val t = instant.atZone(zone).format(time)
+        return when (ChronoUnit.DAYS.between(today, date)) {
+            0L -> "Today $t"
+            1L -> "Tomorrow $t"
+            -1L -> "Yesterday $t"
+            else -> "${date(date, today)}, $t"
+        }
+    }
+
+    fun date(date: LocalDate, today: LocalDate): String = when (ChronoUnit.DAYS.between(today, date)) {
+        0L -> "Today"
+        1L -> "Tomorrow"
+        -1L -> "Yesterday"
+        else -> if (date.year == today.year) date.format(dayDate) else date.format(dayDateYear)
+    }
+
+    fun full(instant: Instant, zone: ZoneId): String = instant.atZone(zone).format(full)
+
+    fun deadline(task: Task, now: Instant, zone: ZoneId): String? = when (task.deadlineType) {
+        DeadlineType.NONE -> null
+        DeadlineType.DATE_ONLY -> task.deadlineLocalDate?.let { "Due ${date(it, now.atZone(zone).toLocalDate())}" }
+        DeadlineType.EXACT -> task.deadlineInstant?.let { "Due ${relative(it, now, zone)}" }
+    }
+}
+
+/** Deadline passed? Date-only deadlines are overdue the day after the due date. */
+fun Task.isOverdue(now: Instant, zone: ZoneId): Boolean {
+    if (status.isTerminal || archivedAt != null) return false
+    return when (deadlineType) {
+        DeadlineType.NONE -> false
+        DeadlineType.DATE_ONLY -> deadlineLocalDate?.let { it < now.atZone(zone).toLocalDate() } ?: false
+        DeadlineType.EXACT -> deadlineInstant?.let { it < now } ?: false
+    }
+}
+
+fun Task.isSnoozed(now: Instant): Boolean = snoozedUntil?.let { it > now } ?: false

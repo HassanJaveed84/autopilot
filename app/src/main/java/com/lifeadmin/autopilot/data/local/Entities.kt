@@ -1,5 +1,6 @@
 package com.lifeadmin.autopilot.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -36,6 +37,8 @@ data class TaskEntity(
     val deadlineInstant: Instant?,
     val deadlineZoneId: String?,
     val snoozedUntil: Instant?,
+    /** Added in schema v2. */
+    @ColumnInfo(defaultValue = "1") val snoozeRemindAtEnd: Boolean = true,
     val waitingReason: String?,
     val waitingCheckInAt: Instant?,
 )
@@ -112,6 +115,10 @@ data class ReminderOccurrenceEntity(
     val deliveredAt: Instant?,
     val status: OccurrenceStatus,
     val generation: Int,
+    /** Added in schema v2: whether the OS alarm was scheduled as exact. */
+    @ColumnInfo(defaultValue = "0") val exact: Boolean = false,
+    /** Added in schema v2: short machine reason (e.g. suppression cause). Never task content. */
+    val note: String? = null,
 )
 
 @Entity(

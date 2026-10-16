@@ -27,7 +27,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun eventDao(): TaskEventDao
 
     companion object {
-        const val VERSION = 1
+        const val VERSION = 2
         const val NAME = "life_admin.db"
 
         /** No destructive fallback: a missing migration must fail loudly rather than drop tasks. */

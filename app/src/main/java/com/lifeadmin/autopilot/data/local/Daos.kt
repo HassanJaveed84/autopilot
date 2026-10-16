@@ -143,6 +143,9 @@ interface ReminderOccurrenceDao {
     @Query("SELECT * FROM reminder_occurrences WHERE taskId = :taskId ORDER BY plannedAt")
     suspend fun getAllForTask(taskId: String): List<ReminderOccurrenceEntity>
 
+    @Query("SELECT plannedAt FROM reminder_occurrences WHERE policyId = :policyId AND plannedAt > :after AND status IN ('DELIVERED','SUPPRESSED','MISSED')")
+    suspend fun getSettledPlannedAfter(policyId: String, after: Instant): List<Instant>
+
     @Query("SELECT COUNT(*) FROM reminder_occurrences WHERE status = 'DELIVERED' AND deliveredAt >= :since")
     suspend fun countDeliveredSince(since: Instant): Int
 

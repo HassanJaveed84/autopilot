@@ -9,7 +9,10 @@ import com.lifeadmin.autopilot.data.repository.DataStoreSettingsRepository
 import com.lifeadmin.autopilot.data.repository.SettingsRepository
 import com.lifeadmin.autopilot.data.repository.TaskRepository
 import com.lifeadmin.autopilot.data.repository.settingsDataStore
+import com.lifeadmin.autopilot.BuildConfig
+import com.lifeadmin.autopilot.data.repository.BackupRepository
 import com.lifeadmin.autopilot.domain.usecase.ScheduleCoordinator
+import com.lifeadmin.autopilot.domain.usecase.TaskActions
 
 /**
  * Manual dependency container. Every seam the scheduler touches (clock, zone, alarms,
@@ -26,6 +29,17 @@ class AppContainer(
     val coordinator: ScheduleCoordinator = ScheduleCoordinator.Direct
 
     val taskRepository: TaskRepository = TaskRepository(database, clock, ids, zoneProvider::current, coordinator)
+
+    val taskActions: TaskActions = TaskActions(database, taskRepository, settingsRepository, clock, zoneProvider)
+
+    val backupRepository: BackupRepository = BackupRepository(
+        database, clock, ids, BuildConfig.VERSION_NAME,
+        afterImport = { reconcileAll("import") },
+    )
+
+    /** Re-derives OS alarms from the database. */
+    suspend fun reconcileAll(@Suppress("UNUSED_PARAMETER") reason: String) {
+    }
 
     fun onAppStart() {
     }

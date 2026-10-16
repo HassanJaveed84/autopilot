@@ -37,7 +37,7 @@ class DaoTest {
 
     private fun taskEntity(id: String) = TaskEntity(
         id, "Book train ride", null, TaskStatus.ACTIONABLE, Priority.NORMAL, now, now, null, null,
-        DeadlineType.NONE, null, null, null, null, null, null,
+        DeadlineType.NONE, null, null, null, null, true, null, null,
     )
 
     private fun policy(id: String, taskId: String) = ReminderPolicyEntity(
