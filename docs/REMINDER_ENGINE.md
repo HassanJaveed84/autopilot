@@ -115,3 +115,65 @@ shown in the health panel. Reconcile is idempotent (tested 3× in a row → same
   reschedule them as inexact.
 * Inexact alarms can be several minutes late; "09:00" means "around 09:00" unless precision mode
   is on and granted.
+
+## Delivery diagnostics (added 2026-10-17)
+
+Every step of a reminder's life is written to the `reminder_diagnostics` table (schema v3). It
+has no foreign keys, so history survives task deletion. It holds ids and timestamps only, never
+titles, notes or steps, and keeps at most 3,000 rows / 45 days.
+
+| Type | Written when | Key fields |
+|---|---|---|
+| `SCHEDULED` | alarm handed to AlarmManager: `new`, `updated`, `mode_changed` (approximate↔precise), `recovered` (after boot/time change), `reregistered_due` | `plannedAt`, `triggerAt`, `exact`, notes such as `quiet_hours_deferred_from=…`, `exact_unavailable` |
+| `SCHEDULE_FAILED` | AlarmManager refused | error class |
+| `ALARM_RECEIVED` | the alarm broadcast reached the receiver; the time is captured **before** any locking | `at` = real receipt time, `lateness` = receipt − planned |
+| `ALARM_IGNORED` | duplicate / stale generation / early / not found | outcome |
+| `RECONCILE` | each full reconcile | `source=reconcile:<reason>`, counts, environment |
+| `POST_REQUESTED` | about to call `notify()` | `source` (`alarm` / `reconcile:app_resume` / `mutation` …), lateness, mode, **environment snapshot** |
+| `POSTED` | `notify()` returned | `listed_active` / `not_listed_active` (checked via `getActiveNotifications`) |
+| `POST_FAILED`, `SUPPRESSED`, `MISSED` | not shown, with the reason | reason code, environment |
+| `SNOOZED`, `UNSNOOZED`, `CANCELED` | user actions / cancellations | reason (`task_done`, `task_paused`, `snoozed`, `superseded`, …) |
+| `TEST_*` | self-tests from the Reminder health screen | lateness of the test alarm |
+
+The environment snapshot records:
+- ringer mode and Do Not Disturb filter;
+- notification volume;
+- the reminder channel's importance, sound, vibration and DND bypass;
+- Doze, Battery Saver, battery-optimisation exemption, background restriction and App Standby
+  bucket;
+- whether exact alarms are allowed.
+
+`POSTED` is deliberately **not** called “delivered to the user”. It only proves Android accepted
+the notification.
+
+The task activity log now states how a reminder was delivered, for example:
+- “Reminder delivered 24 min late · alarm arrived late (approximate timing)”
+- “… · caught up when the app was opened or started”
+
+Settings → Reminder health → *Copy / Share diagnostics* exports the ledger plus device state as
+text.
+
+### Notification time
+The notification's timestamp (`setWhen`) is the **actual posting time**. The due time is shown as
+the subtext (“Due 18:25” or “Late · due 18:25”). Before this change the shade showed the planned
+time, which hid late posting.
+
+### Channel policy
+- New installs create “Task reminders” with `IMPORTANCE_DEFAULT` (sound, no forced heads-up),
+  **vibration on** and a short vibration pattern.
+- If the channel already exists, the app does not touch it: Android reserves sound, vibration,
+  importance and pop-up for the user. The app never deletes and recreates a channel to override
+  them, and Android would restore the old settings anyway.
+- The Reminder health screen detects the settings and links straight to the channel page.
+- Pop-up (“Show as pop-up” / `IMPORTANCE_HIGH`) is an optional user preference.
+
+### Safety net
+The WorkManager reconcile now runs **hourly** (it was every 6 h, longer than the 4 h grace
+window). A dropped or long-deferred inexact alarm is therefore caught up even if the app is never
+opened. It is still deferrable work and never the reminder clock.
+
+### Alert assessment
+`AlertAssessor` (pure, unit-tested) turns permission, channel and environment into one of:
+BLOCKED, SILENT, VIBRATE_ONLY, AUDIBLE or UNCERTAIN, plus concrete issues. Example: Vibrate mode
+with channel vibration off is “will probably be silent”. Do Not Disturb without a channel bypass
+makes the result UNCERTAIN, because DND exceptions can't be read without extra permission.

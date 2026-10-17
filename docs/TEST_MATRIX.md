@@ -61,3 +61,29 @@ connectedDebugAndroidTest` (3 instrumented tests, CI emulator API 33), `./gradle
 12. Airplane mode: create/edit/receive local reminders.
 13. Reinstall + import backup → data readable, no reminder flood.
 14. 100 tasks / 200+ slots → startup responsiveness.
+
+## Reminder reliability (2026-10-17)
+
+| Requirement | Test(s) | Status |
+|---|---|---|
+| One-time reminder; absolute time across zone change | `DiagnosticsLifecycleTest.*` (18:25 one-time), `HardeningTest.oneTimeReminderKeepsItsAbsoluteMomentAcrossTimeZoneChange`, `ReminderEngineTest.onceReminderStopsAfterOneDelivery` | ✅ |
+| Daily reminders with multiple times | `ReminderEngineTest.trainTicketRemindsAt0900And1800UntilDone`, `ReminderPlannerTest.twiceDaily*` | ✅ |
+| Snoozing and unsnoozing (ledger + rescheduling) | `DiagnosticsLifecycleTest.snoozeAndUnsnoozeAreRecordedAndRescheduleIsLogged`, `ReminderEngineTest.snooze*` | ✅ |
+| Completion cancels alarms + notification, logged with reason | `DiagnosticsLifecycleTest.completionLogsCancellationWithReason`, `pauseLogsCancellationWithReason`, `AndroidIntegrationTest.alarmPostsNotificationWithActionsAndDoneCompletesTask` | ✅ |
+| Duplicate alarm broadcasts | `DiagnosticsLifecycleTest.duplicateBroadcastIsRecordedAndPostsOnce`, `coldStartRaceShowsAlarmReceiptEvenWhenCatchUpPostedFirst`, `SelfTestTest` (test alarm duplicate) | ✅ |
+| Delayed alarm delivery (+24 min) with actual vs scheduled timestamps | `DiagnosticsLifecycleTest.lateAlarmRecordsActualReceiptAndPostTimesNotThePlannedTime` | ✅ |
+| Overdue reconciliation attributed to its source | `DiagnosticsLifecycleTest.catchUpDeliveryIsAttributedToTheReconcileNotToAnAlarm`, `HardeningTest.hourlySafetyNetCatchesUpADroppedAlarmWithinTheGraceWindow`, `bootRecoveryRecordsReRegistrationAndMissedEntries` | ✅ |
+| Quiet hours deferral recorded | `DiagnosticsLifecycleTest.quietHoursDeferralIsRecorded`, `ReminderEngineTest.quietHours*` | ✅ |
+| Reboot recovery | `ReminderEngineTest.reboot*`, `AndroidIntegrationTest.bootBroadcastRebuildsAlarmsAfterTheyWereCleared`, `idempotentReconcilesDoNotFloodTheLedger` | ✅ |
+| Time-zone changes and DST | `ReminderPlannerTest.dst*`, `ReminderEngineTest.timeZoneChangeRecomputesWallClockSlots`, `QuietHoursCalculatorTest.quietEndInsideRepeatedFallBackHourUsesSameNight` | ✅ |
+| Notification permission denied | `DiagnosticsLifecycleTest.deniedPermissionIsRecordedAsSuppressedWithEnvironment`, `SelfTestTest.testNotificationWhenBlockedIsReportedAsFailed`, `AndroidIntegrationTest.deniedPermissionDoesNotPostAndIsRecorded` | ✅ |
+| Exact-alarm permission unavailable / granted later | `DiagnosticsLifecycleTest.exactUnavailableIsVisibleInTheScheduleEntry`, `HardeningTest.returningFromExactAlarmSettingsUpgradesExistingAlarms`, `SelfTestTest.testReminderUsesExactWhenPreciseTimingOnAndGranted` | ✅ |
+| Notification shows real posting time; due time as subtext | `NotificationChannelAndContentTest.reminderShowsActualPostingTimeAndDueTimeAsSubtext` | ✅ |
+| New-install channel vibrates; existing channel never overwritten | `NotificationChannelAndContentTest.newInstall…`, `existingUserConfiguredChannelIsNeverOverwritten`, `InstrumentedReliabilityTest.freshInstallReminderChannelVibratesAndAlerts` | ✅ / 🟦 |
+| Sound/vibration detection (ringer, DND, channel) | `NotificationChannelAndContentTest.environmentProbeReadsRingerModeAndChannelVibration`, `AlertAssessorTest` (12 rules incl. the S24 case) | ✅ |
+| Self-tests (now / in 2 minutes) | `SelfTestTest`, `ReminderHealthUiTest.sendTestNotificationNowPostsOnce`, `scheduleTestReminderInTwoMinutesUsesTheAlarmDriver`, `InstrumentedReliabilityTest.testNotificationNow…`, `testAlarmArrivesThroughAlarmManager…` | ✅ / 🟦 |
+| Health dashboard shows silent verdict and approximate timing | `ReminderHealthUiTest.vibrateModeWithChannelVibrationOffIsFlaggedAsProbablySilent`, `approximateTimingIsClearlyIndicated` | ✅ |
+| Late-delivery hint only on evidence | `HardeningTest.lateBanner*` | ✅ |
+| Diagnostics export has no task content; retention | `DiagnosticsLifecycleTest.exportContainsTimingButNoTaskContent`, `pruningKeepsTheNewestRows` | ✅ |
+| Schema v2→v3 migration | `MigrationTest.migrateV2ToV3AddsDiagnosticsAndKeepsData` | ✅ |
+| Physical Samsung device: actual sound/vibration/timing | `docs/REMINDER_RELIABILITY_REPORT.md` §6 | 📱 not performed |

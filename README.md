@@ -31,9 +31,13 @@ as an opt-in milestone and is shown as “Off” in Settings).
 - **Notifications** with Done / Snooze / Open actions; tapping opens the task.
 - **Quiet hours** (default 21:00–08:00, defer-and-combine or skip), daily notification cap,
   lock-screen privacy.
-- **Reminder health panel**: notification permission, app/channel state, delivery mode
-  (best-effort vs precise), exact-alarm access, battery caveat, next reminder, last check, copyable
-  privacy-safe diagnostics.
+- **Reminder health screen** (Settings → Reminder health): a plain-language verdict (“Reminders
+  will probably be silent — phone in Vibrate mode and channel vibration off”); permission,
+  channel importance, sound, vibration, pop-up, ringer mode, Do Not Disturb and volume, with direct
+  links to the right Android settings; approximate vs precise timing with measured late-delivery
+  stats; Samsung battery guidance; **Send test notification now** and **Schedule test reminder in
+  2 minutes**; a recent delivery log (scheduled → alarm received → posted, with actual times and
+  lateness); copy/share of privacy-safe diagnostics.
 - **Backup**: plaintext JSON export/import through the system file picker, validated, merged by
   id, all-or-nothing.
 
@@ -92,7 +96,12 @@ WorkManager's `FOREGROUND_SERVICE` is explicitly removed.)
 
 - *No reminders*: Settings → Reminder health. Check permission, app notifications, the “Task
   reminders” channel and the in-app “Reminder notifications” switch; tap **Re-check schedule**.
-- *Reminders late*: enable Precise timing (and grant access), and set battery usage to Unrestricted.
+- *Reminders late*: Reminder health shows how late recent reminders were and whether the alarm
+  itself was late or the reminder was caught up when the app opened. Enable Precise timing (and
+  grant “Alarms & reminders”), and set battery usage to Unrestricted.
+- *No sound or vibration*: Reminder health → check “Phone sound mode” and “Channel vibration”. In
+  Vibrate mode you only feel reminders if the channel's Vibrate option is on. Use **Send test
+  notification now** to check.
 - *After moving time zones*: reminders follow the phone’s zone by default (09:00 stays 09:00
   local); choose “Keep fixed to …” on a task to pin a zone.
 - *Bug report*: Settings → Copy diagnostics (contains counts and scheduler state, no task text).
