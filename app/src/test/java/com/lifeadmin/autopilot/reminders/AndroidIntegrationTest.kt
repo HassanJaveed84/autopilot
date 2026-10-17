@@ -58,6 +58,8 @@ class AndroidIntegrationTest {
         alarmManager = app.getSystemService(AlarmManager::class.java)
         notificationManager = app.getSystemService(NotificationManager::class.java)
         await { runBlocking { container.settingsRepository.current().lastReconcileAt != null } } // app_start reconcile done
+        // These tests use the real wall clock; disable quiet hours so results don't depend on the time of day.
+        runBlocking { container.settingsRepository.update { it.copy(quietHours = it.quietHours.copy(enabled = false)) } }
     }
 
     private fun await(timeoutMs: Long = 5_000, condition: () -> Boolean) {
@@ -67,6 +69,7 @@ class AndroidIntegrationTest {
             if (condition()) return
             Thread.sleep(20)
         }
+        System.err.println("LEDGER\n" + runBlocking { container.diagnosticsLog.exportText(java.time.ZoneId.of("UTC")) })
         throw AssertionError("condition not met in $timeoutMs ms")
     }
 
@@ -180,6 +183,7 @@ class AndroidIntegrationTest {
         val alarm = scheduledAlarms().single()
         val planned = runBlocking { container.database.occurrenceDao().getForTaskWithStatus(id, ReminderEngine.ACTIVE).single().plannedAt }
         assertEquals(planned.toEpochMilli(), alarm.triggerAtTime)
-        assertTrue(Duration.ofMillis(alarm.triggerAtTime - System.currentTimeMillis()) <= Duration.ofSeconds(25))
+        // Compare against the app clock (Robolectric's System.currentTimeMillis is a separate fake clock).
+        assertTrue(Duration.ofMillis(alarm.triggerAtTime - container.clock.now().toEpochMilli()) <= Duration.ofSeconds(25))
     }
 }

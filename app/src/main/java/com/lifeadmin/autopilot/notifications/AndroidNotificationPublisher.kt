@@ -23,14 +23,22 @@ import com.lifeadmin.autopilot.reminders.IntentContract
 class AndroidNotificationPublisher(private val context: Context) : NotificationPublisher {
     private val manager = NotificationManagerCompat.from(context)
 
+    /**
+     * Creates channels on first run only. Once a channel exists, Android owns its sound,
+     * vibration, importance and pop-up settings (the user's choices); we never delete/recreate it
+     * to change them. Existing installs keep whatever they have — the health screen explains how
+     * to change it.
+     */
     override fun ensureChannels() {
-        val reminders = NotificationChannel(CHANNEL_REMINDERS, "Task reminders", NotificationManager.IMPORTANCE_DEFAULT).apply {
-            description = "Follow-up reminders for open tasks. Change sound or importance here."
+        val nm = context.getSystemService(NotificationManager::class.java)
+        val wanted = mutableListOf<NotificationChannel>()
+        if (nm.getNotificationChannel(CHANNEL_REMINDERS) == null) wanted += reminderChannelDefaults()
+        if (nm.getNotificationChannel(CHANNEL_SUMMARY) == null) {
+            wanted += NotificationChannel(CHANNEL_SUMMARY, "Summaries", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "Combined notices, e.g. reminders that came due while the phone was off."
+            }
         }
-        val summary = NotificationChannel(CHANNEL_SUMMARY, "Summaries", NotificationManager.IMPORTANCE_LOW).apply {
-            description = "Combined notices, e.g. reminders that came due while the phone was off."
-        }
-        context.getSystemService(NotificationManager::class.java).createNotificationChannels(listOf(reminders, summary))
+        if (wanted.isNotEmpty()) nm.createNotificationChannels(wanted)
     }
 
     override fun health(): NotificationHealth {
@@ -56,11 +64,13 @@ class AndroidNotificationPublisher(private val context: Context) : NotificationP
             .setSmallIcon(R.drawable.ic_notification)
             .setColor(ContextCompat.getColor(context, R.color.notification_accent))
             .setContentTitle(notification.title)
-            .setContentText(if (notification.late) "Late reminder · ${notification.body}" else notification.body)
+            .setContentText(notification.body)
+            // Show the due time explicitly; the notification timestamp is the real posting time.
+            .setSubText(if (notification.dueLabel.isBlank()) null else if (notification.late) "Late · due ${notification.dueLabel}" else "Due ${notification.dueLabel}")
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
-            .setWhen(notification.plannedAt.toEpochMilli())
+            .setWhen(notification.postedAt.toEpochMilli())
             .setShowWhen(true)
             .setContentIntent(openTaskIntent(taskId))
             .addAction(0, "Done", actionIntent(taskId, IntentContract.ACTION_DONE))
@@ -117,6 +127,49 @@ class AndroidNotificationPublisher(private val context: Context) : NotificationP
 
     override fun cancelForTask(taskId: String) = manager.cancel(taskId, NOTIFICATION_ID)
 
+    override fun isShowing(taskId: String): Boolean? = activeTags()?.contains(taskId)
+
+    override fun isTestShowing(testId: String): Boolean? = activeTags()?.contains(TEST_TAG_PREFIX + testId)
+
+    private fun activeTags(): Set<String>? = runCatching {
+        context.getSystemService(NotificationManager::class.java).activeNotifications
+            .filter { it.id == NOTIFICATION_ID }.mapNotNull { it.tag }.toSet()
+    }.getOrNull()
+
+    override fun postTest(notification: TestNotification): PostResult {
+        val h = health()
+        if (!h.permissionGranted) return PostResult.BLOCKED_PERMISSION
+        if (!h.appNotificationsEnabled) return PostResult.BLOCKED_APP_DISABLED
+        if (!h.reminderChannelEnabled) return PostResult.BLOCKED_CHANNEL_DISABLED
+        ensureChannels()
+        val open = PendingIntent.getActivity(
+            context, 0,
+            Intent(context, MainActivity::class.java).setAction(ACTION_OPEN_HEALTH).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        // Same channel as real reminders, so it uses exactly the same sound/vibration/pop-up settings.
+        val n = NotificationCompat.Builder(context, CHANNEL_REMINDERS)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setColor(ContextCompat.getColor(context, R.color.notification_accent))
+            .setContentTitle(notification.title)
+            .setContentText(notification.body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(notification.body))
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setWhen(notification.postedAt.toEpochMilli())
+            .setShowWhen(true)
+            .setAutoCancel(true)
+            .setContentIntent(open)
+            .build()
+        return try {
+            manager.notify(TEST_TAG_PREFIX + notification.testId, NOTIFICATION_ID, n)
+            PostResult.POSTED
+        } catch (e: SecurityException) {
+            PostResult.BLOCKED_PERMISSION
+        } catch (e: RuntimeException) {
+            PostResult.FAILED
+        }
+    }
+
     private fun openTaskIntent(taskId: String): PendingIntent {
         val intent = Intent(context, MainActivity::class.java)
             .setAction(Intent.ACTION_VIEW)
@@ -138,5 +191,17 @@ class AndroidNotificationPublisher(private val context: Context) : NotificationP
         const val CHANNEL_SUMMARY = "summary_updates"
         const val NOTIFICATION_ID = 1001
         const val SUMMARY_TAG = "summary"
+        const val TEST_TAG_PREFIX = "selftest:"
+        const val ACTION_OPEN_HEALTH = "com.lifeadmin.autopilot.action.OPEN_REMINDER_HEALTH"
+        val VIBRATION_PATTERN = longArrayOf(0, 350, 200, 350)
+
+        /** Defaults for a *new* reminder channel: audible, vibrating, no forced pop-up. */
+        fun reminderChannelDefaults(): NotificationChannel =
+            NotificationChannel(CHANNEL_REMINDERS, "Task reminders", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = "Follow-up reminders for open tasks. Change sound, vibration or pop-up here."
+                enableVibration(true)
+                vibrationPattern = VIBRATION_PATTERN
+                setShowBadge(true)
+            }
     }
 }

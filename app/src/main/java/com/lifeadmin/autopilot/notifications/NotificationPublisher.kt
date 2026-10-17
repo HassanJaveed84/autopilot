@@ -21,6 +21,17 @@ data class ReminderNotification(
     val plannedAt: Instant,
     val late: Boolean,
     val redactOnLockScreen: Boolean,
+    /** Actual posting time — shown as the notification time (not the planned time). */
+    val postedAt: Instant = plannedAt,
+    /** Local due time label, e.g. "18:25" or "Fri 17 Oct 18:25". */
+    val dueLabel: String = "",
+)
+
+data class TestNotification(
+    val testId: String,
+    val title: String,
+    val body: String,
+    val postedAt: Instant,
 )
 
 interface NotificationPublisher {
@@ -29,4 +40,12 @@ interface NotificationPublisher {
     fun postReminder(notification: ReminderNotification): PostResult
     fun postSummary(title: String, body: String): PostResult
     fun cancelForTask(taskId: String)
+
+    /** Whether the task's reminder is currently listed as active; null if the OS can't tell. */
+    fun isShowing(taskId: String): Boolean? = null
+
+    /** Self-test notification on the real reminder channel (same sound/vibration settings). */
+    fun postTest(notification: TestNotification): PostResult = PostResult.FAILED
+
+    fun isTestShowing(testId: String): Boolean? = null
 }

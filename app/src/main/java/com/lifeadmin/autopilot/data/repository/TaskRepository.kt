@@ -13,6 +13,9 @@ import com.lifeadmin.autopilot.data.local.encodeMetadata
 import com.lifeadmin.autopilot.data.local.toDomain
 import com.lifeadmin.autopilot.data.local.toEntity
 import com.lifeadmin.autopilot.domain.model.DeadlineType
+import com.lifeadmin.autopilot.domain.model.DiagnosticEntry
+import com.lifeadmin.autopilot.domain.model.DiagnosticType
+import com.lifeadmin.autopilot.reminders.DiagnosticsRecorder
 import com.lifeadmin.autopilot.domain.model.EventType
 import com.lifeadmin.autopilot.domain.model.OccurrenceStatus
 import com.lifeadmin.autopilot.domain.model.Priority
@@ -77,6 +80,7 @@ class TaskRepository(
     private val ids: IdGenerator,
     private val zoneProvider: () -> ZoneId,
     private val coordinator: ScheduleCoordinator,
+    private val diagnostics: DiagnosticsRecorder = DiagnosticsRecorder.None,
 ) {
     private val taskDao = db.taskDao()
     private val stepDao = db.stepDao()
@@ -265,6 +269,12 @@ class TaskRepository(
                 require(until > now) { "Snooze must end in the future" }
                 taskDao.update(t.copy(snoozedUntil = until, snoozeRemindAtEnd = remindAtEnd, updatedAt = now))
                 bumpGeneration(taskId)
+                diagnostics.record(
+                    DiagnosticEntry(
+                        id = ids.newId(), at = now, type = DiagnosticType.SNOOZED, taskId = taskId, plannedAt = until,
+                        source = "user", outcome = if (remindAtEnd) "remind_at_end" else "silent_until_end",
+                    ),
+                )
                 log(
                     taskId, now, EventType.SNOOZED,
                     "Snoozed until ${until.atZone(zoneProvider()).toLocalDateTime()}" + if (remindAtEnd) " (remind at end)" else "",
@@ -282,6 +292,7 @@ class TaskRepository(
                 val now = clock.now()
                 taskDao.update(t.copy(snoozedUntil = null, updatedAt = now))
                 bumpGeneration(taskId)
+                diagnostics.record(DiagnosticEntry(id = ids.newId(), at = now, type = DiagnosticType.UNSNOOZED, taskId = taskId, source = "user"))
                 log(taskId, now, EventType.SNOOZE_CLEARED, "Snooze cleared")
             }
         }

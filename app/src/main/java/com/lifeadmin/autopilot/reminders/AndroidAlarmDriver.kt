@@ -42,6 +42,21 @@ class AndroidAlarmDriver(private val context: Context) : AlarmDriver {
         }
     }
 
+    override fun scheduleTest(testId: String, triggerAt: java.time.Instant, preferExact: Boolean): AlarmScheduleResult {
+        val intent = Intent(context, ReminderAlarmReceiver::class.java)
+            .setAction(IntentContract.ACTION_TEST_FIRE)
+            .setData(IntentContract.testUri(testId))
+        val pi = PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val wantExact = preferExact && canScheduleExact()
+        return try {
+            if (wantExact) alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt.toEpochMilli(), pi)
+            else alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt.toEpochMilli(), pi)
+            AlarmScheduleResult(true, wantExact, if (preferExact && !wantExact) "exact_unavailable" else null)
+        } catch (e: RuntimeException) {
+            AlarmScheduleResult(false, false, e.javaClass.simpleName)
+        }
+    }
+
     override fun cancel(occurrenceId: String) {
         pendingIntent(occurrenceId, 0, create = false)?.let {
             alarmManager.cancel(it)

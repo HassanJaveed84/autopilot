@@ -14,6 +14,7 @@ import androidx.room.TypeConverters
         ReminderTimeSlotEntity::class,
         ReminderOccurrenceEntity::class,
         TaskEventEntity::class,
+        ReminderDiagnosticEntity::class,
     ],
     version = AppDatabase.VERSION,
     exportSchema = true,
@@ -25,9 +26,10 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun policyDao(): ReminderPolicyDao
     abstract fun occurrenceDao(): ReminderOccurrenceDao
     abstract fun eventDao(): TaskEventDao
+    abstract fun diagnosticDao(): DiagnosticDao
 
     companion object {
-        const val VERSION = 2
+        const val VERSION = 3
         const val NAME = "life_admin.db"
 
         /** No destructive fallback: a missing migration must fail loudly rather than drop tasks. */

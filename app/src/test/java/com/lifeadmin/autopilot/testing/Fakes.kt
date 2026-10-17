@@ -4,6 +4,9 @@ import com.lifeadmin.autopilot.notifications.NotificationHealth
 import com.lifeadmin.autopilot.notifications.NotificationPublisher
 import com.lifeadmin.autopilot.notifications.PostResult
 import com.lifeadmin.autopilot.notifications.ReminderNotification
+import com.lifeadmin.autopilot.notifications.TestNotification
+import com.lifeadmin.autopilot.domain.model.DeliveryEnvironment
+import com.lifeadmin.autopilot.reminders.EnvironmentProbe
 import com.lifeadmin.autopilot.reminders.AlarmDriver
 import com.lifeadmin.autopilot.reminders.AlarmRequest
 import com.lifeadmin.autopilot.reminders.AlarmScheduleResult
@@ -26,6 +29,14 @@ class FakeAlarmDriver(var exactAllowed: Boolean = false, var failing: Boolean = 
     override fun cancel(occurrenceId: String) { alarms.remove(occurrenceId); exactFlags.remove(occurrenceId) }
 
     fun fired(occurrenceId: String) { alarms.remove(occurrenceId) }
+
+    val tests = ConcurrentHashMap<String, Pair<Instant, Boolean>>()
+    override fun scheduleTest(testId: String, triggerAt: Instant, preferExact: Boolean): AlarmScheduleResult {
+        if (failing) return AlarmScheduleResult(false, false, "IllegalStateException")
+        val exact = preferExact && exactAllowed
+        tests[testId] = triggerAt to exact
+        return AlarmScheduleResult(true, exact, if (preferExact && !exact) "exact_unavailable" else null)
+    }
 
     /** Simulates reboot / force-stop: the OS forgets every alarm. */
     fun clearAll() = alarms.clear()
@@ -56,4 +67,18 @@ class FakeNotificationPublisher : NotificationPublisher {
         return PostResult.POSTED
     }
     override fun cancelForTask(taskId: String) { visible.remove(taskId) }
+    override fun isShowing(taskId: String): Boolean? = visible.containsKey(taskId)
+
+    val tests = CopyOnWriteArrayList<TestNotification>()
+    override fun postTest(notification: TestNotification): PostResult {
+        if (!health.canPostReminders) return PostResult.BLOCKED_PERMISSION
+        tests += notification
+        return PostResult.POSTED
+    }
+    override fun isTestShowing(testId: String): Boolean? = tests.any { it.testId == testId }
+}
+
+/** Fixed environment snapshot for engine/assessor tests. */
+class FakeEnvironmentProbe(var env: DeliveryEnvironment = DeliveryEnvironment()) : EnvironmentProbe {
+    override fun snapshot(): DeliveryEnvironment = env
 }

@@ -21,4 +21,8 @@ interface AlarmDriver {
     fun schedule(request: AlarmRequest): AlarmScheduleResult
 
     fun cancel(occurrenceId: String)
+
+    /** Self-test alarm through the same AlarmManager mode as real reminders. */
+    fun scheduleTest(testId: String, triggerAt: java.time.Instant, preferExact: Boolean): AlarmScheduleResult =
+        AlarmScheduleResult(false, false, "unsupported")
 }

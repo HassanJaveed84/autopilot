@@ -189,3 +189,31 @@ interface TaskEventDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(events: List<TaskEventEntity>)
 }
+
+@Dao
+interface DiagnosticDao {
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(entry: ReminderDiagnosticEntity)
+
+    @Query("SELECT * FROM reminder_diagnostics ORDER BY at DESC, id DESC LIMIT :limit")
+    suspend fun recent(limit: Int): List<ReminderDiagnosticEntity>
+
+    @Query("SELECT * FROM reminder_diagnostics ORDER BY at DESC, id DESC LIMIT :limit")
+    fun observeRecent(limit: Int): Flow<List<ReminderDiagnosticEntity>>
+
+    @Query("SELECT * FROM reminder_diagnostics WHERE occurrenceId = :occurrenceId ORDER BY at, id")
+    suspend fun forOccurrence(occurrenceId: String): List<ReminderDiagnosticEntity>
+
+    @Query("SELECT * FROM reminder_diagnostics WHERE type IN (:types) ORDER BY at DESC, id DESC LIMIT :limit")
+    suspend fun recentOfTypes(types: List<String>, limit: Int): List<ReminderDiagnosticEntity>
+
+    @Query("SELECT COUNT(*) FROM reminder_diagnostics")
+    suspend fun count(): Int
+
+    @Query("DELETE FROM reminder_diagnostics WHERE at < :before")
+    suspend fun deleteBefore(before: Instant): Int
+
+    /** Keeps only the newest [keep] rows. */
+    @Query("DELETE FROM reminder_diagnostics WHERE id NOT IN (SELECT id FROM reminder_diagnostics ORDER BY at DESC, id DESC LIMIT :keep)")
+    suspend fun trimTo(keep: Int): Int
+}

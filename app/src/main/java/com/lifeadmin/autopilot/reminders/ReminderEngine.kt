@@ -13,6 +13,8 @@ import com.lifeadmin.autopilot.data.local.encodeMetadata
 import com.lifeadmin.autopilot.data.local.toDomain
 import com.lifeadmin.autopilot.data.repository.SettingsRepository
 import com.lifeadmin.autopilot.domain.model.AppSettings
+import com.lifeadmin.autopilot.domain.model.DiagnosticEntry
+import com.lifeadmin.autopilot.domain.model.DiagnosticType
 import com.lifeadmin.autopilot.domain.model.EventType
 import com.lifeadmin.autopilot.domain.model.OccurrenceKind
 import com.lifeadmin.autopilot.domain.model.OccurrenceStatus
@@ -74,6 +76,8 @@ class ReminderEngine(
     private val clock: AppClock,
     private val zoneProvider: ZoneProvider,
     private val ids: IdGenerator,
+    private val diagnostics: DiagnosticsRecorder = DiagnosticsRecorder.None,
+    private val environment: EnvironmentProbe = EnvironmentProbe.UNKNOWN,
 ) : ScheduleCoordinator {
 
     private val mutex = Mutex()
@@ -90,7 +94,10 @@ class ReminderEngine(
     private val stepDao = db.stepDao()
     private val eventDao = db.eventDao()
 
-    private class Ctx(val now: Instant, val settings: AppSettings, val zone: ZoneId)
+    /** [source] says what triggered this unit of work: "alarm", "mutation" or "reconcile:<reason>". */
+    private class Ctx(val now: Instant, val settings: AppSettings, val zone: ZoneId, val source: String) {
+        val isRecovery: Boolean get() = source.removePrefix("reconcile:") in RECOVERY_REASONS
+    }
 
     private class CatchUp {
         val late = mutableListOf<ReminderOccurrenceEntity>()
@@ -103,15 +110,15 @@ class ReminderEngine(
         val before = occurrenceDao.getForTaskWithStatus(taskId, ACTIVE)
         val result = block()
         if (dismissNotification) notifications.cancelForTask(taskId)
-        reconcileTaskLocked(taskId, before, ctx(), catchUp = null)
+        reconcileTaskLocked(taskId, before, ctx("mutation"), catchUp = null)
         result
     }
 
-    suspend fun reconcileTask(taskId: String) = locked { reconcileTaskLocked(taskId, emptyList(), ctx(), null) }
+    suspend fun reconcileTask(taskId: String) = locked { reconcileTaskLocked(taskId, emptyList(), ctx("mutation"), null) }
 
     /** Full rebuild: app start, boot, package update, time/zone change, permission change, periodic. */
     suspend fun reconcileAll(reason: String): ReconcileReport = locked {
-        val c = ctx()
+        val c = ctx("reconcile:$reason")
         val catchUp = CatchUp()
         val tasks = taskDao.getAll()
         for (t in tasks) reconcileTaskLocked(t.id, emptyList(), c, catchUp)
@@ -130,6 +137,7 @@ class ReminderEngine(
             for (occ in catchUp.late) {
                 val status = if (canPost) OccurrenceStatus.DELIVERED else OccurrenceStatus.SUPPRESSED
                 occurrenceDao.update(occ.copy(status = status, deliveredAt = if (canPost) c.now else null, note = if (canPost) "coalesced" else "notifications_blocked"))
+                diag(if (canPost) DiagnosticType.POSTED else DiagnosticType.SUPPRESSED, c, occ, outcome = if (canPost) "in_summary" else "notifications_blocked", withLateness = true)
                 log(occ.taskId, c.now, if (canPost) EventType.REMINDER_DELIVERED else EventType.REMINDER_SUPPRESSED,
                     if (canPost) "Late reminder included in a summary" else "Late reminder not shown (notifications blocked)")
             }
@@ -147,6 +155,7 @@ class ReminderEngine(
                 for (occ in catchUp.late) {
                     occurrenceDao.get(occ.id)?.takeIf { it.status == OccurrenceStatus.DELIVERED }?.let {
                         occurrenceDao.update(it.copy(status = OccurrenceStatus.SUPPRESSED, deliveredAt = null, note = "summary_not_shown"))
+                        diag(DiagnosticType.POST_FAILED, c, it, outcome = "summary_not_shown", withLateness = true)
                     }
                 }
             }
@@ -163,28 +172,65 @@ class ReminderEngine(
             lateDelivered = lateDelivered, coalesced = coalesced, missed = catchUp.missed,
         )
         settings.update { it.copy(lastReconcileAt = c.now, lastReconcileSummary = report.summary()) }
+        diagnostics.record(
+            DiagnosticEntry(
+                id = ids.newId(), at = c.now, type = DiagnosticType.RECONCILE, source = c.source,
+                outcome = "scheduled=${report.scheduled} exact=${report.exact} pending=${report.notHandedToOs} late=${report.lateDelivered} coalesced=${report.coalesced} missed=${report.missed}",
+                detail = runCatching { environment.snapshot().compact() }.getOrNull(),
+            ),
+        )
         report
     }
 
-    /** Alarm broadcast entry point. Safe to call any number of times for the same occurrence. */
-    suspend fun onAlarm(occurrenceId: String, generation: Int): AlarmOutcome = locked {
-        val c = ctx()
-        val occ = occurrenceDao.get(occurrenceId) ?: return@locked AlarmOutcome.NOT_FOUND
-        if (occ.status !in ACTIVE) return@locked AlarmOutcome.DUPLICATE
-        if (occ.generation != generation) {
-            // A newer schedule superseded this broadcast; make sure the current one is registered.
-            reconcileTaskLocked(occ.taskId, emptyList(), c, null)
-            return@locked AlarmOutcome.STALE
-        }
-        val task = taskDao.get(occ.taskId) ?: return@locked AlarmOutcome.NOT_FOUND
-        if (occ.plannedAt > c.now.plus(EARLY_TOLERANCE)) {
-            // Wall clock moved backwards after scheduling; re-derive instead of delivering early.
+    /**
+     * Alarm broadcast entry point. Safe to call any number of times for the same occurrence.
+     * [receivedAt] is captured by the receiver before any locking, so the ledger shows when the OS
+     * actually delivered the broadcast even if other engine work (e.g. app-start catch-up) ran first.
+     */
+    suspend fun onAlarm(occurrenceId: String, generation: Int, receivedAt: Instant = clock.now()): AlarmOutcome {
+        val seen = runCatching { occurrenceDao.get(occurrenceId) }.getOrNull()
+        diagnostics.record(
+            DiagnosticEntry(
+                id = ids.newId(), at = receivedAt, type = DiagnosticType.ALARM_RECEIVED, occurrenceId = occurrenceId,
+                taskId = seen?.taskId, plannedAt = seen?.plannedAt, triggerAt = seen?.plannedAt, source = "alarm",
+                exact = seen?.exact, lateness = seen?.let { Duration.between(it.plannedAt, receivedAt) },
+                outcome = seen?.status?.name?.lowercase() ?: "unknown_occurrence",
+            ),
+        )
+        return locked {
+            val c = ctx("alarm")
+            val occ = occurrenceDao.get(occurrenceId)
+            val ignored: AlarmOutcome? = when {
+                occ == null -> AlarmOutcome.NOT_FOUND
+                occ.status !in ACTIVE -> AlarmOutcome.DUPLICATE
+                occ.generation != generation -> {
+                    // A newer schedule superseded this broadcast; make sure the current one is registered.
+                    reconcileTaskLocked(occ.taskId, emptyList(), c, null)
+                    AlarmOutcome.STALE
+                }
+                taskDao.get(occ.taskId) == null -> AlarmOutcome.NOT_FOUND
+                occ.plannedAt > c.now.plus(EARLY_TOLERANCE) -> {
+                    // Wall clock moved backwards after scheduling; re-derive instead of delivering early.
+                    reconcileTaskLocked(occ.taskId, emptyList(), c, null)
+                    AlarmOutcome.RESCHEDULED
+                }
+                else -> null
+            }
+            if (ignored != null) {
+                diagnostics.record(
+                    DiagnosticEntry(
+                        id = ids.newId(), at = c.now, type = DiagnosticType.ALARM_IGNORED, occurrenceId = occurrenceId,
+                        taskId = occ?.taskId, plannedAt = occ?.plannedAt, source = "alarm", outcome = ignored.name.lowercase(),
+                        detail = occ?.let { "status=${it.status.name.lowercase()} gen=${it.generation} broadcastGen=$generation" },
+                    ),
+                )
+                return@locked ignored
+            }
+            val task = taskDao.get(occ!!.taskId)!!
+            val outcome = deliverLocked(occ, task, c, late = Duration.between(occ.plannedAt, c.now) > LATE_LABEL)
             reconcileTaskLocked(task.id, emptyList(), c, null)
-            return@locked AlarmOutcome.RESCHEDULED
+            outcome
         }
-        val outcome = deliverLocked(occ, task, c, late = Duration.between(occ.plannedAt, c.now) > LATE_LABEL)
-        reconcileTaskLocked(task.id, emptyList(), c, null)
-        outcome
     }
 
     /** Next active occurrence across all tasks (for the health panel). */
@@ -196,7 +242,41 @@ class ReminderEngine(
 
     // ------------------------------------------------------------------ core
 
-    private suspend fun ctx() = Ctx(clock.now(), settings.current(), zoneProvider.current())
+    private suspend fun ctx(source: String) = Ctx(clock.now(), settings.current(), zoneProvider.current(), source)
+
+    private suspend fun diag(
+        type: DiagnosticType,
+        c: Ctx,
+        occ: ReminderOccurrenceEntity,
+        outcome: String? = null,
+        detail: String? = null,
+        withLateness: Boolean = false,
+        exact: Boolean? = occ.exact,
+        triggerAt: Instant? = null,
+    ) {
+        diagnostics.record(
+            DiagnosticEntry(
+                id = ids.newId(), at = c.now, type = type, occurrenceId = occ.id, taskId = occ.taskId,
+                plannedAt = occ.plannedAt, triggerAt = triggerAt, source = c.source, exact = exact,
+                lateness = if (withLateness) Duration.between(occ.plannedAt, c.now) else null,
+                outcome = outcome, detail = detail,
+            ),
+        )
+    }
+
+    /** Machine-readable reason an occurrence is no longer wanted (for the CANCELED ledger entry). */
+    private fun cancelReason(task: TaskEntity, policy: ReminderPolicy, occ: ReminderOccurrenceEntity): String = when {
+        task.status == TaskStatus.DONE -> "task_done"
+        task.status == TaskStatus.CANCELED -> "task_canceled"
+        task.archivedAt != null -> "task_archived"
+        task.status == TaskStatus.PAUSED -> "task_paused"
+        occ.kind == OccurrenceKind.POLICY && task.status == TaskStatus.WAITING -> "task_waiting"
+        occ.kind == OccurrenceKind.POLICY && !policy.enabled -> "reminders_off"
+        occ.kind == OccurrenceKind.POLICY && (task.snoozedUntil?.let { it > occ.slotAt } ?: false) -> "snoozed"
+        occ.kind == OccurrenceKind.SNOOZE_END && task.snoozedUntil != occ.slotAt -> "snooze_changed"
+        occ.kind == OccurrenceKind.CHECK_IN && task.waitingCheckInAt != occ.slotAt -> "check_in_changed"
+        else -> "schedule_changed"
+    }
 
     private suspend fun reconcileTaskLocked(taskId: String, before: List<ReminderOccurrenceEntity>, c: Ctx, catchUp: CatchUp?) {
         val taskEntity = taskDao.get(taskId)
@@ -222,16 +302,18 @@ class ReminderEngine(
             val eligible = isEligible(occ, taskEntity, policy, c)
             val overdueBy = Duration.between(occ.plannedAt, c.now)
             when {
-                !eligible -> cancel(occ)
+                !eligible -> cancel(occ, c, cancelReason(taskEntity, policy, occ))
                 overdueBy <= IN_FLIGHT_TOLERANCE -> {
                     // Presumably in flight; re-register anyway in case the OS dropped it (reboot,
                     // force-stop). A duplicate broadcast is ignored by the delivery claim.
-                    alarms.schedule(AlarmRequest(occ.id, taskId, occ.generation, occ.plannedAt, preferExact = c.settings.precisionMode))
+                    val r = alarms.schedule(AlarmRequest(occ.id, taskId, occ.generation, occ.plannedAt, preferExact = c.settings.precisionMode))
+                    diag(DiagnosticType.SCHEDULED, c, occ, outcome = "reregistered_due", exact = r.exact, triggerAt = occ.plannedAt)
                 }
                 overdueBy > Duration.ofMinutes(c.settings.graceWindowMinutes.toLong()) -> {
                     occurrenceDao.update(occ.copy(status = OccurrenceStatus.MISSED, note = "beyond_grace"))
                     alarms.cancel(occ.id)
-                    log(taskId, c.now, EventType.REMINDER_MISSED, "Reminder missed (device off or app stopped)", mapOf("plannedAt" to occ.plannedAt.toString()))
+                    diag(DiagnosticType.MISSED, c, occ, outcome = "beyond_grace", withLateness = true)
+                    log(taskId, c.now, EventType.REMINDER_MISSED, "Reminder missed — ${lateText(overdueBy)} overdue when the app could next run (phone off, app stopped or alarm not delivered)", mapOf("plannedAt" to occ.plannedAt.toString(), "via" to c.source))
                     catchUp?.let { it.missed++ }
                 }
                 catchUp != null -> catchUp.late += occ
@@ -245,7 +327,10 @@ class ReminderEngine(
         active = occurrenceDao.getForTaskWithStatus(taskId, ACTIVE)
         for (occ in active) {
             if (occ.plannedAt <= c.now) continue // handled above / in flight
-            if (plan == null || occ.plannedAt != plan.plannedAt) cancel(occ)
+            if (plan == null || occ.plannedAt != plan.plannedAt) {
+                val reason = if (plan == null || !isEligible(occ, taskEntity, policy, c)) cancelReason(taskEntity, policy, occ) else "superseded"
+                cancel(occ, c, reason)
+            }
         }
         if (plan == null) {
             // Closed or paused tasks must not keep a stale reminder on screen (e.g. after import).
@@ -264,6 +349,25 @@ class ReminderEngine(
             else -> existing.copy(kind = plan.kind, slotAt = plan.slotAt, generation = policy.generation, deliveredAt = null)
         }
         val result = alarms.schedule(AlarmRequest(occ.id, taskId, policy.generation, plan.plannedAt, preferExact = c.settings.precisionMode))
+        val wasScheduled = existing != null && existing.status == OccurrenceStatus.SCHEDULED
+        val change = when {
+            !result.scheduled -> null
+            existing == null || existing.status != OccurrenceStatus.SCHEDULED -> "new"
+            existing.exact != result.exact -> "mode_changed"
+            existing.generation != policy.generation -> "updated"
+            c.isRecovery -> "recovered"
+            else -> null // idempotent re-registration of an unchanged alarm: not worth a ledger row
+        }
+        if (!result.scheduled) {
+            diag(DiagnosticType.SCHEDULE_FAILED, c, occ, outcome = result.error ?: "refused", exact = false, triggerAt = plan.plannedAt)
+        } else if (change != null) {
+            val notes = listOfNotNull(
+                if (plan.deferred) "quiet_hours_deferred_from=${plan.slotAt}" else null,
+                result.error, // e.g. exact_unavailable when precise timing is on but not permitted
+                if (wasScheduled && change == "recovered") "re-registered after ${c.source}" else null,
+            ).joinToString(" ").ifEmpty { null }
+            diag(DiagnosticType.SCHEDULED, c, occ.copy(plannedAt = plan.plannedAt), outcome = change, detail = notes, exact = result.exact, triggerAt = plan.plannedAt)
+        }
         occurrenceDao.update(
             occ.copy(
                 status = if (result.scheduled) OccurrenceStatus.SCHEDULED else OccurrenceStatus.PLANNED,
@@ -274,9 +378,10 @@ class ReminderEngine(
         )
     }
 
-    private suspend fun cancel(occ: ReminderOccurrenceEntity) {
+    private suspend fun cancel(occ: ReminderOccurrenceEntity, c: Ctx, reason: String) {
         alarms.cancel(occ.id)
         occurrenceDao.update(occ.copy(status = OccurrenceStatus.CANCELED))
+        diag(DiagnosticType.CANCELED, c, occ, outcome = reason)
     }
 
     /** Re-validates an occurrence against current durable state; notification extras are never trusted. */
@@ -302,16 +407,19 @@ class ReminderEngine(
         // Whatever the outcome, this occurrence's OS alarm is spent; release its PendingIntent.
         alarms.cancel(occ.id)
         val policy = policyDao.get(occ.policyId)?.let { it.toDomain(policyDao.getSlots(it.id)) }
-            ?: return AlarmOutcome.NOT_FOUND.also { cancel(occ) }
+            ?: return AlarmOutcome.NOT_FOUND.also { cancel(occ, c, "policy_missing") }
         if (!isEligible(occ, task, policy, c)) {
-            cancel(occ)
+            cancel(occ, c, cancelReason(task, policy, occ))
             return AlarmOutcome.CANCELED
         }
-        if (Duration.between(occ.plannedAt, c.now) > Duration.ofMinutes(c.settings.graceWindowMinutes.toLong())) {
+        val lateness = Duration.between(occ.plannedAt, c.now)
+        if (lateness > Duration.ofMinutes(c.settings.graceWindowMinutes.toLong())) {
             occurrenceDao.update(occ.copy(status = OccurrenceStatus.MISSED, note = "beyond_grace"))
-            log(task.id, c.now, EventType.REMINDER_MISSED, "Reminder missed (delivered too late)", mapOf("plannedAt" to occ.plannedAt.toString()))
+            diag(DiagnosticType.MISSED, c, occ, outcome = "beyond_grace", withLateness = true)
+            log(task.id, c.now, EventType.REMINDER_MISSED, "Reminder missed — ${lateText(lateness)} late, beyond the grace window", mapOf("plannedAt" to occ.plannedAt.toString(), "via" to c.source))
             return AlarmOutcome.MISSED
         }
+        val env = runCatching { environment.snapshot() }.getOrNull()
         val health = notifications.health()
         val blockReason = when {
             !c.settings.allowReminderNotifications -> "turned_off_in_app"
@@ -323,6 +431,7 @@ class ReminderEngine(
         }
         if (blockReason != null) {
             occurrenceDao.update(occ.copy(status = OccurrenceStatus.SUPPRESSED, note = blockReason))
+            diag(DiagnosticType.SUPPRESSED, c, occ, outcome = blockReason, detail = env?.compact(), withLateness = true)
             log(task.id, c.now, EventType.REMINDER_SUPPRESSED, "Reminder not shown: ${blockReason.replace('_', ' ')}", mapOf("reason" to blockReason))
             return AlarmOutcome.SUPPRESSED
         }
@@ -331,20 +440,63 @@ class ReminderEngine(
         }
         if (claimed != 1) return AlarmOutcome.DUPLICATE
 
+        diag(DiagnosticType.POST_REQUESTED, c, occ, detail = env?.compact(), withLateness = true)
         val result = notifications.postReminder(
             ReminderNotification(
                 taskId = task.id, occurrenceId = occ.id, title = task.title,
                 body = notificationBody(task, occ),
                 plannedAt = occ.plannedAt, late = late, redactOnLockScreen = c.settings.lockScreenPrivacy,
+                postedAt = c.now, dueLabel = dueLabel(occ.plannedAt, c),
             ),
         )
+        val meta = mapOf(
+            "kind" to occ.kind.name, "plannedAt" to occ.plannedAt.toString(), "postedAt" to c.now.toString(),
+            "latenessSec" to lateness.seconds.toString(), "via" to c.source, "mode" to if (occ.exact) "exact" else "approximate",
+        )
         return if (result == PostResult.POSTED) {
-            log(task.id, c.now, EventType.REMINDER_DELIVERED, if (late) "Reminder delivered (late)" else "Reminder delivered", mapOf("kind" to occ.kind.name))
+            val active = runCatching { notifications.isShowing(task.id) }.getOrNull()
+            diag(
+                DiagnosticType.POSTED, c, occ, withLateness = true,
+                outcome = when (active) { true -> "listed_active"; false -> "not_listed_active"; null -> "notify_returned" },
+            )
+            log(task.id, c.now, EventType.REMINDER_DELIVERED, deliverySummary(lateness, c.source, occ.exact), meta)
             AlarmOutcome.DELIVERED
         } else {
             occurrenceDao.get(occ.id)?.let { occurrenceDao.update(it.copy(status = OccurrenceStatus.SUPPRESSED, deliveredAt = null, note = result.name.lowercase())) }
-            log(task.id, c.now, EventType.REMINDER_SUPPRESSED, "Reminder not shown: ${result.name.lowercase().replace('_', ' ')}", mapOf("reason" to result.name))
+            diag(DiagnosticType.POST_FAILED, c, occ, outcome = result.name.lowercase(), detail = env?.compact(), withLateness = true)
+            log(task.id, c.now, EventType.REMINDER_SUPPRESSED, "Reminder not shown: ${result.name.lowercase().replace('_', ' ')}", meta + ("reason" to result.name))
             AlarmOutcome.SUPPRESSED
+        }
+    }
+
+    private fun dueLabel(plannedAt: Instant, c: Ctx): String {
+        val local = plannedAt.atZone(c.zone)
+        val today = c.now.atZone(c.zone).toLocalDate()
+        val time = local.toLocalTime().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+        return if (local.toLocalDate() == today) time else "${local.toLocalDate().format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM"))} $time"
+    }
+
+    /** Human-readable, task-content-free account of how this delivery happened. */
+    private fun deliverySummary(lateness: Duration, source: String, exact: Boolean): String {
+        val mode = if (exact) "precise timing" else "approximate timing"
+        if (lateness <= ON_TIME) return "Reminder delivered on time ($mode)"
+        val how = when {
+            source == "alarm" -> "alarm arrived late"
+            source == "mutation" -> "caught up after an edit"
+            source.startsWith("reconcile:app_") -> "caught up when the app was opened or started"
+            source.startsWith("reconcile:boot") -> "caught up after restart"
+            source.startsWith("reconcile:") -> "caught up by ${source.removePrefix("reconcile:").replace('_', ' ')} check"
+            else -> source
+        }
+        return "Reminder delivered ${lateText(lateness)} late · $how ($mode)"
+    }
+
+    private fun lateText(d: Duration): String {
+        val m = d.toMinutes()
+        return when {
+            m < 1 -> "${d.seconds} s"
+            m < 120 -> "$m min"
+            else -> "${m / 60} h ${m % 60} min"
         }
     }
 
@@ -367,5 +519,9 @@ class ReminderEngine(
         val LATE_LABEL: Duration = Duration.ofMinutes(15)
         /** More late reminders than this after downtime are coalesced into one summary. */
         const val MAX_INDIVIDUAL_LATE = 3
+        /** Deliveries within this of the planned time are reported as on time. */
+        val ON_TIME: Duration = Duration.ofSeconds(90)
+        /** Full reconciles that follow events which clear or invalidate OS alarms. */
+        val RECOVERY_REASONS = setOf("boot", "app_updated", "time_changed", "timezone_changed", "exact_alarm_permission", "precision_mode")
     }
 }

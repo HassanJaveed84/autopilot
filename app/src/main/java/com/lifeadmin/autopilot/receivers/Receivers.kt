@@ -34,11 +34,20 @@ internal fun BroadcastReceiver.runAsync(block: suspend () -> Unit) {
 /** Fired by AlarmManager for one occurrence. Not exported; ids are validated and re-read from Room. */
 class ReminderAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != IntentContract.ACTION_FIRE) return
-        val occurrenceId = IntentContract.occurrenceIdFrom(intent.data) ?: return
-        val generation = intent.getIntExtra(IntentContract.EXTRA_GENERATION, -1)
-        val engine = context.appContainer.reminderEngine
-        runAsync { engine.onAlarm(occurrenceId, generation) }
+        val container = context.appContainer
+        // Capture the real receipt time first: engine work may queue behind other operations.
+        val receivedAt = container.clock.now()
+        when (intent.action) {
+            IntentContract.ACTION_FIRE -> {
+                val occurrenceId = IntentContract.occurrenceIdFrom(intent.data) ?: return
+                val generation = intent.getIntExtra(IntentContract.EXTRA_GENERATION, -1)
+                runAsync { container.reminderEngine.onAlarm(occurrenceId, generation, receivedAt) }
+            }
+            IntentContract.ACTION_TEST_FIRE -> {
+                val testId = IntentContract.testIdFrom(intent.data) ?: return
+                runAsync { container.selfTest.onTestAlarm(testId, receivedAt) }
+            }
+        }
     }
 }
 

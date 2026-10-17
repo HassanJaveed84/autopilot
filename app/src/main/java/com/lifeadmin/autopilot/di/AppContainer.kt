@@ -17,7 +17,11 @@ import com.lifeadmin.autopilot.notifications.AndroidNotificationPublisher
 import com.lifeadmin.autopilot.notifications.NotificationPublisher
 import com.lifeadmin.autopilot.reminders.AlarmDriver
 import com.lifeadmin.autopilot.reminders.AndroidAlarmDriver
+import com.lifeadmin.autopilot.reminders.AndroidEnvironmentProbe
 import com.lifeadmin.autopilot.reminders.Diagnostics
+import com.lifeadmin.autopilot.reminders.EnvironmentProbe
+import com.lifeadmin.autopilot.reminders.ReminderSelfTest
+import com.lifeadmin.autopilot.reminders.RoomDiagnosticsLog
 import com.lifeadmin.autopilot.reminders.ReconcileWorker
 import com.lifeadmin.autopilot.reminders.ReminderEngine
 import kotlinx.coroutines.CoroutineScope
@@ -38,13 +42,21 @@ class AppContainer(
     val settingsRepository: SettingsRepository = DataStoreSettingsRepository(context.settingsDataStore),
     val alarmDriver: AlarmDriver = AndroidAlarmDriver(context),
     val notificationPublisher: NotificationPublisher = AndroidNotificationPublisher(context),
+    val environmentProbe: EnvironmentProbe = AndroidEnvironmentProbe(context, alarmDriver),
 ) {
     val appScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    val reminderEngine: ReminderEngine =
-        ReminderEngine(database, settingsRepository, alarmDriver, notificationPublisher, clock, zoneProvider, ids)
+    val diagnosticsLog: RoomDiagnosticsLog = RoomDiagnosticsLog(database, clock, ids)
 
-    val taskRepository: TaskRepository = TaskRepository(database, clock, ids, zoneProvider::current, reminderEngine)
+    val reminderEngine: ReminderEngine =
+        ReminderEngine(database, settingsRepository, alarmDriver, notificationPublisher, clock, zoneProvider, ids, diagnosticsLog, environmentProbe)
+
+    val selfTest: ReminderSelfTest = ReminderSelfTest(
+        diagnosticsLog, alarmDriver, notificationPublisher, environmentProbe, settingsRepository, clock, zoneProvider, ids,
+        history = { diagnosticsLog.forOccurrence(it) },
+    )
+
+    val taskRepository: TaskRepository = TaskRepository(database, clock, ids, zoneProvider::current, reminderEngine, diagnosticsLog)
 
     val taskActions: TaskActions = TaskActions(database, taskRepository, settingsRepository, clock, zoneProvider)
 

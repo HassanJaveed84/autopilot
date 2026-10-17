@@ -135,3 +135,27 @@ data class TaskEventEntity(
     /** Small allowlisted JSON object (string → string). Never task notes, secrets or prompts. */
     val structuredMetadata: String?,
 )
+
+/**
+ * Delivery-lifecycle diagnostics (schema v3). Intentionally no foreign keys: entries must
+ * survive task deletion and ledger pruning so past incidents stay explainable. Holds ids and
+ * timestamps only — never titles, notes or steps.
+ */
+@Entity(
+    tableName = "reminder_diagnostics",
+    indices = [Index("at"), Index("occurrenceId")],
+)
+data class ReminderDiagnosticEntity(
+    @PrimaryKey val id: String,
+    val at: Instant,
+    val type: String,
+    val occurrenceId: String?,
+    val taskId: String?,
+    val plannedAt: Instant?,
+    val triggerAt: Instant?,
+    val source: String?,
+    val exact: Boolean?,
+    val latenessMs: Long?,
+    val outcome: String?,
+    val detail: String?,
+)

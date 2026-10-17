@@ -15,9 +15,10 @@ import java.util.concurrent.TimeUnit
  */
 class ReconcileWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
-        val engine = applicationContext.appContainer.reminderEngine
-        engine.reconcileAll("periodic")
-        engine.pruneLedger()
+        val container = applicationContext.appContainer
+        container.reminderEngine.reconcileAll("periodic")
+        container.reminderEngine.pruneLedger()
+        container.diagnosticsLog.prune()
         return Result.success()
     }
 
@@ -25,8 +26,11 @@ class ReconcileWorker(context: Context, params: WorkerParameters) : CoroutineWor
         private const val NAME = "reconcile-maintenance"
 
         fun schedule(context: Context) {
-            val request = PeriodicWorkRequestBuilder<ReconcileWorker>(6, TimeUnit.HOURS).build()
-            WorkManager.getInstance(context).enqueueUniquePeriodicWork(NAME, ExistingPeriodicWorkPolicy.KEEP, request)
+            // Hourly (deferrable) catch-up keeps a dropped/long-deferred inexact alarm well inside the
+            // 4 h grace window even if the app is never opened. It is a cheap DB read; Android still
+            // batches it with other work. UPDATE replaces the older 6 h schedule on existing installs.
+            val request = PeriodicWorkRequestBuilder<ReconcileWorker>(1, TimeUnit.HOURS).build()
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(NAME, ExistingPeriodicWorkPolicy.UPDATE, request)
         }
     }
 }

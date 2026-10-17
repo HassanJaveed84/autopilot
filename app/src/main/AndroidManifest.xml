@@ -47,7 +47,8 @@
             <!-- Filter documents the contract; exported=false keeps it unreachable from other apps. -->
             <intent-filter>
                 <action android:name="com.lifeadmin.autopilot.action.REMINDER_FIRE" />
-                <data android:scheme="lifeadmin" android:host="occurrence" />
+                <action android:name="com.lifeadmin.autopilot.action.TEST_REMINDER_FIRE" />
+                <data android:scheme="lifeadmin" />
             </intent-filter>
         </receiver>
 
