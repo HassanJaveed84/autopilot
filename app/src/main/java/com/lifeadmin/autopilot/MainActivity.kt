@@ -13,14 +13,14 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.lifeadmin.autopilot.reminders.IntentContract
 import com.lifeadmin.autopilot.ui.LifeAdminRoot
-import com.lifeadmin.autopilot.ui.health.HealthBanner
-import com.lifeadmin.autopilot.ui.health.HealthSection
+import com.lifeadmin.autopilot.notifications.AndroidNotificationPublisher
 import com.lifeadmin.autopilot.ui.theme.LifeAdminTheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val openTaskRequests = MutableStateFlow<String?>(null)
+    private val openHealthRequests = MutableStateFlow(false)
 
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         // Result is reflected by the health panel; no repeated prompting.
@@ -42,8 +42,10 @@ class MainActivity : ComponentActivity() {
                     openTaskRequests = openTaskRequests,
                     onOpenTaskHandled = { openTaskRequests.value = null },
                     onReminderEnabled = ::maybeRequestNotificationPermission,
-                    healthBanner = { openSettings -> HealthBanner(container, onFix = openSettings) },
-                    healthSection = { HealthSection(container, requestPermission = ::requestNotificationPermission) },
+                    showHealth = true,
+                    openHealthRequests = openHealthRequests,
+                    onOpenHealthHandled = { openHealthRequests.value = false },
+                    requestNotificationPermission = ::requestNotificationPermission,
                 )
             }
         }
@@ -61,6 +63,10 @@ class MainActivity : ComponentActivity() {
 
     /** Only a syntactically valid id is forwarded; the screen then loads it from Room. */
     private fun handleIntent(intent: Intent?) {
+        if (intent?.action == AndroidNotificationPublisher.ACTION_OPEN_HEALTH) {
+            openHealthRequests.value = true
+            return
+        }
         val id = intent?.getStringExtra(IntentContract.EXTRA_TASK_ID) ?: IntentContract.taskIdFrom(intent?.data)
         if (IntentContract.isValidId(id)) openTaskRequests.value = id
     }

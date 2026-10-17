@@ -38,6 +38,10 @@ import com.lifeadmin.autopilot.ui.capture.CaptureSheet
 import com.lifeadmin.autopilot.ui.capture.CaptureViewModel
 import com.lifeadmin.autopilot.ui.detail.TaskDetailScreen
 import com.lifeadmin.autopilot.ui.detail.TaskDetailViewModel
+import com.lifeadmin.autopilot.ui.health.HealthBanner
+import com.lifeadmin.autopilot.ui.health.HealthSummaryCard
+import com.lifeadmin.autopilot.ui.health.ReminderHealthScreen
+import com.lifeadmin.autopilot.ui.health.ReminderHealthViewModel
 import com.lifeadmin.autopilot.ui.navigation.Routes
 import com.lifeadmin.autopilot.ui.navigation.TopLevelDestination
 import com.lifeadmin.autopilot.ui.settings.SettingsScreen
@@ -61,8 +65,11 @@ fun LifeAdminRoot(
     openTaskRequests: StateFlow<String?> = MutableStateFlow(null),
     onOpenTaskHandled: () -> Unit = {},
     onReminderEnabled: () -> Unit = {},
-    healthBanner: @Composable (onOpenSettings: () -> Unit) -> Unit = {},
-    healthSection: @Composable () -> Unit = {},
+    /** Health UI is opt-in so UI tests can render the shell without reading device state. */
+    showHealth: Boolean = false,
+    openHealthRequests: StateFlow<Boolean> = MutableStateFlow(false),
+    onOpenHealthHandled: () -> Unit = {},
+    requestNotificationPermission: () -> Unit = {},
 ) {
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
@@ -80,6 +87,13 @@ fun LifeAdminRoot(
         if (!graphReady) return@LaunchedEffect
         navController.navigate(Routes.taskDetail(id)) { launchSingleTop = true }
         onOpenTaskHandled()
+    }
+
+    val pendingHealth by openHealthRequests.collectAsStateWithLifecycle()
+    LaunchedEffect(pendingHealth, graphReady) {
+        if (!pendingHealth || !graphReady) return@LaunchedEffect
+        navController.navigate(Routes.HEALTH) { launchSingleTop = true }
+        onOpenHealthHandled()
     }
 
     fun openTask(id: String) = navController.navigate(Routes.taskDetail(id)) { launchSingleTop = true }
@@ -122,7 +136,9 @@ fun LifeAdminRoot(
                 val vm: TodayViewModel = viewModel(factory = factoryOf {
                     TodayViewModel(container.taskRepository, container.settingsRepository, container.taskActions, container.clock, container.zoneProvider)
                 })
-                TodayScreen(vm, snackbar, onOpenTask = ::openTask, onOpenInbox = { goTo(Routes.INBOX) }, healthBanner = { healthBanner { goTo(Routes.SETTINGS) } })
+                TodayScreen(vm, snackbar, onOpenTask = ::openTask, onOpenInbox = { goTo(Routes.INBOX) }, healthBanner = {
+                    if (showHealth) HealthBanner(container) { navController.navigate(Routes.HEALTH) { launchSingleTop = true } }
+                })
             }
             composable(Routes.INBOX) {
                 val vm: TaskListViewModel = viewModel(key = "inbox", factory = factoryOf {
@@ -140,7 +156,16 @@ fun LifeAdminRoot(
                 val vm: SettingsViewModel = viewModel(factory = factoryOf {
                     SettingsViewModel(container.settingsRepository, container.backupRepository) { container.reconcileAll("settings") }
                 })
-                SettingsScreen(vm, snackbar, healthSection = healthSection)
+                SettingsScreen(vm, snackbar, healthSection = {
+                    if (showHealth) HealthSummaryCard(container) { navController.navigate(Routes.HEALTH) { launchSingleTop = true } }
+                })
+            }
+            composable(Routes.HEALTH) {
+                val vm: ReminderHealthViewModel = viewModel(factory = factoryOf { ReminderHealthViewModel(container) })
+                ReminderHealthScreen(
+                    vm, zone = container.zoneProvider.current(), now = container.clock::now,
+                    onBack = { navController.popBackStack() }, requestPermission = requestNotificationPermission,
+                )
             }
             composable(Routes.TASK_DETAIL, arguments = listOf(navArgument("taskId") { type = NavType.StringType })) { entry ->
                 val taskId = entry.arguments?.getString("taskId").orEmpty()

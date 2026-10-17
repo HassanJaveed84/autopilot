@@ -29,8 +29,10 @@ class MigrationTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val name = "migration-test.db"
 
-    private fun schemaV1Statements(): List<String> {
-        val raw = javaClass.classLoader!!.getResource("com.lifeadmin.autopilot.data.local.AppDatabase/1.json")!!.readText()
+    private fun schemaV1Statements(): List<String> = schemaStatements(1)
+
+    private fun schemaStatements(version: Int): List<String> {
+        val raw = javaClass.classLoader!!.getResource("com.lifeadmin.autopilot.data.local.AppDatabase/$version.json")!!.readText()
         val db = Json.parseToJsonElement(raw).jsonObject["database"]!!.jsonObject
         val hash = db["identityHash"]!!.jsonPrimitive.content
         val statements = mutableListOf<String>()
@@ -82,6 +84,38 @@ class MigrationTest {
         val occ = room.occurrenceDao().get("o1")!!
         assertEquals(false, occ.exact)
         assertEquals(null, occ.note)
+        room.close()
+        context.deleteDatabase(name)
+    }
+
+    @Test fun migrateV2ToV3AddsDiagnosticsAndKeepsData() = runTest {
+        context.deleteDatabase(name)
+        val file = context.getDatabasePath(name).also { it.parentFile?.mkdirs() }
+        SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+            schemaStatements(2).forEach(db::execSQL)
+            db.execSQL(
+                "INSERT INTO tasks (id,title,notes,status,priority,createdAt,updatedAt,completedAt,archivedAt,deadlineType,deadlineLocalDate,deadlineInstant,deadlineZoneId,snoozedUntil,snoozeRemindAtEnd,waitingReason,waitingCheckInAt) " +
+                    "VALUES ('t1','Test',NULL,'ACTIONABLE','NORMAL',1,1,NULL,NULL,'NONE',NULL,NULL,NULL,NULL,1,NULL,NULL)",
+            )
+            db.execSQL(
+                "INSERT INTO reminder_policies (id,taskId,enabled,kind,startLocalDate,zoneMode,zoneId,dayInterval,quietHoursBehavior,snoozeDefaultMinutes,atInstant,lastEditedAt,generation) " +
+                    "VALUES ('p1','t1',1,'ONCE',NULL,'FOLLOW_DEVICE',NULL,1,NULL,NULL,1760653500000,1,2)",
+            )
+            db.execSQL(
+                "INSERT INTO reminder_occurrences (id,policyId,taskId,kind,plannedAt,slotAt,scheduledAt,deliveredAt,status,generation,exact,note) " +
+                    "VALUES ('o1','p1','t1','POLICY',1760653500000,1760653500000,1,NULL,'SCHEDULED',2,0,NULL)",
+            )
+            db.version = 2
+        }
+        val room = Room.databaseBuilder(context, AppDatabase::class.java, name)
+            .addMigrations(*Migrations.ALL)
+            .setQueryCoroutineContext(Dispatchers.IO)
+            .build()
+        assertEquals("Test", room.taskDao().get("t1")!!.title)
+        assertEquals(com.lifeadmin.autopilot.domain.model.OccurrenceStatus.SCHEDULED, room.occurrenceDao().get("o1")!!.status)
+        assertEquals(0, room.diagnosticDao().count())
+        room.diagnosticDao().insert(com.lifeadmin.autopilot.data.local.ReminderDiagnosticEntity("d1", java.time.Instant.EPOCH, "SCHEDULED", "o1", "t1", null, null, "test", false, null, null, null))
+        assertEquals(1, room.diagnosticDao().count())
         room.close()
         context.deleteDatabase(name)
     }

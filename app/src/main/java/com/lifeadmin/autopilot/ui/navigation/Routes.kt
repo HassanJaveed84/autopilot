@@ -13,6 +13,7 @@ object Routes {
     const val TASKS = "tasks"
     const val SETTINGS = "settings"
     const val TASK_DETAIL = "task/{taskId}"
+    const val HEALTH = "health"
     fun taskDetail(taskId: String) = "task/$taskId"
 }
 

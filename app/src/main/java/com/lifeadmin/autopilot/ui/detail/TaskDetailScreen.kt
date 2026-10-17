@@ -274,7 +274,11 @@ private fun RemindersCard(d: TaskDetails, now: Instant, zone: ZoneId, onEdit: ()
                     OccurrenceKind.CHECK_IN -> "Check-in"
                     OccurrenceKind.SNOOZE_END -> "Snooze ends"
                 }
-                val mode = if (next.status == OccurrenceStatus.PLANNED) " · not yet handed to Android (will retry)" else ""
+                val mode = when {
+                    next.status == OccurrenceStatus.PLANNED -> " · not yet handed to Android (will retry)"
+                    next.exact -> " · precise timing"
+                    else -> " · approximate timing (may arrive late)"
+                }
                 "$kind: ${Format.full(next.plannedAt, zone)}$mode"
             }
             d.task.status.isTerminal -> "No reminders — task is ${d.task.status.label().lowercase()}"
