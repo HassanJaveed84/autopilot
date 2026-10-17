@@ -39,6 +39,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -80,18 +81,36 @@ import java.time.format.DateTimeFormatter
 
 // ---------------------------------------------------------------- shared helpers
 
-private suspend fun quickAssessment(container: AppContainer, settings: AppSettings): Pair<AlertAssessment, Int> = withContext(Dispatchers.IO) {
+data class QuickHealth(val assessment: AlertAssessment, val activeReminders: Int, val recentLateApproximate: java.time.Duration?)
+
+private suspend fun quickAssessment(container: AppContainer, settings: AppSettings): QuickHealth = withContext(Dispatchers.IO) {
     val health = container.notificationPublisher.health()
     val env = container.environmentProbe.snapshot()
     val active = container.database.occurrenceDao().getWithStatus(listOf(OccurrenceStatus.SCHEDULED, OccurrenceStatus.PLANNED)).size
-    AlertAssessor.assess(AlertInputs(health.permissionGranted, health.appNotificationsEnabled, settings.allowReminderNotifications, env)) to active
+    QuickHealth(
+        AlertAssessor.assess(AlertInputs(health.permissionGranted, health.appNotificationsEnabled, settings.allowReminderNotifications, env)),
+        active,
+        recentLateApproximateDelivery(container, settings, env.canScheduleExact),
+    )
+}
+
+/**
+ * Lateness of the most recent reminder post if it was > 10 min late on approximate timing within
+ * the last 48 h and precise timing isn't active now — the evidence-based case for Precise timing.
+ */
+suspend fun recentLateApproximateDelivery(container: AppContainer, settings: AppSettings, canExact: Boolean): java.time.Duration? {
+    if (settings.precisionMode && canExact) return null
+    val last = container.diagnosticsLog.recentOfTypes(setOf(DiagnosticType.POST_REQUESTED), 1).firstOrNull() ?: return null
+    val recent = java.time.Duration.between(last.at, container.clock.now()) <= java.time.Duration.ofHours(48)
+    val late = last.lateness ?: return null
+    return if (recent && last.exact == false && late > java.time.Duration.ofMinutes(10)) late else null
 }
 
 @Composable
-private fun rememberQuickAssessment(container: AppContainer): Pair<AlertAssessment, Int>? {
+private fun rememberQuickAssessment(container: AppContainer): QuickHealth? {
     val settings by container.settingsRepository.settings.collectAsStateWithLifecycle(AppSettings())
-    var refresh by remember { mutableStateOf(0) }
-    var result by remember { mutableStateOf<Pair<AlertAssessment, Int>?>(null) }
+    var refresh by remember { mutableIntStateOf(0) }
+    var result by remember { mutableStateOf<QuickHealth?>(null) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { refresh++ }
     LaunchedEffect(refresh, settings) {
         val r = runCatching { quickAssessment(container, settings) }.getOrNull()
@@ -115,11 +134,33 @@ private fun levelColors(level: AlertLevel): Pair<Color, Color> = when (level) {
     AlertLevel.AUDIBLE -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
 }
 
-/** Today-screen warning: only when reminders exist and would be blocked or (probably) silent. */
+/**
+ * Today-screen warning: when reminders exist and would be blocked or (probably) silent, or when
+ * the latest reminder measurably arrived late on approximate timing.
+ */
 @Composable
 fun HealthBanner(container: AppContainer, onFix: () -> Unit) {
-    val (a, active) = rememberQuickAssessment(container) ?: return
-    if (active == 0 || (a.level != AlertLevel.BLOCKED && a.level != AlertLevel.SILENT)) return
+    val q = rememberQuickAssessment(container) ?: return
+    val a = q.assessment
+    val active = q.activeReminders
+    if (active == 0) return
+    if (a.level != AlertLevel.BLOCKED && a.level != AlertLevel.SILENT) {
+        val late = q.recentLateApproximate ?: return
+        Card(
+            Modifier.fillMaxWidth().padding(12.dp).testTag("late_banner"),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                Text("Your last reminder arrived ${late.toMinutes()} min late", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                Text(
+                    "Reminders use approximate timing, so Android may delay them to save battery. Precise timing (with “Alarms & reminders” access) makes them arrive on time.",
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+                TextButton(onClick = onFix) { Text("Review timing") }
+            }
+        }
+        return
+    }
     val (bg, fg) = levelColors(a.level)
     Card(Modifier.fillMaxWidth().padding(12.dp).testTag("health_banner"), colors = CardDefaults.cardColors(containerColor = bg)) {
         Column(Modifier.padding(16.dp)) {
@@ -134,7 +175,7 @@ fun HealthBanner(container: AppContainer, onFix: () -> Unit) {
 @Composable
 fun HealthSummaryCard(container: AppContainer, onOpen: () -> Unit) {
     val q = rememberQuickAssessment(container)
-    val level = q?.first?.level ?: AlertLevel.UNCERTAIN
+    val level = q?.assessment?.level ?: AlertLevel.UNCERTAIN
     val (bg, fg) = levelColors(level)
     Card(
         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).testTag("health_summary"),
@@ -142,7 +183,7 @@ fun HealthSummaryCard(container: AppContainer, onOpen: () -> Unit) {
     ) {
         Column(Modifier.padding(16.dp)) {
             Text("Reminder health", style = MaterialTheme.typography.titleMedium, color = fg, modifier = Modifier.semantics { heading() })
-            Text(if (q == null) "Checking…" else "${levelHeadline(level)}. ${q.first.summary}", style = MaterialTheme.typography.bodyMedium, color = fg)
+            Text(if (q == null) "Checking…" else "${levelHeadline(level)}. ${q.assessment.summary}", style = MaterialTheme.typography.bodyMedium, color = fg)
             Button(onClick = onOpen, modifier = Modifier.padding(top = 8.dp).testTag("open_health")) { Text("Open reminder health & tests") }
         }
     }
