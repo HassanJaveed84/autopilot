@@ -218,8 +218,9 @@ Hardening). Areas the reviewer checked and found clean:
 - the test notification is listed active;
 - the 2-minute test alarm arrives through the real AlarmManager.
 
-They compile here (`assembleDebugAndroidTest` OK) but **were not run here**, because no emulator
-can run in this container. They run in GitHub Actions; see section 4 for the CI result.
+They compile here (`assembleDebugAndroidTest` OK) but could not run here, because no emulator
+can run in this container. They **passed in GitHub Actions run #15** on an API 34 emulator; see
+section 4.
 
 ### Not performed
 **No physical-device test was performed.** Nothing in this report claims Samsung behaviour was
@@ -241,7 +242,18 @@ observed. See section 6.
     emulator booted and ran no tests.
   - Runs #10–#13 were cancelled by newer pushes (`cancel-in-progress`).
   - Documentation-only pushes no longer trigger CI.
-  - The result for the final code commit is recorded below.
+  - **Run #15 (`0137ab6`, all of tonight's code) — both jobs green:**
+    - build job: lint, unit tests and APKs passed (08:30–08:38 UTC);
+    - emulator job: **6/6 instrumented tests passed, 0 failed, 0 skipped**, on an API 34
+      (Android 14) emulator (08:41–08:49 UTC). The emulator booted from the newly cached snapshot.
+    - The 6 tests are the 3 earlier ones (real alarm → notification → Done, Room migration,
+      Waiting dialog) plus the 3 new `InstrumentedReliabilityTest` cases:
+      - fresh-install channel vibrates;
+      - the test notification is listed active;
+      - the 2-minute test alarm arrives through the real AlarmManager.
+    - Link: https://github.com/HassanJaveed84/autopilot/actions/runs/39017536077
+    - An emulator is not a Samsung phone: these results say nothing about One UI battery
+      management or Vibrate-mode handling.
 - **Draft PR: not created.** The repository has no `main` (or other default) branch, only this
   feature branch, so a PR has no base. Creating `main` was outside what I was authorized to do.
   To open one, create `main` from the commit you consider the baseline, then open a PR from

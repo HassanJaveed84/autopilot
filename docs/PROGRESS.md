@@ -210,7 +210,8 @@ Completed:
 Validation (this container, no device):
 - Command: `ANDROID_HOME=/opt/android-sdk ./gradlew lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest`
 - Result: BUILD SUCCESSFUL; lint **No issues found**; **185 tests, 0 failures**.
-- `InstrumentedReliabilityTest` (3 tests) compiles; it runs only in CI on an emulator.
+- GitHub Actions run #15 (`0137ab6`): build job ✅; emulator job ✅ with **6/6 instrumented tests**
+  passed on API 34, including the 3 new `InstrumentedReliabilityTest` cases.
 
 Not done / blockers:
 - Physical-device verification: needs your phone. See section 6 of the reliability report.
