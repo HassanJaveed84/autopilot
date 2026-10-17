@@ -52,6 +52,10 @@ class AndroidAlarmDriver(private val context: Context) : AlarmDriver {
             if (wantExact) alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt.toEpochMilli(), pi)
             else alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt.toEpochMilli(), pi)
             AlarmScheduleResult(true, wantExact, if (preferExact && !wantExact) "exact_unavailable" else null)
+        } catch (e: SecurityException) {
+            // Same fallback as real reminders: exact access revoked between check and call.
+            runCatching { alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt.toEpochMilli(), pi) }
+                .fold({ AlarmScheduleResult(true, false, "exact_denied") }, { AlarmScheduleResult(false, false, "security_exception") })
         } catch (e: RuntimeException) {
             AlarmScheduleResult(false, false, e.javaClass.simpleName)
         }

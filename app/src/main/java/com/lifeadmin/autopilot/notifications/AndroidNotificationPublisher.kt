@@ -127,8 +127,6 @@ class AndroidNotificationPublisher(private val context: Context) : NotificationP
 
     override fun cancelForTask(taskId: String) = manager.cancel(taskId, NOTIFICATION_ID)
 
-    override fun isShowing(taskId: String): Boolean? = activeTags()?.contains(taskId)
-
     override fun isTestShowing(testId: String): Boolean? = activeTags()?.contains(TEST_TAG_PREFIX + testId)
 
     private fun activeTags(): Set<String>? = runCatching {

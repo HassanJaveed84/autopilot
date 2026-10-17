@@ -72,6 +72,14 @@ class AlertAssessorTest {
         assertEquals(AlertLevel.AUDIBLE, assess(env(dnd = InterruptionFilter.PRIORITY, bypass = true)).level)
     }
 
+    @Test fun alarmsOnlyAndTotalSilenceDndAreSilentEvenWithChannelBypass() {
+        for (filter in listOf(InterruptionFilter.ALARMS, InterruptionFilter.NONE)) {
+            val a = assess(env(dnd = filter, bypass = true))
+            assertEquals(AlertLevel.SILENT, a.level)
+            assertTrue(AlertIssue.DND_ON in a.issues)
+        }
+    }
+
     @Test fun blockedStatesWin() {
         assertEquals(AlertLevel.BLOCKED, assess(env(), permission = false).level)
         assertEquals(AlertLevel.BLOCKED, assess(env(), app = false).level)

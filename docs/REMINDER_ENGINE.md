@@ -78,7 +78,7 @@ Re-reads Room (intent extras are never trusted):
 ### Full reconcile (`reconcileAll(reason)`)
 Triggered by: app start, app foreground (debounced 60 s), `BOOT_COMPLETED`, `MY_PACKAGE_REPLACED`,
 `TIME_SET`, `TIMEZONE_CHANGED`, `SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED`, settings changes,
-import, the 6-hourly WorkManager safety net, and the "Re-check schedule" button.
+import, the hourly WorkManager safety net, and the "Re-check schedule" button.
 Late-but-within-grace reminders after downtime: ≤ 3 are delivered individually (labelled late);
 more are **coalesced into one summary notification** (no storm). Missed ones are counted in the
 summary. Because only one occurrence per task is ever materialised, a multi-day outage produces at
@@ -125,12 +125,12 @@ titles, notes or steps, and keeps at most 3,000 rows / 45 days.
 | Type | Written when | Key fields |
 |---|---|---|
 | `SCHEDULED` | alarm handed to AlarmManager: `new`, `updated`, `mode_changed` (approximate↔precise), `recovered` (after boot/time change), `reregistered_due` | `plannedAt`, `triggerAt`, `exact`, notes such as `quiet_hours_deferred_from=…`, `exact_unavailable` |
-| `SCHEDULE_FAILED` | AlarmManager refused | error class |
+| `SCHEDULE_FAILED` | AlarmManager refused (including re-registering a due alarm) | error class |
 | `ALARM_RECEIVED` | the alarm broadcast reached the receiver; the time is captured **before** any locking | `at` = real receipt time, `lateness` = receipt − planned |
 | `ALARM_IGNORED` | duplicate / stale generation / early / not found | outcome |
 | `RECONCILE` | each full reconcile | `source=reconcile:<reason>`, counts, environment |
 | `POST_REQUESTED` | about to call `notify()` | `source` (`alarm` / `reconcile:app_resume` / `mutation` …), lateness, mode, **environment snapshot** |
-| `POSTED` | `notify()` returned | `listed_active` / `not_listed_active` (checked via `getActiveNotifications`) |
+| `POSTED` | `notify()` returned | `notify_returned` (reminders); `in_summary` (coalesced, written only after the summary was posted). The self-tests also check `getActiveNotifications()` for up to 2 s, because `notify()` only enqueues, and record `listed_active` / `not_listed_active` |
 | `POST_FAILED`, `SUPPRESSED`, `MISSED` | not shown, with the reason | reason code, environment |
 | `SNOOZED`, `UNSNOOZED`, `CANCELED` | user actions / cancellations | reason (`task_done`, `task_paused`, `snoozed`, `superseded`, …) |
 | `TEST_*` | self-tests from the Reminder health screen | lateness of the test alarm |

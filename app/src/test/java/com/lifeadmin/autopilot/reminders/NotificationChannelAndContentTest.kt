@@ -75,7 +75,6 @@ class NotificationChannelAndContentTest {
         val n = shadowOf(nm).allNotifications.single()
         assertEquals(posted.toEpochMilli(), n.`when`)
         assertEquals("Late · due 18:25", n.extras.getCharSequence(Notification.EXTRA_SUB_TEXT).toString())
-        assertEquals(true, publisher.isShowing("task-1"))
         assertEquals(Notification.CATEGORY_REMINDER, n.category)
     }
 
@@ -85,7 +84,7 @@ class NotificationChannelAndContentTest {
         val n = shadowOf(nm).allNotifications.single()
         assertEquals(AndroidNotificationPublisher.CHANNEL_REMINDERS, n.channelId)
         assertEquals(true, publisher.isTestShowing("t1"))
-        assertEquals(false, publisher.isShowing("t1"))
+        assertEquals(false, publisher.isTestShowing("other"))
     }
 
     @Test fun environmentProbeReadsRingerModeAndChannelVibration() {

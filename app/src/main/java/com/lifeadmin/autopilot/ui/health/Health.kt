@@ -95,12 +95,15 @@ private suspend fun quickAssessment(container: AppContainer, settings: AppSettin
 }
 
 /**
- * Lateness of the most recent reminder post if it was > 10 min late on approximate timing within
- * the last 48 h and precise timing isn't active now — the evidence-based case for Precise timing.
+ * Lateness of the most recent alarm-delivered reminder if it was > 10 min late on approximate
+ * timing within the last 48 h and precise timing isn't active now — the evidence-based case for
+ * Precise timing. Catch-ups (boot, app start, periodic check) are excluded: their delay comes from
+ * a missing alarm or a phone that was off, which Precise timing would not fix.
  */
 suspend fun recentLateApproximateDelivery(container: AppContainer, settings: AppSettings, canExact: Boolean): java.time.Duration? {
     if (settings.precisionMode && canExact) return null
-    val last = container.diagnosticsLog.recentOfTypes(setOf(DiagnosticType.POST_REQUESTED), 1).firstOrNull() ?: return null
+    val last = container.diagnosticsLog.recentOfTypes(setOf(DiagnosticType.POST_REQUESTED), 20)
+        .firstOrNull { it.source == "alarm" } ?: return null
     val recent = java.time.Duration.between(last.at, container.clock.now()) <= java.time.Duration.ofHours(48)
     val late = last.lateness ?: return null
     return if (recent && last.exact == false && late > java.time.Duration.ofMinutes(10)) late else null
@@ -151,7 +154,7 @@ fun HealthBanner(container: AppContainer, onFix: () -> Unit) {
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
         ) {
             Column(Modifier.padding(16.dp)) {
-                Text("Your last reminder arrived ${late.toMinutes()} min late", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                Text("Your last reminder arrived ${humanDuration(late)} late", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onTertiaryContainer)
                 Text(
                     "Reminders use approximate timing, so Android may delay them to save battery. Precise timing (with “Alarms & reminders” access) makes them arrive on time.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -442,7 +445,9 @@ private fun TimingDetails(state: HealthUiState, zone: ZoneId, now: Instant, onPr
         val ls = state.lateStats
         if (ls.deliveries > 0) {
             Text(
-                "Last ${ls.deliveries} deliveries: ${ls.lateOver5Min} more than 5 min late" + (ls.worst?.let { " (worst ${RoomDiagnosticsLog.formatLateness(it)})" } ?: "") + ".",
+                "Last ${ls.deliveries} deliveries: ${ls.lateOver5Min} alarms arrived more than 5 min late" +
+                    (ls.worst?.let { " (worst ${RoomDiagnosticsLog.formatLateness(it)})" } ?: "") + "." +
+                    (if (ls.caughtUp > 0) " ${ls.caughtUp} were caught up later (alarm not received, phone off or app force-stopped)." else ""),
                 style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp).testTag("late_stats"),
             )
             if (ls.lateOver5Min > 0 && !precise) Text("Turning on Precise timing is the most effective fix for late reminders.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
@@ -488,6 +493,12 @@ private fun Status(label: String, value: String, ok: Boolean, tag: String? = nul
         Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
         Text(value, style = MaterialTheme.typography.bodyLarge, color = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
     }
+}
+
+/** "24 min", "2 h 05 min". */
+fun humanDuration(d: java.time.Duration): String {
+    val m = d.toMinutes()
+    return if (m < 60) "$m min" else "${m / 60} h %02d min".format(m % 60)
 }
 
 private val hms = DateTimeFormatter.ofPattern("HH:mm:ss")

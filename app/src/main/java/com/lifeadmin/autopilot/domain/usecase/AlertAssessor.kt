@@ -98,7 +98,16 @@ object AlertAssessor {
                 }
             }
         }
-        val dnd = env.interruptionFilter != InterruptionFilter.ALL && env.interruptionFilter != InterruptionFilter.UNKNOWN
+        // "Alarms only" and "Total silence" silence ordinary notifications; a channel's DND bypass
+        // only applies to Priority mode.
+        val strictDnd = env.interruptionFilter == InterruptionFilter.ALARMS || env.interruptionFilter == InterruptionFilter.NONE
+        if (strictDnd) {
+            issues += AlertIssue.DND_ON
+            if (base.first == AlertLevel.AUDIBLE || base.first == AlertLevel.VIBRATE_ONLY) {
+                return AlertAssessment(AlertLevel.SILENT, popUp, issues, "Do Not Disturb is set to alarms only or total silence: reminders make no sound or vibration.")
+            }
+        }
+        val dnd = env.interruptionFilter == InterruptionFilter.PRIORITY
         if (dnd && env.channelBypassesDnd != true) {
             issues += AlertIssue.DND_ON
             if (base.first == AlertLevel.AUDIBLE || base.first == AlertLevel.VIBRATE_ONLY) {

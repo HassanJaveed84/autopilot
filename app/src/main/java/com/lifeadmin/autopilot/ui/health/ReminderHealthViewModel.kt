@@ -12,6 +12,7 @@ import com.lifeadmin.autopilot.domain.usecase.AlertAssessment
 import com.lifeadmin.autopilot.domain.usecase.AlertAssessor
 import com.lifeadmin.autopilot.domain.usecase.AlertInputs
 import com.lifeadmin.autopilot.notifications.NotificationHealth
+import com.lifeadmin.autopilot.reminders.RoomDiagnosticsLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -19,6 +20,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -26,7 +28,8 @@ import kotlinx.coroutines.withContext
 import java.time.Duration
 import java.time.Instant
 
-data class LateStats(val deliveries: Int, val lateOver5Min: Int, val worst: Duration?, val approximate: Int)
+/** Alarm-path lateness only; [caughtUp] counts reminders posted by a reconcile instead of their alarm. */
+data class LateStats(val deliveries: Int, val lateOver5Min: Int, val worst: Duration?, val approximate: Int, val caughtUp: Int = 0)
 
 data class HealthUiState(
     val loading: Boolean = true,
@@ -49,7 +52,9 @@ class ReminderHealthViewModel(private val container: AppContainer) : ViewModel()
     private val _state = MutableStateFlow(HealthUiState())
     val state: StateFlow<HealthUiState> = _state.asStateFlow()
 
-    val recent: StateFlow<List<DiagnosticEntry>> = container.diagnosticsLog.observeRecent(40)
+    /** On-screen log: uneventful routine checks are hidden (they stay in the export). */
+    val recent: StateFlow<List<DiagnosticEntry>> = container.diagnosticsLog.observeRecent(200)
+        .map { list -> list.filterNot(RoomDiagnosticsLog::isRoutineReconcile).take(40) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val messages = Channel<String>(Channel.BUFFERED)
@@ -78,7 +83,8 @@ class ReminderHealthViewModel(private val container: AppContainer) : ViewModel()
         val next = active.minByOrNull { it.plannedAt }
         val title = next?.let { container.database.taskDao().get(it.taskId)?.title }
         val posts = container.diagnosticsLog.recentOfTypes(setOf(DiagnosticType.POST_REQUESTED), 20)
-        val late = posts.filter { (it.lateness ?: Duration.ZERO) > Duration.ofMinutes(5) }
+        val viaAlarm = posts.filter { it.source == "alarm" }
+        val late = viaAlarm.filter { (it.lateness ?: Duration.ZERO) > Duration.ofMinutes(5) }
         val tests = container.diagnosticsLog.recentOfTypes(
             setOf(DiagnosticType.TEST_SCHEDULED, DiagnosticType.TEST_ALARM_RECEIVED, DiagnosticType.TEST_NOTIFICATION, DiagnosticType.POST_FAILED, DiagnosticType.SCHEDULE_FAILED), 12,
         ).filter { it.source?.startsWith("test") == true }
@@ -91,7 +97,7 @@ class ReminderHealthViewModel(private val container: AppContainer) : ViewModel()
             assessment = AlertAssessor.assess(AlertInputs(health.permissionGranted, health.appNotificationsEnabled, settings.allowReminderNotifications, env)),
             activeReminders = active.size, approximateReminders = active.count { !it.exact },
             nextTitle = title, nextAt = next?.plannedAt, nextExact = next?.exact ?: false,
-            lateStats = LateStats(posts.size, late.size, late.mapNotNull { it.lateness }.maxOrNull(), posts.count { it.exact == false }),
+            lateStats = LateStats(posts.size, late.size, late.mapNotNull { it.lateness }.maxOrNull(), posts.count { it.exact == false }, caughtUp = posts.count { it.source?.startsWith("reconcile:") == true }),
             lastTest = lastTest, pendingTestAt = pending,
         )
     }

@@ -52,6 +52,32 @@ class SelfTestTest {
         assertEquals(clock.now(), notifications.tests.single().postedAt)
     }
 
+    @Test fun testNotificationListedOnlyAfterAShortDelayStillCountsAsListed() {
+        // notify() enqueues; the system lists the notification a moment later.
+        var checks = 0
+        val lagging = object : com.lifeadmin.autopilot.notifications.NotificationPublisher by notifications {
+            override fun isTestShowing(testId: String): Boolean? = ++checks >= 3
+        }
+        val ids = SequentialIds("lag")
+        val t = ReminderSelfTest(log, alarms, lagging, FakeEnvironmentProbe(DeliveryEnvironment()), settings, clock, FakeZoneProvider(CHICAGO), ids)
+        val e = runBlocking { t.sendTestNotificationNow() }
+        assertEquals("listed_active", e.outcome)
+        assertEquals(3, checks)
+    }
+
+    @Test fun testNotificationNeverListedIsReportedAsNotListed() {
+        val missing = object : com.lifeadmin.autopilot.notifications.NotificationPublisher by notifications {
+            override fun isTestShowing(testId: String): Boolean? = false
+        }
+        val t = ReminderSelfTest(
+            log, alarms, missing, FakeEnvironmentProbe(DeliveryEnvironment()), settings, clock, FakeZoneProvider(CHICAGO), SequentialIds("miss"),
+            listingTimeout = Duration.ofMillis(500),
+        )
+        val e = runBlocking { t.sendTestNotificationNow() }
+        assertEquals(DiagnosticType.TEST_NOTIFICATION, e.type)
+        assertEquals("not_listed_active", e.outcome)
+    }
+
     @Test fun testNotificationWhenBlockedIsReportedAsFailed() {
         notifications.health = NotificationHealth(false, true, true, true)
         val e = runBlocking { selfTest.sendTestNotificationNow() }

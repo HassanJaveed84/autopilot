@@ -61,13 +61,15 @@ class FakeNotificationPublisher : NotificationPublisher {
         visible[notification.taskId] = notification
         return PostResult.POSTED
     }
+    /** Simulates notify() throwing for the summary even though the checks passed. */
+    var summaryFails = false
     override fun postSummary(title: String, body: String): PostResult {
+        if (summaryFails) return PostResult.FAILED
         if (!health.permissionGranted || !health.summaryChannelEnabled) return PostResult.BLOCKED_CHANNEL_DISABLED
         summaries += title to body
         return PostResult.POSTED
     }
     override fun cancelForTask(taskId: String) { visible.remove(taskId) }
-    override fun isShowing(taskId: String): Boolean? = visible.containsKey(taskId)
 
     val tests = CopyOnWriteArrayList<TestNotification>()
     override fun postTest(notification: TestNotification): PostResult {

@@ -28,7 +28,7 @@ class RoomDiagnosticsLog(
     private val ids: IdGenerator,
 ) : DiagnosticsRecorder {
     private val dao = db.diagnosticDao()
-    private var writesSincePrune = 0
+    private val writesSincePrune = java.util.concurrent.atomic.AtomicInteger()
 
     fun newId(): String = ids.newId()
     fun now(): Instant = clock.now()
@@ -36,8 +36,8 @@ class RoomDiagnosticsLog(
     override suspend fun record(entry: DiagnosticEntry) {
         runCatching {
             dao.insert(entry.toEntity())
-            if (++writesSincePrune >= PRUNE_EVERY) {
-                writesSincePrune = 0
+            if (writesSincePrune.incrementAndGet() >= PRUNE_EVERY) {
+                writesSincePrune.set(0)
                 prune()
             }
         }
@@ -85,6 +85,13 @@ class RoomDiagnosticsLog(
         const val MAX_ROWS = 3_000
         val MAX_AGE: Duration = Duration.ofDays(45)
         private const val PRUNE_EVERY = 200
+
+        /** A full reconcile that delivered, coalesced, missed and left pending nothing. */
+        fun isRoutineReconcile(e: DiagnosticEntry): Boolean {
+            if (e.type != DiagnosticType.RECONCILE) return false
+            val o = e.outcome ?: return false
+            return " $o".let { it.contains(" pending=0") && it.contains(" late=0") && it.contains(" coalesced=0") && it.contains(" missed=0") }
+        }
 
         fun formatLateness(d: Duration): String {
             val neg = d.isNegative

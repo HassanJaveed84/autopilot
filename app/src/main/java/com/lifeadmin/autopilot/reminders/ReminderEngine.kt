@@ -137,7 +137,8 @@ class ReminderEngine(
             for (occ in catchUp.late) {
                 val status = if (canPost) OccurrenceStatus.DELIVERED else OccurrenceStatus.SUPPRESSED
                 occurrenceDao.update(occ.copy(status = status, deliveredAt = if (canPost) c.now else null, note = if (canPost) "coalesced" else "notifications_blocked"))
-                diag(if (canPost) DiagnosticType.POSTED else DiagnosticType.SUPPRESSED, c, occ, outcome = if (canPost) "in_summary" else "notifications_blocked", withLateness = true)
+                // POSTED rows are written only once the summary has actually been posted (below).
+                if (!canPost) diag(DiagnosticType.SUPPRESSED, c, occ, outcome = "notifications_blocked", withLateness = true)
                 log(occ.taskId, c.now, if (canPost) EventType.REMINDER_DELIVERED else EventType.REMINDER_SUPPRESSED,
                     if (canPost) "Late reminder included in a summary" else "Late reminder not shown (notifications blocked)")
             }
@@ -150,6 +151,12 @@ class ReminderEngine(
                 append("Open Today to review.")
             }
             val posted = notifications.postSummary("Reminders while you were away", body) == PostResult.POSTED
+            if (posted && coalesced > 0) {
+                for (occ in catchUp.late) {
+                    occurrenceDao.get(occ.id)?.takeIf { it.status == OccurrenceStatus.DELIVERED }
+                        ?.let { diag(DiagnosticType.POSTED, c, it, outcome = "in_summary", withLateness = true) }
+                }
+            }
             if (!posted && coalesced > 0) {
                 // Never claim delivery that didn't happen.
                 for (occ in catchUp.late) {
@@ -307,7 +314,12 @@ class ReminderEngine(
                     // Presumably in flight; re-register anyway in case the OS dropped it (reboot,
                     // force-stop). A duplicate broadcast is ignored by the delivery claim.
                     val r = alarms.schedule(AlarmRequest(occ.id, taskId, occ.generation, occ.plannedAt, preferExact = c.settings.precisionMode))
-                    diag(DiagnosticType.SCHEDULED, c, occ, outcome = "reregistered_due", exact = r.exact, triggerAt = occ.plannedAt)
+                    if (r.scheduled) {
+                        if (r.exact != occ.exact) occurrenceDao.update(occ.copy(exact = r.exact))
+                        diag(DiagnosticType.SCHEDULED, c, occ, outcome = "reregistered_due", exact = r.exact, triggerAt = occ.plannedAt)
+                    } else {
+                        diag(DiagnosticType.SCHEDULE_FAILED, c, occ, outcome = r.error ?: "refused", exact = r.exact, triggerAt = occ.plannedAt)
+                    }
                 }
                 overdueBy > Duration.ofMinutes(c.settings.graceWindowMinutes.toLong()) -> {
                     occurrenceDao.update(occ.copy(status = OccurrenceStatus.MISSED, note = "beyond_grace"))
@@ -454,11 +466,9 @@ class ReminderEngine(
             "latenessSec" to lateness.seconds.toString(), "via" to c.source, "mode" to if (occ.exact) "exact" else "approximate",
         )
         return if (result == PostResult.POSTED) {
-            val active = runCatching { notifications.isShowing(task.id) }.getOrNull()
-            diag(
-                DiagnosticType.POSTED, c, occ, withLateness = true,
-                outcome = when (active) { true -> "listed_active"; false -> "not_listed_active"; null -> "notify_returned" },
-            )
+            // notify() only enqueues; the active list is updated asynchronously and is keyed by
+            // task, so an immediate check here would be neither timely nor specific.
+            diag(DiagnosticType.POSTED, c, occ, withLateness = true, outcome = "notify_returned")
             log(task.id, c.now, EventType.REMINDER_DELIVERED, deliverySummary(lateness, c.source, occ.exact), meta)
             AlarmOutcome.DELIVERED
         } else {

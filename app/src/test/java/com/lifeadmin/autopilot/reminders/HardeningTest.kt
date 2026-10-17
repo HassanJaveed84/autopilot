@@ -81,7 +81,7 @@ class HardeningTest {
 
     @Test fun lateBannerOnlyAppearsForRecentLateApproximateDeliveries() {
         fun post(late: Duration, exact: Boolean, ago: Duration) = runBlocking {
-            c.diagnosticsLog.record(DiagnosticEntry(id = "d${late.seconds}${exact}${ago.seconds}", at = clock.now().minus(ago), type = DiagnosticType.POST_REQUESTED, exact = exact, lateness = late))
+            c.diagnosticsLog.record(DiagnosticEntry(id = "d${late.seconds}${exact}${ago.seconds}", at = clock.now().minus(ago), type = DiagnosticType.POST_REQUESTED, source = "alarm", exact = exact, lateness = late))
         }
         val s = AppSettings()
         post(Duration.ofMinutes(24), exact = false, ago = Duration.ofHours(1))
@@ -91,8 +91,21 @@ class HardeningTest {
         assertNull(runBlocking { recentLateApproximateDelivery(c, s, canExact = false) })
     }
 
+    @Test fun lateBannerIgnoresCatchUpsWherePreciseTimingWouldNotHelp() {
+        // Phone off overnight: the boot catch-up posts the 09:00 reminder at 11:00.
+        runBlocking {
+            c.diagnosticsLog.record(DiagnosticEntry(id = "boot", at = clock.now().minus(Duration.ofMinutes(5)), type = DiagnosticType.POST_REQUESTED, source = "reconcile:boot", exact = false, lateness = Duration.ofHours(2)))
+        }
+        assertNull(runBlocking { recentLateApproximateDelivery(c, AppSettings(), canExact = false) })
+    }
+
+    @Test fun humanDurationUsesHoursForLongDelays() {
+        assertEquals("24 min", com.lifeadmin.autopilot.ui.health.humanDuration(Duration.ofMinutes(24)))
+        assertEquals("2 h 05 min", com.lifeadmin.autopilot.ui.health.humanDuration(Duration.ofMinutes(125)))
+    }
+
     @Test fun lateBannerIgnoresOldDeliveries() {
-        runBlocking { c.diagnosticsLog.record(DiagnosticEntry(id = "old", at = clock.now().minus(Duration.ofDays(3)), type = DiagnosticType.POST_REQUESTED, exact = false, lateness = Duration.ofMinutes(40))) }
+        runBlocking { c.diagnosticsLog.record(DiagnosticEntry(id = "old", at = clock.now().minus(Duration.ofDays(3)), type = DiagnosticType.POST_REQUESTED, source = "alarm", exact = false, lateness = Duration.ofMinutes(40))) }
         assertNull(runBlocking { recentLateApproximateDelivery(c, AppSettings(), canExact = false) })
     }
 

@@ -110,7 +110,7 @@ class DiagnosticsLifecycleTest {
         assertTrue("environment captured", requested.detail!!.contains("ringer=vibrate") && requested.detail!!.contains("vibrate=n"))
 
         val posted = ofType(DiagnosticType.POSTED).single()
-        assertEquals("listed_active", posted.outcome)
+        assertEquals("notify_returned", posted.outcome)
 
         // Notification shows the real posting time; due time is carried separately.
         val n = notifications.posted.single()
@@ -276,5 +276,41 @@ class DiagnosticsLifecycleTest {
         assertEquals(10, rows.size)
         assertEquals("x29", rows.first().source)
         assertNull(rows.firstOrNull { it.source == "x0" })
+    }
+
+    @Test fun coalescedRemindersAreLoggedAsPostedOnlyAfterTheSummaryIsShown() {
+        repeat(4) { oneTimeTask("T$it") }
+        alarms.clearAll()
+        clock.instant = due.plus(Duration.ofMinutes(30))
+        runBlocking { engine.reconcileAll("app_start") }
+        assertEquals(1, notifications.summaries.size)
+        assertEquals(4, ofType(DiagnosticType.POSTED).count { it.outcome == "in_summary" })
+    }
+
+    @Test fun failedSummaryLeavesNoPostedRows() {
+        repeat(4) { oneTimeTask("T$it") }
+        alarms.clearAll()
+        notifications.summaryFails = true
+        clock.instant = due.plus(Duration.ofMinutes(30))
+        runBlocking { engine.reconcileAll("app_start") }
+        assertTrue(ofType(DiagnosticType.POSTED).isEmpty())
+        assertEquals(4, ofType(DiagnosticType.POST_FAILED).count { it.outcome == "summary_not_shown" })
+    }
+
+    @Test fun refusedReRegistrationOfADueAlarmIsLoggedAsFailedNotScheduled() {
+        oneTimeTask()
+        clock.instant = due.plusSeconds(30) // in flight
+        alarms.failing = true
+        runBlocking { engine.reconcileAll("boot") }
+        assertTrue(ofType(DiagnosticType.SCHEDULED).none { it.outcome == "reregistered_due" })
+        assertEquals("IllegalStateException", ofType(DiagnosticType.SCHEDULE_FAILED).last().outcome)
+    }
+
+    @Test fun routineReconcilesAreRecognisedButEventfulOnesAreNot() {
+        fun r(outcome: String) = DiagnosticEntry(id = "r", at = clock.now(), type = DiagnosticType.RECONCILE, outcome = outcome)
+        assertTrue(RoomDiagnosticsLog.isRoutineReconcile(r("scheduled=1 exact=0 pending=0 late=0 coalesced=0 missed=0")))
+        assertFalse(RoomDiagnosticsLog.isRoutineReconcile(r("scheduled=1 exact=0 pending=0 late=1 coalesced=0 missed=0")))
+        assertFalse(RoomDiagnosticsLog.isRoutineReconcile(r("scheduled=0 exact=0 pending=1 late=0 coalesced=0 missed=0")))
+        assertFalse(RoomDiagnosticsLog.isRoutineReconcile(r("scheduled=1 exact=0 pending=0 late=0 coalesced=0 missed=0").copy(type = DiagnosticType.POSTED)))
     }
 }

@@ -11,6 +11,7 @@ import com.lifeadmin.autopilot.notifications.PostResult
 import com.lifeadmin.autopilot.notifications.TestNotification
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -35,6 +36,8 @@ class ReminderSelfTest(
     private val clock: AppClock,
     private val zoneProvider: ZoneProvider,
     private val ids: IdGenerator,
+    /** notify() only enqueues; how long to wait for the test to appear in the active list. */
+    private val listingTimeout: Duration = Duration.ofMillis(2_000),
     /** Lookup of earlier ledger entries for one test id (Room-backed in the app). */
     private val history: suspend (testId: String) -> List<DiagnosticEntry> = { emptyList() },
 ) {
@@ -94,7 +97,7 @@ class ReminderSelfTest(
             "If you did not hear or feel this, open Reminder health to see why."
         }
         val result = notifications.postTest(TestNotification(testId, "Life Admin test reminder", body, now))
-        val active = if (result == PostResult.POSTED) runCatching { notifications.isTestShowing(testId) }.getOrNull() else null
+        val active = if (result == PostResult.POSTED) awaitListed(testId) else null
         val entry = DiagnosticEntry(
             id = ids.newId(), at = now, type = if (result == PostResult.POSTED) DiagnosticType.TEST_NOTIFICATION else DiagnosticType.POST_FAILED,
             occurrenceId = testId, plannedAt = plannedAt, source = source, exact = exact, lateness = lateness,
@@ -103,5 +106,17 @@ class ReminderSelfTest(
         )
         diagnostics.record(entry)
         return entry
+    }
+
+    /** Polls the active list (the test tag is unique, unlike a task's reminder tag). */
+    private suspend fun awaitListed(testId: String): Boolean? {
+        val step = 250L
+        var waited = 0L
+        while (true) {
+            val listed = runCatching { notifications.isTestShowing(testId) }.getOrNull() ?: return null
+            if (listed || waited >= listingTimeout.toMillis()) return listed
+            delay(step)
+            waited += step
+        }
     }
 }

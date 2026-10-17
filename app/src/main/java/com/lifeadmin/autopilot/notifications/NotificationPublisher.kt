@@ -41,11 +41,9 @@ interface NotificationPublisher {
     fun postSummary(title: String, body: String): PostResult
     fun cancelForTask(taskId: String)
 
-    /** Whether the task's reminder is currently listed as active; null if the OS can't tell. */
-    fun isShowing(taskId: String): Boolean? = null
-
     /** Self-test notification on the real reminder channel (same sound/vibration settings). */
     fun postTest(notification: TestNotification): PostResult = PostResult.FAILED
 
+    /** Whether the test notification is currently listed as active; null if the OS can't tell. */
     fun isTestShowing(testId: String): Boolean? = null
 }
