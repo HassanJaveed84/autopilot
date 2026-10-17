@@ -172,3 +172,46 @@ GitHub Actions run #8 (`61fbc6d`): build job ✅, instrumented job ✅ — 3/3 i
 an API 34 emulator (real alarm → notification → Done, MigrationTestHelper v1→v2, typing in the
 Waiting dialog). Earlier emulator-job failures were boot timeouts (no tests executed). Physical
 device verification remains outstanding.
+
+## Reminder reliability session (2026-10-17) ✅
+
+Trigger: the S24 Ultra report. A one-time reminder for 18:25 was logged as “delivered (late)” at
+about 18:49, the shade showed 18:25, and there was no sound or vibration. Full write-up:
+`docs/REMINDER_RELIABILITY_REPORT.md`.
+
+Completed:
+- **Audit.** The shade showed the planned time (`setWhen(plannedAt)`). The post was about 24 min
+  late. The log could not tell an alarm from a catch-up. Channel vibration off and pop-up off were
+  the app's own defaults. Inexact alarms can be deferred. The 6 h safety net was longer than the
+  4 h grace window.
+- **Delivery lifecycle ledger** (Room v3, `reminder_diagnostics`, `MIGRATION_2_3`):
+  - real alarm receipt and post times;
+  - source, mode and lateness;
+  - an environment snapshot;
+  - no task content;
+  - export via Copy / Share diagnostics.
+- **Notification** shows the actual posting time plus “Due / Late · due HH:mm”.
+- **Reminder health screen:**
+  - alert verdict (`AlertAssessor`);
+  - channel, ringer, DND and volume details with deep links;
+  - test notification now, and a test reminder in 2 minutes through AlarmManager;
+  - timing mode and alarm-path late stats;
+  - Samsung battery guidance;
+  - delivery log.
+- **New-install channel vibrates.** An existing channel is never modified or recreated.
+- **Hardening:**
+  - hourly safety net;
+  - exact upgrade on return from the permission page;
+  - Today late banner (alarm-path only);
+  - timing labelled on task detail.
+- **CI:** AVD snapshot cache for the emulator job; documentation-only pushes skip CI.
+- **Code review:** an independent review found 7 issues, all fixed with tests (`104965c`).
+
+Validation (this container, no device):
+- Command: `ANDROID_HOME=/opt/android-sdk ./gradlew lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest`
+- Result: BUILD SUCCESSFUL; lint **No issues found**; **185 tests, 0 failures**.
+- `InstrumentedReliabilityTest` (3 tests) compiles; it runs only in CI on an emulator.
+
+Not done / blockers:
+- Physical-device verification: needs your phone. See section 6 of the reliability report.
+- Draft PR: the remote has no `main` / default branch to target.
