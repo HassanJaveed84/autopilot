@@ -56,6 +56,7 @@ fun SettingsScreen(
     viewModel: SettingsViewModel,
     snackbar: SnackbarHostState,
     healthSection: @Composable () -> Unit = {},
+    onOpenAiSettings: () -> Unit = {},
 ) {
     val s by viewModel.settings.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -138,11 +139,25 @@ fun SettingsScreen(
                 }
             }
 
+            item { Header("AI planning (optional)") }
+            item {
+                Column(Modifier.padding(horizontal = 20.dp)) {
+                    Text(
+                        if (s.aiEnabled) "On · ${com.lifeadmin.autopilot.ai.AiConfig.label(com.lifeadmin.autopilot.ai.AiConfig.modelOrDefault(s.aiModel))} · uses your own Anthropic API key"
+                        else "Off. Turn a sentence into a reviewed task with steps and reminders, using your own Anthropic API key.",
+                        style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("ai_status"),
+                    )
+                    OutlinedButton(onClick = onOpenAiSettings, modifier = Modifier.padding(top = 8.dp).testTag("open_ai_settings")) { Text("AI planning settings") }
+                }
+            }
+
             item { Header("About") }
             item {
                 Column(Modifier.padding(horizontal = 20.dp)) {
-                    Text("AI assistance: Off — not included in this version", style = MaterialTheme.typography.bodyMedium)
-                    Text("Works fully offline. No account, analytics, ads or network access.", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "Tasks and reminders work fully offline. No account, analytics or ads. The network is used only when you ask AI planning for a suggestion.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                     Text("Version ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }

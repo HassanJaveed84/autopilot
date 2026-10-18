@@ -3,6 +3,15 @@ package com.lifeadmin.autopilot.di
 import android.content.Context
 import android.util.Log
 import com.lifeadmin.autopilot.BuildConfig
+import com.lifeadmin.autopilot.ai.AiPlanningService
+import com.lifeadmin.autopilot.ai.AndroidNetworkStatus
+import com.lifeadmin.autopilot.ai.NetworkStatus
+import com.lifeadmin.autopilot.ai.TaskPlanningProvider
+import com.lifeadmin.autopilot.ai.anthropic.AnthropicTaskPlanningProvider
+import com.lifeadmin.autopilot.ai.security.ApiKeyStore
+import com.lifeadmin.autopilot.ai.security.EncryptedApiKeyStore
+import com.lifeadmin.autopilot.domain.usecase.HintDismissals
+import com.lifeadmin.autopilot.domain.usecase.SharedPrefsHintDismissals
 import com.lifeadmin.autopilot.core.AppClock
 import com.lifeadmin.autopilot.core.IdGenerator
 import com.lifeadmin.autopilot.core.ZoneProvider
@@ -43,6 +52,10 @@ class AppContainer(
     val alarmDriver: AlarmDriver = AndroidAlarmDriver(context),
     val notificationPublisher: NotificationPublisher = AndroidNotificationPublisher(context),
     val environmentProbe: EnvironmentProbe = AndroidEnvironmentProbe(context, alarmDriver),
+    val apiKeyStore: ApiKeyStore = EncryptedApiKeyStore(context),
+    val planningProvider: TaskPlanningProvider = AnthropicTaskPlanningProvider(),
+    val networkStatus: NetworkStatus = AndroidNetworkStatus(context),
+    val hintDismissals: HintDismissals = SharedPrefsHintDismissals(context),
 ) {
     val appScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -59,6 +72,11 @@ class AppContainer(
     val taskRepository: TaskRepository = TaskRepository(database, clock, ids, zoneProvider::current, reminderEngine, diagnosticsLog)
 
     val taskActions: TaskActions = TaskActions(database, taskRepository, settingsRepository, clock, zoneProvider)
+
+    /** Optional AI planning (M2). Never writes tasks; approval goes through [taskRepository]. */
+    val aiPlanning: AiPlanningService = AiPlanningService(
+        settingsRepository, apiKeyStore, planningProvider, taskRepository, clock, zoneProvider, ids, networkStatus,
+    )
 
     val backupRepository: BackupRepository = BackupRepository(
         database, clock, ids, BuildConfig.VERSION_NAME,

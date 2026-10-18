@@ -27,8 +27,15 @@ data class AppSettings(
     val maxNotificationsPerDay: Int = 30,
     val onboardingCompleted: Boolean = false,
     val notificationPermissionRequested: Boolean = false,
-    /** AI features do not exist in this build; kept for forward-compatible settings. */
+    /** Optional AI planning (M2). Off by default; the app is fully usable without it. */
     val aiEnabled: Boolean = false,
+    /** When the user accepted the "text is sent to Anthropic" disclosure; null = not yet. */
+    val aiConsentAt: Instant? = null,
+    /** Model id for AI planning; blank = [com.lifeadmin.autopilot.ai.AiConfig.DEFAULT_MODEL]. */
+    val aiModel: String = "",
+    /** Local-day request counter used to cap accidental spend ([com.lifeadmin.autopilot.ai.AiConfig.MAX_REQUESTS_PER_DAY]). */
+    val aiUsageDay: String = "",
+    val aiUsageCount: Int = 0,
     val lastReconcileAt: Instant? = null,
     val lastReconcileSummary: String? = null,
 ) {

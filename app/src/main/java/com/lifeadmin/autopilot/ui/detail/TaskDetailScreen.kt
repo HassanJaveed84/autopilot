@@ -56,6 +56,10 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lifeadmin.autopilot.data.repository.TaskDetails
+import com.lifeadmin.autopilot.domain.usecase.StallAction
+import com.lifeadmin.autopilot.domain.usecase.StallHint
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CardDefaults
 import com.lifeadmin.autopilot.data.repository.label
 import com.lifeadmin.autopilot.domain.model.OccurrenceKind
 import com.lifeadmin.autopilot.domain.model.OccurrenceStatus
@@ -70,13 +74,15 @@ import com.lifeadmin.autopilot.ui.components.isSnoozed
 import java.time.Instant
 import java.time.ZoneId
 
-private enum class DetailDialog { EDIT, DEADLINE, WAITING, SNOOZE, POLICY, DELETE, CANCEL }
+private enum class DetailDialog { EDIT, DEADLINE, WAITING, SNOOZE, POLICY, DELETE, CANCEL, SMALL_STEP }
 
 @Composable
 fun TaskDetailScreen(
     viewModel: TaskDetailViewModel,
     onBack: () -> Unit,
     onReminderEnabled: () -> Unit = {},
+    /** Opens "Help me move this forward"; null hides the AI card (e.g. in tests). */
+    onMoveForward: (() -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
@@ -123,7 +129,7 @@ fun TaskDetailScreen(
         when {
             state.loading -> Unit
             details == null -> EmptyState("Task not found", "It may have been deleted.", Modifier.padding(padding))
-            else -> DetailContent(details, state.now, state.zone, viewModel, Modifier.padding(padding), openDialog = { dialog = it })
+            else -> DetailContent(details, state.now, state.zone, viewModel, Modifier.padding(padding), openDialog = { dialog = it }, stallHint = state.stallHint, onMoveForward = onMoveForward)
         }
     }
 
@@ -156,6 +162,10 @@ fun TaskDetailScreen(
             "Cancel task?", "The task will stop reminding you. You can reopen it later from its history.", "Cancel task",
             onDismiss = { dialog = null },
         ) { dialog = null; viewModel.changeStatus(TaskStatus.CANCELED) }
+        DetailDialog.SMALL_STEP -> SmallStepDialog(onDismiss = { dialog = null }) { step ->
+            viewModel.addStep(step) {}
+            dialog = null
+        }
         null -> Unit
     }
 }
@@ -168,6 +178,8 @@ private fun DetailContent(
     vm: TaskDetailViewModel,
     modifier: Modifier,
     openDialog: (DetailDialog) -> Unit,
+    stallHint: StallHint? = null,
+    onMoveForward: (() -> Unit)? = null,
 ) {
     val task = d.task
     LazyColumn(modifier.fillMaxSize().testTag("detail_list"), contentPadding = PaddingValues(bottom = 48.dp)) {
@@ -194,6 +206,16 @@ private fun DetailContent(
             }
         }
         item { StatusActions(d, now, vm, openDialog) }
+        if (stallHint != null) item { StallHintCard(stallHint, vm, openDialog) }
+        if (onMoveForward != null && !task.status.isTerminal) item {
+            DetailCard("Help me move this forward") {
+                Text(
+                    "Ask Claude for a practical next step, missing steps or a better date. You review every suggested change before anything is applied.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                OutlinedButton(onClick = onMoveForward, modifier = Modifier.padding(top = 8.dp).testTag("action_move_forward")) { Text("Get a suggestion…") }
+            }
+        }
         item {
             DetailCard("Deadline", action = "Edit", onAction = { openDialog(DetailDialog.DEADLINE) }) {
                 val text = Format.deadline(task, now, zone) ?: "No deadline"
@@ -355,4 +377,59 @@ private fun ChecklistCard(d: TaskDetails, vm: TaskDetailViewModel) {
             )
         }
     }
+}
+
+@Composable
+private fun StallHintCard(hint: StallHint, vm: TaskDetailViewModel, openDialog: (DetailDialog) -> Unit) {
+    Card(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).testTag("stall_hint"),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text(hint.message, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onTertiaryContainer)
+            FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                hint.actions.forEach { a ->
+                    OutlinedButton(
+                        onClick = {
+                            when (a) {
+                                StallAction.BREAK_DOWN -> openDialog(DetailDialog.SMALL_STEP)
+                                StallAction.MOVE_DATE -> openDialog(DetailDialog.DEADLINE)
+                                StallAction.MARK_WAITING, StallAction.CHECK_IN -> openDialog(DetailDialog.WAITING)
+                                StallAction.PAUSE -> vm.changeStatus(TaskStatus.PAUSED)
+                            }
+                        },
+                        modifier = Modifier.testTag("stall_${a.name.lowercase()}"),
+                    ) {
+                        Text(
+                            when (a) {
+                                StallAction.BREAK_DOWN -> "Add a smaller step"
+                                StallAction.MOVE_DATE -> "Move the date"
+                                StallAction.MARK_WAITING -> "Mark waiting"
+                                StallAction.PAUSE -> "Pause"
+                                StallAction.CHECK_IN -> "Update check-in"
+                            },
+                        )
+                    }
+                }
+                TextButton(onClick = { vm.dismissHint(hint) }, modifier = Modifier.testTag("stall_dismiss")) { Text("Not now") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SmallStepDialog(onDismiss: () -> Unit, onAdd: (String) -> Unit) {
+    var text by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Smallest next step") },
+        text = {
+            Column {
+                Text("Something you could do in five minutes, e.g. “Look up train times”.", style = MaterialTheme.typography.bodyMedium)
+                OutlinedTextField(value = text, onValueChange = { text = it.take(300) }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("small_step_input"), singleLine = true)
+            }
+        },
+        confirmButton = { TextButton(onClick = { onAdd(text.trim()) }, enabled = text.isNotBlank()) { Text("Add step") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }

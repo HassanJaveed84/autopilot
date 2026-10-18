@@ -58,7 +58,11 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
             maxNotificationsPerDay = this[MAX_PER_DAY] ?: d.maxNotificationsPerDay,
             onboardingCompleted = this[ONBOARDED] ?: d.onboardingCompleted,
             notificationPermissionRequested = this[PERMISSION_ASKED] ?: d.notificationPermissionRequested,
-            aiEnabled = false,
+            aiEnabled = this[AI_ENABLED] ?: d.aiEnabled,
+            aiConsentAt = this[AI_CONSENT_AT]?.let(Instant::ofEpochMilli),
+            aiModel = this[AI_MODEL] ?: d.aiModel,
+            aiUsageDay = this[AI_USAGE_DAY] ?: d.aiUsageDay,
+            aiUsageCount = this[AI_USAGE_COUNT] ?: d.aiUsageCount,
             lastReconcileAt = this[LAST_RECONCILE]?.let(Instant::ofEpochMilli),
             lastReconcileSummary = this[LAST_RECONCILE_SUMMARY],
         )
@@ -79,6 +83,11 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         this[ONBOARDED] = s.onboardingCompleted
         this[PERMISSION_ASKED] = s.notificationPermissionRequested
         this[SCHEMA] = SETTINGS_SCHEMA_VERSION
+        this[AI_ENABLED] = s.aiEnabled
+        s.aiConsentAt?.let { this[AI_CONSENT_AT] = it.toEpochMilli() } ?: remove(AI_CONSENT_AT)
+        this[AI_MODEL] = s.aiModel
+        this[AI_USAGE_DAY] = s.aiUsageDay
+        this[AI_USAGE_COUNT] = s.aiUsageCount
         s.lastReconcileAt?.let { this[LAST_RECONCILE] = it.toEpochMilli() } ?: remove(LAST_RECONCILE)
         s.lastReconcileSummary?.let { this[LAST_RECONCILE_SUMMARY] = it } ?: remove(LAST_RECONCILE_SUMMARY)
     }
@@ -101,6 +110,12 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         private val SCHEMA = intPreferencesKey("settings_schema_version")
         private val LAST_RECONCILE = longPreferencesKey("last_reconcile_at")
         private val LAST_RECONCILE_SUMMARY = stringPreferencesKey("last_reconcile_summary")
+        // AI settings never include the API key; that lives encrypted in ApiKeyStore.
+        private val AI_ENABLED = booleanPreferencesKey("ai_enabled")
+        private val AI_CONSENT_AT = longPreferencesKey("ai_consent_at")
+        private val AI_MODEL = stringPreferencesKey("ai_model")
+        private val AI_USAGE_DAY = stringPreferencesKey("ai_usage_day")
+        private val AI_USAGE_COUNT = intPreferencesKey("ai_usage_count")
 
         private fun parseTime(raw: String): LocalTime? = runCatching { LocalTime.parse(raw) }.getOrNull()
         private inline fun <reified E : Enum<E>> enumOr(raw: String?, default: E): E =

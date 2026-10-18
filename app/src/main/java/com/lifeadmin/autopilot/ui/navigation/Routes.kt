@@ -14,7 +14,12 @@ object Routes {
     const val SETTINGS = "settings"
     const val TASK_DETAIL = "task/{taskId}"
     const val HEALTH = "health"
+    const val AI_SETTINGS = "ai_settings"
+    const val PLAN = "plan?text={text}"
+    const val PLAN_TASK = "plan/task/{taskId}"
     fun taskDetail(taskId: String) = "task/$taskId"
+    fun plan(text: String) = "plan?text=" + android.net.Uri.encode(text)
+    fun planTask(taskId: String) = "plan/task/$taskId"
 }
 
 enum class TopLevelDestination(val route: String, val label: String, val icon: ImageVector) {

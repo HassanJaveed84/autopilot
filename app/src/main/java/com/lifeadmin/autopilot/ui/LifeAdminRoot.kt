@@ -34,7 +34,15 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.lifeadmin.autopilot.di.AppContainer
+import androidx.lifecycle.createSavedStateHandle
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.navigation.NavHostController
+import com.lifeadmin.autopilot.ui.ai.AiSettingsScreen
+import com.lifeadmin.autopilot.ui.ai.AiSettingsViewModel
 import com.lifeadmin.autopilot.ui.capture.CaptureSheet
+import com.lifeadmin.autopilot.ui.plan.PlanScreen
+import com.lifeadmin.autopilot.ui.plan.PlanViewModel
 import com.lifeadmin.autopilot.ui.capture.CaptureViewModel
 import com.lifeadmin.autopilot.ui.detail.TaskDetailScreen
 import com.lifeadmin.autopilot.ui.detail.TaskDetailViewModel
@@ -158,7 +166,21 @@ fun LifeAdminRoot(
                 })
                 SettingsScreen(vm, snackbar, healthSection = {
                     if (showHealth) HealthSummaryCard(container) { navController.navigate(Routes.HEALTH) { launchSingleTop = true } }
+                }, onOpenAiSettings = { navController.navigate(Routes.AI_SETTINGS) { launchSingleTop = true } })
+            }
+            composable(Routes.AI_SETTINGS) {
+                val vm: AiSettingsViewModel = viewModel(factory = factoryOf {
+                    AiSettingsViewModel(container.settingsRepository, container.apiKeyStore, container.aiPlanning, container.clock)
                 })
+                AiSettingsScreen(vm, onBack = { navController.popBackStack() })
+            }
+            composable(Routes.PLAN, arguments = listOf(navArgument("text") { type = NavType.StringType; defaultValue = "" })) { entry ->
+                val text = entry.arguments?.getString("text").orEmpty()
+                PlanDestination(container, navController, targetTaskId = null, initialText = text, onReminderEnabled = onReminderEnabled)
+            }
+            composable(Routes.PLAN_TASK, arguments = listOf(navArgument("taskId") { type = NavType.StringType })) { entry ->
+                val taskId = entry.arguments?.getString("taskId").orEmpty()
+                PlanDestination(container, navController, targetTaskId = taskId, initialText = "", onReminderEnabled = onReminderEnabled)
             }
             composable(Routes.HEALTH) {
                 val vm: ReminderHealthViewModel = viewModel(factory = factoryOf { ReminderHealthViewModel(container) })
@@ -170,9 +192,12 @@ fun LifeAdminRoot(
             composable(Routes.TASK_DETAIL, arguments = listOf(navArgument("taskId") { type = NavType.StringType })) { entry ->
                 val taskId = entry.arguments?.getString("taskId").orEmpty()
                 val vm: TaskDetailViewModel = viewModel(key = "detail-$taskId", factory = factoryOf {
-                    TaskDetailViewModel(taskId, container.taskRepository, container.taskActions, container.settingsRepository, container.clock, container.zoneProvider)
+                    TaskDetailViewModel(taskId, container.taskRepository, container.taskActions, container.settingsRepository, container.clock, container.zoneProvider, container.hintDismissals)
                 })
-                TaskDetailScreen(vm, onBack = { navController.popBackStack() }, onReminderEnabled = onReminderEnabled)
+                TaskDetailScreen(
+                    vm, onBack = { navController.popBackStack() }, onReminderEnabled = onReminderEnabled,
+                    onMoveForward = { navController.navigate(Routes.planTask(taskId)) { launchSingleTop = true } },
+                )
             }
         }
     }
@@ -182,6 +207,10 @@ fun LifeAdminRoot(
         CaptureSheet(
             vm,
             onDismiss = { capturing = false },
+            onPlanWithAi = { text ->
+                capturing = false
+                navController.navigate(Routes.plan(text)) { launchSingleTop = true }
+            },
             onSaved = { id, withReminder ->
                 capturing = false
                 if (withReminder) onReminderEnabled()
@@ -192,4 +221,36 @@ fun LifeAdminRoot(
             },
         )
     }
+}
+
+@Composable
+private fun PlanDestination(
+    container: AppContainer,
+    navController: NavHostController,
+    targetTaskId: String?,
+    initialText: String,
+    onReminderEnabled: () -> Unit,
+) {
+    val vm: PlanViewModel = viewModel(
+        key = "plan-${targetTaskId ?: "new"}",
+        factory = viewModelFactory {
+            initializer {
+                PlanViewModel(
+                    createSavedStateHandle(), container.aiPlanning, container.taskRepository, container.taskActions,
+                    container.settingsRepository, container.clock, container.zoneProvider, targetTaskId, initialText,
+                )
+            }
+        },
+    )
+    PlanScreen(
+        vm, zone = container.zoneProvider.current(), now = container.clock::now,
+        onBack = { navController.popBackStack() },
+        onOpenTask = { id ->
+            // Replace the plan screen with the task (or return to it for an edit).
+            if (targetTaskId != null) navController.popBackStack()
+            else navController.navigate(Routes.taskDetail(id)) { popUpTo(Routes.PLAN) { inclusive = true } }
+        },
+        onOpenAiSettings = { navController.navigate(Routes.AI_SETTINGS) { launchSingleTop = true } },
+        onReminderEnabled = onReminderEnabled,
+    )
 }

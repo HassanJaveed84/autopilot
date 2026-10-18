@@ -47,6 +47,7 @@ fun CaptureSheet(
     viewModel: CaptureViewModel,
     onDismiss: () -> Unit,
     onSaved: (taskId: String, withReminder: Boolean) -> Unit,
+    onPlanWithAi: (text: String) -> Unit = {},
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var title by rememberSaveable { mutableStateOf("") }
@@ -102,7 +103,14 @@ fun CaptureSheet(
                     }
                 }
             } else {
-                TextButton(onClick = { more = true }) { Text("Add notes or priority") }
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = { more = true }) { Text("Add notes or priority") }
+                    // Opt-in, user-triggered; quick capture below stays offline and instant.
+                    TextButton(
+                        onClick = { onPlanWithAi(listOf(title, notes).filter { it.isNotBlank() }.joinToString("\n")) },
+                        modifier = Modifier.testTag("capture_plan_ai"),
+                    ) { Text("Plan with AI…") }
+                }
             }
             Row(Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedButton(

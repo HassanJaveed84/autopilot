@@ -13,6 +13,10 @@ import com.lifeadmin.autopilot.domain.model.Priority
 import com.lifeadmin.autopilot.domain.model.ReminderPolicy
 import com.lifeadmin.autopilot.domain.model.TaskStatus
 import com.lifeadmin.autopilot.domain.scheduling.PlannedReminder
+import com.lifeadmin.autopilot.domain.usecase.HintDismissals
+import com.lifeadmin.autopilot.domain.usecase.InMemoryHintDismissals
+import com.lifeadmin.autopilot.domain.usecase.StallDetector
+import com.lifeadmin.autopilot.domain.usecase.StallHint
 import com.lifeadmin.autopilot.domain.usecase.TaskActions
 import com.lifeadmin.autopilot.ui.tickerFlow
 import com.lifeadmin.autopilot.ui.userMessage
@@ -35,6 +39,8 @@ data class TaskDetailUiState(
     val settings: AppSettings = AppSettings(),
     val now: Instant = Instant.EPOCH,
     val zone: ZoneId = ZoneId.systemDefault(),
+    /** Deterministic "this seems stuck" hint (never AI, never a background call). */
+    val stallHint: StallHint? = null,
 )
 
 sealed interface DetailEvent {
@@ -50,15 +56,25 @@ class TaskDetailViewModel(
     settings: SettingsRepository,
     private val clock: AppClock,
     private val zoneProvider: ZoneProvider,
+    private val hintDismissals: HintDismissals = InMemoryHintDismissals(),
 ) : ViewModel() {
+    private val dismissedTick = kotlinx.coroutines.flow.MutableStateFlow(0)
+
     private val events = Channel<DetailEvent>(Channel.BUFFERED)
     val eventFlow: Flow<DetailEvent> = events.receiveAsFlow()
 
     val state: StateFlow<TaskDetailUiState> = combine(
-        repository.observeDetails(taskId), settings.settings, tickerFlow(clock),
-    ) { d, s, now ->
-        TaskDetailUiState(loading = false, missing = d == null, details = d, settings = s, now = now, zone = zoneProvider.current())
+        repository.observeDetails(taskId), settings.settings, tickerFlow(clock), dismissedTick,
+    ) { d, s, now, _ ->
+        val zone = zoneProvider.current()
+        val hint = d?.let { StallDetector.detect(it, now, zone) }?.takeUnless { hintDismissals.isDismissed(taskId, it.signature) }
+        TaskDetailUiState(loading = false, missing = d == null, details = d, settings = s, now = now, zone = zone, stallHint = hint)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TaskDetailUiState())
+
+    fun dismissHint(hint: StallHint) {
+        hintDismissals.dismiss(taskId, hint.signature)
+        dismissedTick.value++
+    }
 
     fun now(): Instant = clock.now()
     fun zone(): ZoneId = zoneProvider.current()

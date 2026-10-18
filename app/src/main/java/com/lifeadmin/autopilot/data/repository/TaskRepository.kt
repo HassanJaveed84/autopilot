@@ -18,6 +18,8 @@ import com.lifeadmin.autopilot.domain.model.DiagnosticType
 import com.lifeadmin.autopilot.reminders.DiagnosticsRecorder
 import com.lifeadmin.autopilot.domain.model.EventType
 import com.lifeadmin.autopilot.domain.model.OccurrenceStatus
+import com.lifeadmin.autopilot.domain.model.PlannedTaskCommand
+import com.lifeadmin.autopilot.domain.model.TaskEditCommand
 import com.lifeadmin.autopilot.domain.model.Priority
 import com.lifeadmin.autopilot.domain.model.ReminderKind
 import com.lifeadmin.autopilot.domain.model.ReminderOccurrence
@@ -168,6 +170,125 @@ class TaskRepository(
                 }
             }
             id
+        }
+    }
+
+    /**
+     * Creates a task from an approved plan in ONE schedule mutation + Room transaction: task,
+     * steps, deadline, waiting state and reminder policy are written together, then the engine
+     * schedules alarms once. [PlannedTaskCommand.taskId] is the idempotency key — re-applying
+     * the same command (double tap, retry after process death) returns the existing task and
+     * writes nothing.
+     *
+     * @return the task id and whether it was newly created.
+     */
+    suspend fun createPlannedTask(cmd: PlannedTaskCommand): Pair<String, Boolean> {
+        val title = validateTitle(cmd.title)
+        val notes = validateNotes(cmd.notes)
+        val steps = cmd.steps.map(::validateStep)
+        require(cmd.status in setOf(TaskStatus.INBOX, TaskStatus.ACTIONABLE, TaskStatus.WAITING)) { "Planned tasks start in Inbox, Actionable or Waiting" }
+        if (cmd.taskId.isBlank()) throw ValidationException("Missing plan id")
+        val zone = zoneProvider()
+        val now = clock.now()
+        val policy = cmd.policy?.let { spec ->
+            ReminderPolicy(
+                id = ids.newId(), taskId = cmd.taskId, enabled = true, kind = spec.kind, times = spec.times.distinct().sorted(),
+                dayInterval = spec.dayInterval, startLocalDate = spec.startLocalDate, atInstant = spec.atInstant, lastEditedAt = now,
+            ).also(::validatePolicy)
+        } ?: ReminderPolicy(id = ids.newId(), taskId = cmd.taskId, lastEditedAt = now)
+        cmd.deadline?.let { validateDeadline(it.type, it.date, it.instant) }
+        return coordinator.mutateTask(cmd.taskId) {
+            db.withTransaction {
+                if (taskDao.get(cmd.taskId) != null) return@withTransaction cmd.taskId to false
+                val d = cmd.deadline
+                taskDao.insert(
+                    TaskEntity(
+                        id = cmd.taskId, title = title, notes = notes, status = cmd.status, priority = cmd.priority,
+                        createdAt = now, updatedAt = now, completedAt = null, archivedAt = null,
+                        deadlineType = d?.type ?: DeadlineType.NONE,
+                        deadlineLocalDate = if (d?.type == DeadlineType.DATE_ONLY) d.date else null,
+                        deadlineInstant = if (d?.type == DeadlineType.EXACT) d.instant else null,
+                        deadlineZoneId = if (d?.type == DeadlineType.EXACT) zone.id else null,
+                        snoozedUntil = null,
+                        waitingReason = if (cmd.status == TaskStatus.WAITING) cmd.waitingReason?.take(MAX_STEP) else null,
+                        waitingCheckInAt = if (cmd.status == TaskStatus.WAITING) cmd.waitingCheckInAt else null,
+                    ),
+                )
+                steps.forEachIndexed { i, step -> stepDao.upsert(TaskStepEntity(ids.newId(), cmd.taskId, i, step, false, null)) }
+                writePolicy(policy)
+                log(cmd.taskId, now, EventType.CREATED, "Created from a reviewed AI plan in ${cmd.status.label()}", mapOf("source" to cmd.source))
+                if (steps.isNotEmpty()) log(cmd.taskId, now, EventType.STEP_ADDED, "${steps.size} checklist step(s) from the plan")
+                if (d != null) log(cmd.taskId, now, EventType.EDITED, "Deadline: ${describeDeadline(d.type, d.date, d.instant, zone)}", mapOf("fields" to "deadline"))
+                if (policy.enabled) log(cmd.taskId, now, EventType.POLICY_EDITED, "Reminders: ${PolicyDescriber.describe(policy, zone)}", mapOf("kind" to policy.kind.name, "source" to cmd.source))
+                cmd.taskId to true
+            }
+        }
+    }
+
+    /**
+     * Applies the user-selected parts of an AI suggestion to an existing task, atomically. If the
+     * task changed after the suggestion was produced ([TaskEditCommand.expectedUpdatedAt]), the
+     * edit is rejected instead of overwriting newer data — which also makes a repeated apply a
+     * no-op error rather than a duplicate.
+     */
+    suspend fun applyTaskEdit(cmd: TaskEditCommand) {
+        if (cmd.isEmpty) throw ValidationException("Select at least one change to apply")
+        val title = cmd.title?.let(::validateTitle)
+        val notes = cmd.notes?.let { validateNotes(it) ?: "" }
+        val steps = cmd.addSteps.map(::validateStep)
+        cmd.deadline?.let { validateDeadline(it.type, it.date, it.instant) }
+        val zone = zoneProvider()
+        coordinator.mutateTask(cmd.taskId, dismissNotification = cmd.markWaiting) {
+            db.withTransaction {
+                val t = requireTask(cmd.taskId)
+                if (cmd.expectedUpdatedAt != null && t.updatedAt != cmd.expectedUpdatedAt) {
+                    throw ValidationException("This task changed after the suggestion was made. Ask again for a fresh suggestion.")
+                }
+                if (t.status.isTerminal) throw ValidationException("Reopen the task before applying suggestions")
+                val now = clock.now()
+                val changed = mutableListOf<String>()
+                var updated = t
+                if (title != null && title != t.title) { updated = updated.copy(title = title); changed += "title" }
+                if (notes != null && notes.ifEmpty { null } != t.notes) { updated = updated.copy(notes = notes.ifEmpty { null }); changed += "notes" }
+                if (cmd.priority != null && cmd.priority != t.priority) { updated = updated.copy(priority = cmd.priority); changed += "priority" }
+                cmd.deadline?.let { d ->
+                    updated = updated.copy(
+                        deadlineType = d.type,
+                        deadlineLocalDate = if (d.type == DeadlineType.DATE_ONLY) d.date else null,
+                        deadlineInstant = if (d.type == DeadlineType.EXACT) d.instant else null,
+                        deadlineZoneId = if (d.type == DeadlineType.EXACT) zone.id else null,
+                    )
+                    changed += "deadline"
+                }
+                if (cmd.markWaiting) {
+                    if (t.status != TaskStatus.WAITING) TaskStateMachine.requireTransition(t.status, TaskStatus.WAITING)
+                    updated = updated.copy(status = TaskStatus.WAITING, waitingReason = cmd.waitingReason?.take(MAX_STEP), waitingCheckInAt = cmd.waitingCheckInAt)
+                    changed += "status"
+                }
+                taskDao.update(updated.copy(updatedAt = now))
+                if (steps.isNotEmpty()) {
+                    var order = stepDao.maxSortOrder(cmd.taskId)
+                    steps.forEach { step -> stepDao.upsert(TaskStepEntity(ids.newId(), cmd.taskId, ++order, step, false, null)) }
+                    changed += "steps"
+                }
+                cmd.policy?.let { spec ->
+                    val existing = policyDao.getForTask(cmd.taskId)
+                    val next = ReminderPolicy(
+                        id = existing?.id ?: ids.newId(), taskId = cmd.taskId, enabled = true, kind = spec.kind,
+                        times = spec.times.distinct().sorted(), dayInterval = spec.dayInterval, startLocalDate = spec.startLocalDate,
+                        atInstant = spec.atInstant, lastEditedAt = now, generation = (existing?.generation ?: 0) + 1,
+                        // Keep the user's per-task zone, quiet-hours and snooze overrides.
+                        zoneMode = existing?.zoneMode ?: ZoneMode.FOLLOW_DEVICE, zoneId = existing?.zoneId,
+                        quietHoursBehavior = existing?.quietHoursBehavior, snoozeDefaultMinutes = existing?.snoozeDefaultMinutes,
+                    ).also(::validatePolicy)
+                    writePolicy(next)
+                    changed += "reminders"
+                    log(cmd.taskId, now, EventType.POLICY_EDITED, "Reminders: ${PolicyDescriber.describe(next, zone)}", mapOf("kind" to next.kind.name, "source" to cmd.source))
+                }
+                // A status change invalidates in-flight alarms; a policy write already bumped it.
+                if (cmd.markWaiting && cmd.policy == null) bumpGeneration(cmd.taskId)
+                log(cmd.taskId, now, EventType.EDITED, "Applied reviewed AI suggestion: ${changed.joinToString()}", mapOf("fields" to changed.joinToString(","), "source" to cmd.source))
+            }
         }
     }
 
@@ -466,6 +587,20 @@ class TaskRepository(
             if (t.isEmpty()) throw ValidationException("Step can't be empty")
             if (t.length > MAX_STEP) throw ValidationException("Step is too long (max $MAX_STEP characters)")
             return t
+        }
+
+        fun validateDeadline(type: DeadlineType, date: LocalDate?, instant: Instant?) {
+            when (type) {
+                DeadlineType.NONE -> Unit
+                DeadlineType.DATE_ONLY -> if (date == null) throw ValidationException("Date-only deadline needs a date")
+                DeadlineType.EXACT -> if (instant == null) throw ValidationException("Exact deadline needs a time")
+            }
+        }
+
+        fun describeDeadline(type: DeadlineType, date: LocalDate?, instant: Instant?, zone: ZoneId): String = when (type) {
+            DeadlineType.NONE -> "none"
+            DeadlineType.DATE_ONLY -> date.toString()
+            DeadlineType.EXACT -> instant!!.atZone(zone).toLocalDateTime().toString()
         }
 
         fun validatePolicy(p: ReminderPolicy) {

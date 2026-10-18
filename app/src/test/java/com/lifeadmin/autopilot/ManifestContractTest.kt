@@ -10,8 +10,8 @@ import javax.xml.parsers.DocumentBuilderFactory
 
 /**
  * Verifies security/permission properties of the source manifest (SPEC §5.4, §8):
- * no network or sensitive permissions, no USE_EXACT_ALARM, non-exported internal receivers,
- * backups disabled.
+ * network only for optional AI planning (TLS-only config), no sensitive permissions, no
+ * USE_EXACT_ALARM, non-exported internal receivers, backups disabled.
  */
 class ManifestContractTest {
     private val ns = "http://schemas.android.com/apk/res/android"
@@ -26,10 +26,14 @@ class ManifestContractTest {
         val removed = elements("uses-permission").filter { it.getAttributeNS("http://schemas.android.com/tools", "node") == "remove" }.map { it.attr("name") }
         assertEquals(listOf("android.permission.FOREGROUND_SERVICE"), removed)
         assertEquals(
-            setOf("android.permission.POST_NOTIFICATIONS", "android.permission.RECEIVE_BOOT_COMPLETED", "android.permission.SCHEDULE_EXACT_ALARM"),
+            setOf(
+                "android.permission.POST_NOTIFICATIONS", "android.permission.RECEIVE_BOOT_COMPLETED", "android.permission.SCHEDULE_EXACT_ALARM",
+                // M2: only for optional, user-triggered AI planning requests.
+                "android.permission.INTERNET", "android.permission.ACCESS_NETWORK_STATE",
+            ),
             permissions,
         )
-        listOf("INTERNET", "USE_EXACT_ALARM", "READ_CONTACTS", "ACCESS_FINE_LOCATION", "RECORD_AUDIO", "READ_SMS", "READ_CALENDAR", "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", "USE_FULL_SCREEN_INTENT")
+        listOf("USE_EXACT_ALARM", "READ_CONTACTS", "ACCESS_FINE_LOCATION", "RECORD_AUDIO", "READ_SMS", "READ_CALENDAR", "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", "USE_FULL_SCREEN_INTENT")
             .forEach { p -> assertFalse(p, permissions.any { it.endsWith(".$p") }) }
     }
 
@@ -60,5 +64,14 @@ class ManifestContractTest {
     @Test fun noServicesOrProvidersAreDeclaredByTheApp() {
         assertTrue(elements("service").isEmpty())
         assertTrue(elements("provider").isEmpty())
+    }
+
+    @Test fun networkIsTlsOnlyWithSystemCertificates() {
+        val app = elements("application").single()
+        assertEquals("@xml/network_security_config", app.attr("networkSecurityConfig"))
+        val cfg = File("src/main/res/xml/network_security_config.xml").readText()
+        assertTrue(cfg.contains("cleartextTrafficPermitted=\"false\""))
+        assertTrue(cfg.contains("<certificates src=\"system\" />"))
+        assertFalse(cfg.contains("src=\"user\""))
     }
 }
