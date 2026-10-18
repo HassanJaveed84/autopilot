@@ -12,6 +12,8 @@ import com.lifeadmin.autopilot.domain.model.TaskStatus
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.After
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -28,6 +30,18 @@ class InstrumentedReminderTest {
 
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
     private val container = context.appContainer
+    private var savedQuietHours: com.lifeadmin.autopilot.domain.model.QuietHours? = null
+
+    // CI runs at any hour (emulator clock is UTC); inside quiet hours the engine correctly defers
+    // the reminder to the window's end, which this 3-minute wiring test can't wait for.
+    @Before fun disableQuietHours() = runBlocking {
+        container.settingsRepository.update { s -> savedQuietHours = s.quietHours; s.copy(quietHours = s.quietHours.copy(enabled = false)) }
+    }
+
+    @After fun restoreQuietHours() = runBlocking {
+        savedQuietHours?.let { q -> container.settingsRepository.update { it.copy(quietHours = q) } }
+        Unit
+    }
 
     @Test fun oneTimeReminderPostsNotificationThenDoneClearsIt() {
         val title = "Instrumented reminder ${System.nanoTime()}"
