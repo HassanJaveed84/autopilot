@@ -9,6 +9,17 @@ You are the lead engineer responsible for implementing the native Android **Life
 3. Make reasonable, documented choices if implementation details are unspecified; do not fabricate permission grants, credentials, functionality or test results.
 4. Do not work on M2/M3/M4 (hosted AI, agents, external accounts, household sync) tonight. Leave extension points but build a usable **AI-free MVP**.
 
+## Status update (M2)
+
+M2 (optional AI capture and follow-through planning, bring-your-own Anthropic key) was implemented
+later at the user's explicit request; see `docs/M2_AI_CAPTURE_REPORT.md`. Keep its guardrails:
+- AI stays opt-in, user-triggered and review-before-write.
+- Only `ai/anthropic` may import the Anthropic SDK.
+- Never commit, log or export an API key.
+- Core tasks and reminders must keep working offline.
+
+M3/M4 (agents, external accounts, sync) remain out of scope until requested.
+
 ## Scope — required stack
 
 - Kotlin, Jetpack Compose, Material 3, Room/SQLite, DataStore, coroutines/StateFlow, AndroidX Navigation or an equivalent maintainable navigation architecture.

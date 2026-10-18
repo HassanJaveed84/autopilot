@@ -5,16 +5,19 @@ Single `:app` module, package `com.lifeadmin.autopilot`, minSdk 26 / target 36.
 ```
 LifeAdminApp ──creates──> AppContainer (manual DI)
                             ├─ AppClock, ZoneProvider, IdGenerator        (core: injectable seams)
-                            ├─ AppDatabase (Room, schema v2)              (data/local)
+                            ├─ AppDatabase (Room, schema v3)              (data/local)
                             ├─ SettingsRepository (DataStore)             (data/repository)
                             ├─ AlarmDriver → AndroidAlarmDriver           (reminders)
                             ├─ NotificationPublisher → AndroidNotificationPublisher (notifications)
                             ├─ ReminderEngine  (implements ScheduleCoordinator)
                             ├─ TaskRepository  (all task mutations go through the coordinator)
                             ├─ TaskActions, BackupRepository, Diagnostics
+                            ├─ ApiKeyStore → EncryptedApiKeyStore (Keystore)  (ai/security, M2)
+                            ├─ TaskPlanningProvider → AnthropicTaskPlanningProvider (ai/anthropic, M2)
+                            ├─ AiPlanningService (gates, caps, context, validation; never writes)
 UI (Compose, Material 3) ── ViewModels (StateFlow) ── repositories
 Receivers (alarm / notification action / system) ── engine & repository
-ReconcileWorker (WorkManager, 6 h) ── engine.reconcileAll + ledger prune
+ReconcileWorker (WorkManager, 1 h) ── engine.reconcileAll + ledger prune
 ```
 
 ## Packages
@@ -25,12 +28,16 @@ ReconcileWorker (WorkManager, 6 h) ── engine.reconcileAll + ledger prune
 | `domain/model` | Pure Kotlin models and enums (Task, TaskStep, ReminderPolicy, ReminderOccurrence, TaskEvent, AppSettings). |
 | `domain/scheduling` | Pure time math: `LocalTimeResolver` (DST), `QuietHoursCalculator`, `PolicySlotGenerator`, `ReminderPlanner`, `SnoozeCalculator`, presets, describer. No Android imports. |
 | `domain/usecase` | `TaskStateMachine`, `ScheduleCoordinator` interface, `TaskActions` (snooze defaults, previews, quick capture, example task). |
-| `data/local` | Room entities, DAOs, converters, mappers, `Migrations` (1→2). Schemas exported to `app/schemas/`. |
+| `data/local` | Room entities, DAOs, converters, mappers, `Migrations` (1→2→3). Schemas exported to `app/schemas/`. |
 | `data/repository` | `TaskRepository` (transactions + events + validation), `SettingsRepository` (DataStore + in-memory), `BackupRepository` (JSON). |
 | `reminders` | `ReminderEngine`, `AlarmDriver` + Android impl, `IntentContract`, `ReconcileWorker`, `Diagnostics`. |
 | `notifications` | `NotificationPublisher` + Android impl (channels, actions, deep links). |
 | `receivers` | `ReminderAlarmReceiver`, `NotificationActionReceiver`, `SystemEventReceiver`. |
 | `ui` | Root/navigation, Today, Inbox, Tasks, Task detail (+dialogs, policy editor), Capture sheet, Settings, Health panel, theme, shared components. |
+| `ai` | M2, optional: provider-neutral `TaskPlanningProvider` / `PlanningRequest` / `RawPlan` / `PlanningError`, `PlanSchema`, `PlanningPrompt`, `PhraseResolver`, `ProposalValidator`, `ProposalDraft`, `ProposalMapper`, `AiPlanningService`. |
+| `ai/anthropic` | The **only** package that imports `com.anthropic.*` (enforced by `ArchitectureBoundaryTest`). |
+| `ai/security` | `ApiKeyStore`: Keystore AES-GCM encrypted BYOK key, app-private, excluded from backup/export. |
+| `ui/plan`, `ui/ai` | Plan with AI / Move this forward (input → review → approve) and AI settings. |
 | `di` | `AppContainer`. |
 
 ## Key decisions (and why)
@@ -53,10 +60,21 @@ ReconcileWorker (WorkManager, 6 h) ── engine.reconcileAll + ledger prune
 - **Privacy**: `allowBackup=false` + data-extraction rules exclude everything; logs contain only
   exception class names; diagnostics contain counts only; event metadata is allowlisted.
 
+## M2: optional AI planning (implemented)
+
+- **Planning is advisory.** The model returns a draft (`RawPlan`) that `ProposalValidator` turns
+  into an editable `ProposalDraft`. Nothing is written until the user approves; approval maps the
+  draft to plain domain commands (`PlannedTaskCommand`, `TaskEditCommand`) that `TaskRepository`
+  applies in **one** `mutateTask` + Room transaction, so the existing engine schedules alarms once.
+- **Idempotency without a migration.** A new task's id *is* the proposal id; an edit records
+  its proposal id in the activity-log metadata. Repeated approval creates nothing new.
+- **Provider boundary.** Core task/reminder code never imports `ai`; only `ai/anthropic` imports
+  the Anthropic SDK. An on-device or proxy provider implements `TaskPlanningProvider`.
+- **BYOK for this personal build** (the M2 brief's explicit choice; SPEC §7.1 allows it for
+  personal experiments): a public release would need an authenticated server-side proxy.
+- See `docs/M2_AI_CAPTURE_REPORT.md` for details, tests and device steps.
+
 ## Extension points for later milestones (not implemented)
 
-- M2 AI suggestions: would produce a *draft* `NewTask` + `ReminderPolicy` for the existing
-  editors; persistence would still go through `TaskRepository` (validation, events) and the engine.
-  `AppSettings.aiEnabled` exists and is always false.
-- M3 agents / M4 sync: `TaskEvent` already gives an audit trail; ids are UUID strings suitable for
-  merge; no network code exists today.
+- M3 agents (research, email/calendar) would reuse the proposal → review → command pattern with
+  per-capability permissions; nothing in M2 performs external actions.

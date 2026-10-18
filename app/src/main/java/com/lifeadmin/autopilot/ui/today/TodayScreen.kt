@@ -156,7 +156,7 @@ private fun OnboardingCard(onExample: () -> Unit, onDismiss: () -> Unit) {
             Text("Welcome", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(6.dp))
             Text(
-                "Everything stays on this phone — no account, no cloud, no AI. Capture a task, choose when to be reminded, " +
+                "Everything stays on this phone — no account, no cloud. AI planning is optional and off unless you set it up. Capture a task, choose when to be reminded, " +
                     "and the app keeps following up until you mark it done. Dismissing a notification never completes a task.",
                 style = MaterialTheme.typography.bodyMedium,
             )

@@ -87,3 +87,28 @@ connectedDebugAndroidTest` (3 instrumented tests, CI emulator API 33), `./gradle
 | Diagnostics export has no task content; retention | `DiagnosticsLifecycleTest.exportContainsTimingButNoTaskContent`, `pruningKeepsTheNewestRows` | ✅ |
 | Schema v2→v3 migration | `MigrationTest.migrateV2ToV3AddsDiagnosticsAndKeepsData` | ✅ |
 | Physical Samsung device: actual sound/vibration/timing | `docs/REMINDER_RELIABILITY_REPORT.md` §6 | 📱 not performed |
+
+## M2 — optional AI capture and planning (2026-10-18)
+
+All provider tests use fakes or a local MockWebServer. **No test calls the live Anthropic API.**
+
+| Requirement | Test(s) | Status |
+|---|---|---|
+| 20+ realistic requests, expected shapes, date/recurrence/ambiguity handling | `NaturalLanguageScenarioTest` (24 scenarios + 2: train ride, tomorrow at 8, 9 AM/6 PM, every weekday, next Friday, in 2 hours, next weekend, sometime soon, before my trip, when they reply, monthly, every 3 days, simple task, ISO deadline, injection, quiet hours, ambiguous hour, early enough, impossible date/time, overlong checklist, single weekday, past deadline, waiting check-in, hourly) | ✅ |
+| Validation: missing fields, impossible dates, invalid time, duplicates, overlong checklist, unsupported schedules | `ProposalValidatorTest`, `NaturalLanguageScenarioTest` #4, #11, #19, #20, #21, #24 | ✅ |
+| Review / edit / approve / reject / cancel; user text preserved | `PlanViewModelTest`, `PlanScreenUiTest` | ✅ |
+| No DB writes or alarm scheduling before confirmation | `AiPlanApprovalTest.proposingWritesNothingAndSchedulesNothing`, `providerErrorsAreSurfacedAndNothingIsWritten`, `PlanScreenUiTest.trainRideReview…` | ✅ |
+| Approval creates a real task, steps and the expected reminder policy (+ real alarm) | `AiPlanApprovalTest.approvalCreatesARealTaskWithStepsAndBothDailyReminders`, `theCreatedTaskKeepsRemindingUntilDone`, `PlanScreenUiTest` | ✅ |
+| Repeated approvals / retries cannot duplicate tasks or alarms | `AiPlanApprovalTest.repeatedApprovalIsIdempotent`, `concurrentApprovalsCreateOneTaskAndOneAlarm`, `followThrough…AppliesTheConfirmedDiffOnce`, `PlanViewModelTest.doubleTapApproveCreatesOneTask` | ✅ |
+| Edit of an existing task shows a diff and needs confirmation; stale edits rejected | `AiPlanApprovalTest.followThrough…`, `staleSuggestionIsRejectedIfTheUserEditedTheTaskMeanwhile`, `PlanScreen` confirm dialog | ✅ |
+| Online errors: 401, 429, 5xx, timeout, refusal, malformed, no network, cancel | `AnthropicProviderHttpTest` (20 tests) | ✅ |
+| AI disabled / unconfigured / offline: no call; offline workflows intact | `AiPlanApprovalTest.disabledAiMakesNoCall…`, `missingConsentOrKeyMakesNoCall`, `offlineMakesNoCall`, `manualCaptureStillWorksWithAiOffOrOffline`, `PlanScreenUiTest.withoutAi…`, the full M1 suite | ✅ |
+| Spend caps: input length, output tokens, daily requests, no SDK retries | `AiPlanApprovalTest.overlongInputIsRejectedLocallyNotTruncated`, `dailyRequestCapBoundsSpendAndResetsNextDay`, `AnthropicProviderHttpTest.http429…NotRetriedSilently` | ✅ |
+| API key never in export, diagnostics, settings, errors or VCS; encrypted at rest | `ApiKeySecurityTest` (incl. repository secret scan), `AnthropicProviderHttpTest.errorMessagesNeverContainTheKey`, `KeystoreApiKeyStoreTest` (real Keystore) | ✅ / 🟦 (instrumented, CI) |
+| Consent before first use; key save/replace/test/delete; delete AI settings | `AiSettingsUiTest`, `AiPlanApprovalTest.deletingAiDataRemovesKeyConsentAndSettingsButNotTasks` | ✅ |
+| Process recreation / rotation | `PlanViewModelTest.processDeathDuringRequestRestoresTextAndExplains`, `reviewSurvivesRecreationWithEdits` | ✅ |
+| Provider boundary (only `ai/anthropic` imports the SDK) | `ArchitectureBoundaryTest` | ✅ |
+| Deterministic stall hints (no AI, no background calls) | `StallDetectorTest` | ✅ |
+| Network config: TLS only, system CAs | `ManifestContractTest.networkIsTlsOnlyWithSystemCertificates` | ✅ |
+| Regression: scheduler, snooze, quiet hours, notifications, diagnostics | the full pre-M2 suite (186 tests) | ✅ |
+| Live Anthropic API with a real key; device install | `docs/M2_AI_CAPTURE_REPORT.md` § device steps | 📱 not performed |

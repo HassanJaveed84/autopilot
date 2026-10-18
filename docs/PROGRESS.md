@@ -216,3 +216,36 @@ Validation (this container, no device):
 Not done / blockers:
 - Physical-device verification: needs your phone. See section 6 of the reliability report.
 - Draft PR: the remote has no `main` / default branch to target.
+
+## M2 — optional AI capture and planning (2026-10-18) ✅ (automated verification only)
+
+Completed (details: `docs/M2_AI_CAPTURE_REPORT.md`):
+- **M2A — Plan with AI.**
+  - Opt-in action from Capture.
+  - Editable review with provenance labels, original text, notices, assumptions and questions.
+  - Cancel, retry and save-without-AI; text and draft survive rotation and process death.
+  - Approval in one transaction, idempotent by proposal id.
+- **M2B — Provider boundary.**
+  - `TaskPlanningProvider`, with an Anthropic adapter on the official Java SDK: structured
+    outputs, stop-reason checks, typed error mapping, timeouts, cancellation, no silent retries.
+  - BYOK key in an Android Keystore-encrypted store, excluded from backup and export.
+  - AI settings: consent, billing note, test, replace, delete, model choice, daily cap, delete-all.
+  - TLS-only network config.
+- **M2C — Follow-through.**
+  - "Help me move this forward" for one task, shown as a confirmed diff that applies at most once
+    and rejects stale edits.
+  - Deterministic stall hints, with no AI or background calls.
+- Bugs found and fixed by the new tests:
+  - edit-apply idempotency;
+  - double navigation after *Save without AI*;
+  - an R8 missing-class error from the SDK's OpenTelemetry dependency.
+
+Validation (this container, no device, no live API):
+- Command: `ANDROID_HOME=/opt/android-sdk ./gradlew lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest`
+- Result: BUILD SUCCESSFUL; lint **No issues found**; **293 tests, 0 failures** (107 new).
+- Debug APK about 28 MB, release about 3.5 MB.
+
+Not done / blockers:
+- Live Anthropic API test: needs your key on the phone (report § device steps 2–3).
+- Physical-device verification.
+- Draft PR: the remote still has no `main` branch to target.

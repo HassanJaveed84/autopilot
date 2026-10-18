@@ -4,11 +4,13 @@ An offline-first Android follow-through assistant. Capture a commitment in secon
 to be reminded, and the app keeps following up — for example **“Book train ride” at 09:00 and 18:00
 every day** — until you explicitly mark it Done. Dismissing a notification never completes a task.
 
-No account, no backend, no cloud sync, no analytics, no network permission, no AI (AI is planned
-as an opt-in milestone and is shown as “Off” in Settings).
+No account, no backend, no cloud sync, no analytics. Tasks and reminders work fully offline.
+**Optional AI planning** (M2, off by default) can turn a sentence into a reviewed task using your
+own Anthropic API key; the network is used only when you tap a button that asks for it.
 
-> Status: MVP milestones M0–M1C implemented and verified with JVM/Robolectric tests and lint.
-> **Not yet verified on a physical device** — see `docs/OVERNIGHT_REPORT.md` for the device checklist.
+> Status: M0–M1C (offline MVP) and M2 (optional AI capture/planning) implemented and verified with
+> JVM/Robolectric tests, lint and CI emulator tests. M2 has **not** been tested against the live
+> Anthropic API or on a physical device yet — see `docs/M2_AI_CAPTURE_REPORT.md`.
 
 ## Features
 
@@ -40,6 +42,15 @@ as an opt-in milestone and is shown as “Off” in Settings).
   lateness); copy/share of privacy-safe diagnostics.
 - **Backup**: plaintext JSON export/import through the system file picker, validated, merged by
   id, all-or-nothing.
+- **Plan with AI** (optional): from Capture, type or dictate e.g. “book the train ride for my
+  daughter, find parking and tickets, remind me at 9 and 6 every day until done”. Claude drafts
+  a title, notes, up to 6 steps, a next step, deadline and reminders. You review and edit
+  everything before saving. Suggested dates are labelled and not set unless you turn them on.
+  Unsupported schedules (e.g. “every weekday”) are shown with a supported alternative, never
+  silently converted.
+- **Help me move this forward** (optional, on a task): a suggested next step or missing steps,
+  shown as a diff you confirm. Separately, a local, AI-free hint appears when a task is snoozed
+  repeatedly or stalls (“add a smaller step”, “move the date”, “mark waiting”, “pause”).
 
 ## Build
 
@@ -77,10 +88,26 @@ your own keystore (never commit it) and configure a release `signingConfig`.
 | `POST_NOTIFICATIONS` (Android 13+) | Show reminders. Requested the first time you turn on a reminder; if denied, tasks still work and the app shows a warning instead of pretending reminders were delivered. |
 | `RECEIVE_BOOT_COMPLETED` | Android clears alarms on reboot; the app rebuilds them from its database. |
 | `SCHEDULE_EXACT_ALARM` | Only used if you enable **Precise timing** and grant “Alarms & reminders” access. Otherwise reminders are best-effort. `USE_EXACT_ALARM` is intentionally not used. |
+| `INTERNET`, `ACCESS_NETWORK_STATE` | Only for optional AI planning requests to `api.anthropic.com`, started by you. TLS only, system CAs only. Nothing runs in the background. |
 
-No internet, contacts, location, microphone, SMS, calendar or battery-exemption permissions.
+No contacts, location, microphone, SMS, calendar or battery-exemption permissions.
 (`WAKE_LOCK` / `ACCESS_NETWORK_STATE` are merged in by WorkManager and do not grant network access;
 WorkManager's `FOREGROUND_SERVICE` is explicitly removed.)
+
+## Optional AI planning (bring your own key)
+
+1. Create an API key at [console.anthropic.com](https://console.anthropic.com) (API usage is billed
+   to that Console account; a Claude app or Claude Code subscription does **not** cover it).
+2. In the app: Settings → AI planning settings → turn on **Use AI planning**. Read and accept the
+   privacy note: only the text you submit, the date/time/zone and your reminder settings are sent.
+3. Paste the key, tap **Save key**, then **Test connection** (a free models-endpoint check).
+4. Capture → **Plan with AI…**, or on a task → **Help me move this forward**.
+
+The key is encrypted with an Android Keystore key, stored only in app-private storage, excluded
+from backups and Export, and never logged. This is a personal-use compromise; a public app would
+use a server-side proxy instead. Default model: Claude Haiku 5.5 (cheapest). Sonnet 5.5 and
+Opus 5.5 are selectable. Limits: 2,000 characters per request, 6,000 output tokens, 60 requests
+per day, no automatic retries. **Delete AI settings** removes the key and all AI settings.
 
 ## Limitations (honest)
 
@@ -109,4 +136,5 @@ WorkManager's `FOREGROUND_SERVICE` is explicitly removed.)
 ## Docs
 
 `docs/SPEC.md` (product/technical spec), `docs/ARCHITECTURE.md`, `docs/REMINDER_ENGINE.md`,
-`docs/TEST_MATRIX.md`, `docs/PROGRESS.md`, `docs/OVERNIGHT_REPORT.md`.
+`docs/TEST_MATRIX.md`, `docs/PROGRESS.md`, `docs/OVERNIGHT_REPORT.md`,
+`docs/REMINDER_RELIABILITY_REPORT.md`, `docs/M2_AI_CAPTURE_REPORT.md`.
