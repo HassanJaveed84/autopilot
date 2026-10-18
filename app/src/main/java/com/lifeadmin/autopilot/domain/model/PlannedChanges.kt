@@ -40,6 +40,8 @@ data class PlannedTaskCommand(
 /** Selected changes to an existing task. Null = leave unchanged. */
 data class TaskEditCommand(
     val taskId: String,
+    /** Idempotency key: a suggestion is applied at most once per task. */
+    val proposalId: String,
     /** Rejects the edit if the task changed after the suggestion was produced. */
     val expectedUpdatedAt: Instant?,
     val title: String? = null,

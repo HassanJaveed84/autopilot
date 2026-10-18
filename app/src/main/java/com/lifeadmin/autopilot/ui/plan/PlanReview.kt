@@ -62,8 +62,9 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-private val dayFmt = DateTimeFormatter.ofPattern("EEE d MMM yyyy", Locale.getDefault())
-private val dayTimeFmt = DateTimeFormatter.ofPattern("EEE d MMM, HH:mm", Locale.getDefault())
+// Built per use so they follow a locale change while the app runs.
+private val dayFmt: DateTimeFormatter get() = DateTimeFormatter.ofPattern("EEE d MMM yyyy", Locale.getDefault())
+private val dayTimeFmt: DateTimeFormatter get() = DateTimeFormatter.ofPattern("EEE d MMM, HH:mm", Locale.getDefault())
 private val hhmm = DateTimeFormatter.ofPattern("HH:mm")
 
 /** All review sections, as LazyColumn items. Edits go through [update]; nothing is saved here. */
@@ -310,7 +311,7 @@ private fun ReminderCard(draft: ProposalDraft, current: TaskDetails?, isEdit: Bo
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer,
                     )
                     OutlinedButton(
-                        onClick = { setReminder { it.copy(kind = u.alternativeKind, times = u.alternativeTimes, dayInterval = u.alternativeInterval, apply = true, provenance = Provenance.EXPLICIT) } },
+                        onClick = { setReminder { it.copy(kind = u.alternativeKind, times = u.alternativeTimes, dayInterval = u.alternativeInterval, startDate = u.alternativeStartDate ?: it.startDate, apply = true, provenance = Provenance.EXPLICIT) } },
                         modifier = Modifier.padding(top = 6.dp).testTag("review_use_alternative"),
                     ) { Text("Use “${u.alternativeLabel}” instead") }
                 }

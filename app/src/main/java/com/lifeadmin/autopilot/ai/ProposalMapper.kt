@@ -49,6 +49,7 @@ object ProposalMapper {
         if (checkIn != null && !checkIn.isAfter(now)) throw ValidationException("The check-in time is in the past")
         return TaskEditCommand(
             taskId = taskId,
+            proposalId = draft.proposalId,
             expectedUpdatedAt = draft.targetUpdatedAtMillis?.let(Instant::ofEpochMilli),
             title = draft.title.trim().takeIf { draft.applyTitle }?.also {
                 if (it.isEmpty()) throw ValidationException("Title can't be empty")

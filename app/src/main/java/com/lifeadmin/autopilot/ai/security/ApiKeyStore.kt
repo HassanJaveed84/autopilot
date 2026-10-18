@@ -4,6 +4,7 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import androidx.core.content.edit
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -105,11 +106,12 @@ class EncryptedApiKeyStore(
     override fun save(key: String) {
         val clean = ApiKeyStore.normalize(key) ?: throw IllegalArgumentException("That doesn't look like an API key")
         val blob = cipher.encrypt(clean.toByteArray(Charsets.UTF_8))
-        prefs.edit().putString(BLOB, Base64.encodeToString(blob, Base64.NO_WRAP)).apply()
+        // Synchronous commit: the key is either fully stored or not at all.
+        prefs.edit(commit = true) { putString(BLOB, Base64.encodeToString(blob, Base64.NO_WRAP)) }
     }
 
     override fun delete() {
-        prefs.edit().clear().apply()
+        prefs.edit(commit = true) { clear() }
         cipher.destroyKey()
     }
 

@@ -1,6 +1,7 @@
 package com.lifeadmin.autopilot.domain.usecase
 
 import android.content.Context
+import androidx.core.content.edit
 import com.lifeadmin.autopilot.data.repository.TaskDetails
 import com.lifeadmin.autopilot.domain.model.DeadlineType
 import com.lifeadmin.autopilot.domain.model.EventType
@@ -89,7 +90,7 @@ interface HintDismissals {
 class SharedPrefsHintDismissals(context: Context) : HintDismissals {
     private val prefs = context.getSharedPreferences("stall_hints", Context.MODE_PRIVATE)
     override fun isDismissed(taskId: String, signature: String) = prefs.getString(taskId, null) == signature
-    override fun dismiss(taskId: String, signature: String) { prefs.edit().putString(taskId, signature).apply() }
+    override fun dismiss(taskId: String, signature: String) = prefs.edit { putString(taskId, signature) }
 }
 
 class InMemoryHintDismissals : HintDismissals {

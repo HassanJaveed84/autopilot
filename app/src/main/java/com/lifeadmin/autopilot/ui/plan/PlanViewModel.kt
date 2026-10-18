@@ -189,13 +189,13 @@ class PlanViewModel(
     }
 
     /** "Save without AI": the normal offline capture path, never blocked by AI state. */
-    fun saveWithoutAi(onSaved: (String) -> Unit) = viewModelScope.launch {
+    fun saveWithoutAi() = viewModelScope.launch {
         val text = _state.value.text.trim()
         if (text.isEmpty()) return@launch
         val title = text.lineSequence().first().take(300)
         val notes = text.takeIf { it.length > title.length }
         runCatching { actions.quickCapture(title, withReminder = false, notes = notes) }
-            .onSuccess { id -> handle[KEY_SAVED] = id; setPhase(PlanPhase.SAVED); _state.update { it.copy(savedTaskId = id) }; onSaved(id) }
+            .onSuccess { id -> handle[KEY_SAVED] = id; setPhase(PlanPhase.SAVED); _state.update { it.copy(savedTaskId = id) } }
             .onFailure { e -> _state.update { it.copy(saveError = e.userMessage()) } }
     }
 

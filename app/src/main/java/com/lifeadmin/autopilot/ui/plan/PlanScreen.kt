@@ -91,7 +91,7 @@ fun PlanScreen(
                             val ready = s.availability is AiAvailability.Ready
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 if (!isEdit) OutlinedButton(
-                                    onClick = { viewModel.saveWithoutAi(onOpenTask) }, enabled = s.text.isNotBlank(),
+                                    onClick = viewModel::saveWithoutAi, enabled = s.text.isNotBlank(),
                                     modifier = Modifier.weight(1f).testTag("plan_save_without_ai"),
                                 ) { Text("Save without AI") }
                                 Button(

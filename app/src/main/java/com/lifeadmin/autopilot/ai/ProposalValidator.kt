@@ -162,10 +162,17 @@ object ProposalValidator {
             PhraseResolver.Kind.VAGUE -> if (provenance == Provenance.EXPLICIT) provenance = Provenance.INFERRED
             PhraseResolver.Kind.PRECISE -> {
                 val computed = resolution.date!!
-                if (date != null && date != computed) {
-                    notices += Notice(NoticeLevel.INFO, "Adjusted the deadline: “$phrase” is ${computed.format(dayLabel)}.")
+                val alt = resolution.alternative
+                if (alt != null) {
+                    // Keep whichever of the two readings the model chose; tell the user both.
+                    if (date != alt) date = computed
+                    notices += Notice(NoticeLevel.INFO, "“$phrase” could mean ${computed.format(dayLabel)} or ${alt.format(dayLabel)}; ${date!!.format(dayLabel)} is selected — check it.")
+                } else {
+                    if (date != null && date != computed) {
+                        notices += Notice(NoticeLevel.INFO, "Adjusted the deadline: “$phrase” is ${computed.format(dayLabel)}.")
+                    }
+                    date = computed
                 }
-                date = computed
                 if (provenance == Provenance.UNKNOWN) provenance = Provenance.INFERRED
             }
             PhraseResolver.Kind.UNKNOWN -> Unit
@@ -242,7 +249,15 @@ object ProposalValidator {
             }
             "weekly_days" -> {
                 val days = raw.weekdays.mapNotNull(::weekday).toSet()
-                if (days.size == 7) recurring(DraftReminderKind.DAILY, 1) else unsupported(describeWeekdays(days, phrase), localTimes, provenance, phrase, notices)
+                when {
+                    days.size == 7 -> recurring(DraftReminderKind.DAILY, 1)
+                    // One weekday is exactly "every 7 days from the next such day" — offered, not applied.
+                    days.size == 1 -> unsupported(
+                        describeWeekdays(days, phrase), localTimes, provenance, phrase, notices,
+                        weeklyStart = now.toLocalDate().with(java.time.temporal.TemporalAdjusters.next(days.single())),
+                    )
+                    else -> unsupported(describeWeekdays(days, phrase), localTimes, provenance, phrase, notices)
+                }
             }
             "unsupported" -> unsupported(phrase.ifEmpty { "that schedule" }, localTimes, provenance, phrase, notices)
             else -> DraftReminder(provenance = Provenance.UNKNOWN, requestedPhrase = phrase)
@@ -291,16 +306,25 @@ object ProposalValidator {
         return DraftReminder(kind = DraftReminderKind.ONCE, onceAt = at.withSecond(0).withNano(0).toString(), provenance = provenance, requestedPhrase = phrase, apply = provenance == Provenance.EXPLICIT)
     }
 
-    private fun unsupported(description: String, times: List<LocalTime>, provenance: Provenance, phrase: String, notices: MutableList<Notice>): DraftReminder {
+    private fun unsupported(
+        description: String,
+        times: List<LocalTime>,
+        provenance: Provenance,
+        phrase: String,
+        notices: MutableList<Notice>,
+        weeklyStart: LocalDate? = null,
+    ): DraftReminder {
         val altTimes = times.ifEmpty { listOf(LocalTime.of(9, 0)) }.map { it.format(hhmm) }
-        val label = "Every day at ${altTimes.joinToString(" and ")}"
+        val label = if (weeklyStart != null) "Every 7 days at ${altTimes.joinToString(" and ")}, starting ${weeklyStart.format(dayLabel)}"
+        else "Every day at ${altTimes.joinToString(" and ")}"
         notices += Notice(NoticeLevel.WARNING, "Reminders “$description” aren't supported yet. Supported: once, every day at set times, or every N days. You can choose “$label” instead.")
         return DraftReminder(
             kind = DraftReminderKind.OFF,
             provenance = provenance,
             requestedPhrase = phrase,
             apply = false,
-            unsupported = UnsupportedSchedule(description, DraftReminderKind.DAILY, altTimes, 1, label),
+            unsupported = if (weeklyStart != null) UnsupportedSchedule(description, DraftReminderKind.EVERY_N_DAYS, altTimes, 7, label, weeklyStart.toString())
+            else UnsupportedSchedule(description, DraftReminderKind.DAILY, altTimes, 1, label),
         )
     }
 

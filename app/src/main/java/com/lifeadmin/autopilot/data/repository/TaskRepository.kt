@@ -245,6 +245,9 @@ class TaskRepository(
                     throw ValidationException("This task changed after the suggestion was made. Ask again for a fresh suggestion.")
                 }
                 if (t.status.isTerminal) throw ValidationException("Reopen the task before applying suggestions")
+                if (eventDao.getForTask(cmd.taskId).any { it.toDomain().metadata[PROPOSAL_KEY] == cmd.proposalId }) {
+                    throw ValidationException("This suggestion has already been applied.")
+                }
                 val now = clock.now()
                 val changed = mutableListOf<String>()
                 var updated = t
@@ -287,7 +290,10 @@ class TaskRepository(
                 }
                 // A status change invalidates in-flight alarms; a policy write already bumped it.
                 if (cmd.markWaiting && cmd.policy == null) bumpGeneration(cmd.taskId)
-                log(cmd.taskId, now, EventType.EDITED, "Applied reviewed AI suggestion: ${changed.joinToString()}", mapOf("fields" to changed.joinToString(","), "source" to cmd.source))
+                log(
+                    cmd.taskId, now, EventType.EDITED, "Applied reviewed AI suggestion: ${changed.joinToString()}",
+                    mapOf("fields" to changed.joinToString(","), "source" to cmd.source, PROPOSAL_KEY to cmd.proposalId),
+                )
             }
         }
     }
@@ -561,6 +567,7 @@ class TaskRepository(
     }
 
     companion object {
+        private const val PROPOSAL_KEY = "proposalId"
         const val MAX_TITLE = 300
         const val MAX_NOTES = 10_000
         const val MAX_STEP = 300

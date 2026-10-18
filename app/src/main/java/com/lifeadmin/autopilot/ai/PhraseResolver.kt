@@ -23,7 +23,8 @@ object PhraseResolver {
         UNKNOWN,
     }
 
-    data class Resolution(val kind: Kind, val date: LocalDate? = null)
+    /** [alternative] is a second plausible reading ("next Friday" said early in the week). */
+    data class Resolution(val kind: Kind, val date: LocalDate? = null, val alternative: LocalDate? = null)
 
     private val weekdays = mapOf(
         "monday" to DayOfWeek.MONDAY, "mon" to DayOfWeek.MONDAY,
@@ -53,24 +54,26 @@ object PhraseResolver {
         val p = phrase.lowercase().trim()
         if (p.isEmpty()) return Resolution(Kind.UNKNOWN)
         if (eventPatterns.any { it.containsMatchIn(p) }) return Resolution(Kind.EVENT)
-        precise(p, today)?.let { return Resolution(Kind.PRECISE, it) }
+        precise(p, today)?.let { return it }
         if (vaguePatterns.any { it.containsMatchIn(p) }) return Resolution(Kind.VAGUE)
         return Resolution(Kind.UNKNOWN)
     }
 
-    private fun precise(p: String, today: LocalDate): LocalDate? {
-        if (Regex("""\bday after tomorrow\b""").containsMatchIn(p)) return today.plusDays(2)
-        if (Regex("""\b(tomorrow|tmrw|tmr)\b""").containsMatchIn(p)) return today.plusDays(1)
-        if (Regex("""\b(today|tonight|this evening|this afternoon|this morning)\b""").containsMatchIn(p)) return today
+    private fun precise(p: String, today: LocalDate): Resolution? {
+        fun on(d: LocalDate) = Resolution(Kind.PRECISE, d)
+        if (Regex("""\bday after tomorrow\b""").containsMatchIn(p)) return on(today.plusDays(2))
+        if (Regex("""\b(tomorrow|tmrw|tmr)\b""").containsMatchIn(p)) return on(today.plusDays(1))
+        if (Regex("""\b(today|tonight|this evening|this afternoon|this morning)\b""").containsMatchIn(p)) return on(today)
         Regex("""\bin\s+(\d{1,3}|one|two|three|four|five|six|seven)\s+(day|days|week|weeks)\b""").find(p)?.let { m ->
             val n = m.groupValues[1].toIntOrNull() ?: words[m.groupValues[1]] ?: return@let
-            return if (m.groupValues[2].startsWith("week")) today.plusWeeks(n.toLong()) else today.plusDays(n.toLong())
+            return on(if (m.groupValues[2].startsWith("week")) today.plusWeeks(n.toLong()) else today.plusDays(n.toLong()))
         }
         Regex("""\b(next|this|coming|on)?\s*(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tues|tue|wed|thurs|thur|thu|fri)\b""").find(p)?.let { m ->
             val day = weekdays.getValue(m.groupValues[2])
-            // "Friday" / "this Friday" / "next Friday" all mean the next Friday strictly after
-            // today (a common reading; the review screen states the resolved date explicitly).
-            return today.with(TemporalAdjusters.next(day))
+            // "Friday" / "this Friday" = the coming Friday (strictly after today). "Next Friday"
+            // is genuinely ambiguous: the coming one or the one a week later. Both are reported.
+            val coming = today.with(TemporalAdjusters.next(day))
+            return Resolution(Kind.PRECISE, coming, alternative = if (m.groupValues[1] == "next") coming.plusWeeks(1) else null)
         }
         return null
     }

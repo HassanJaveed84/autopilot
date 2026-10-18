@@ -50,6 +50,7 @@ data class UnsupportedSchedule(
     val alternativeTimes: List<String>,
     val alternativeInterval: Int = 1,
     val alternativeLabel: String,
+    val alternativeStartDate: String? = null,
 )
 
 @Serializable
