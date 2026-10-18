@@ -104,7 +104,7 @@ All provider tests use fakes or a local MockWebServer. **No test calls the live 
 | Online errors: 401, 429, 5xx, timeout, refusal, malformed, no network, cancel | `AnthropicProviderHttpTest` (20 tests) | ✅ |
 | AI disabled / unconfigured / offline: no call; offline workflows intact | `AiPlanApprovalTest.disabledAiMakesNoCall…`, `missingConsentOrKeyMakesNoCall`, `offlineMakesNoCall`, `manualCaptureStillWorksWithAiOffOrOffline`, `PlanScreenUiTest.withoutAi…`, the full M1 suite | ✅ |
 | Spend caps: input length, output tokens, daily requests, no SDK retries | `AiPlanApprovalTest.overlongInputIsRejectedLocallyNotTruncated`, `dailyRequestCapBoundsSpendAndResetsNextDay`, `AnthropicProviderHttpTest.http429…NotRetriedSilently` | ✅ |
-| API key never in export, diagnostics, settings, errors or VCS; encrypted at rest | `ApiKeySecurityTest` (incl. repository secret scan), `AnthropicProviderHttpTest.errorMessagesNeverContainTheKey`, `KeystoreApiKeyStoreTest` (real Keystore) | ✅ / 🟦 (instrumented, CI) |
+| API key never in export, diagnostics, settings, errors or VCS; encrypted at rest | `ApiKeySecurityTest` (incl. repository secret scan), `AnthropicProviderHttpTest.errorMessagesNeverContainTheKey`, `KeystoreApiKeyStoreTest` (real Keystore) | ✅ / 🟦 (CI run #17, 8/8 instrumented) |
 | Consent before first use; key save/replace/test/delete; delete AI settings | `AiSettingsUiTest`, `AiPlanApprovalTest.deletingAiDataRemovesKeyConsentAndSettingsButNotTasks` | ✅ |
 | Process recreation / rotation | `PlanViewModelTest.processDeathDuringRequestRestoresTextAndExplains`, `reviewSurvivesRecreationWithEdits` | ✅ |
 | Provider boundary (only `ai/anthropic` imports the SDK) | `ArchitectureBoundaryTest` | ✅ |

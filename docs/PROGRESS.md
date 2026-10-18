@@ -244,6 +244,10 @@ Validation (this container, no device, no live API):
 - Command: `ANDROID_HOME=/opt/android-sdk ./gradlew lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest`
 - Result: BUILD SUCCESSFUL; lint **No issues found**; **293 tests, 0 failures** (107 new).
 - Debug APK about 28 MB, release about 3.5 MB.
+- CI run #16 (`e72db3c`): 7/8 instrumented. The old `InstrumentedReminderTest` failed because CI
+  ran inside quiet hours (02:13 UTC).
+- CI run #17 (`ddaec2f`, test fix): build ✅; **8/8 instrumented ✅**, including the real-Keystore
+  `KeystoreApiKeyStoreTest`.
 
 Not done / blockers:
 - Live Anthropic API test: needs your key on the phone (report § device steps 2–3).

@@ -194,6 +194,20 @@ Result:
 | `ManifestContractTest` (updated) | 6 | Permissions incl. INTERNET for AI, TLS-only config |
 | `KeystoreApiKeyStoreTest` (instrumented) | 2 | Real Android Keystore round trip and deletion; runs on the CI emulator only |
 
+### CI (GitHub Actions, emulator API 34 / Android 14)
+
+- **Run #16 (`e72db3c`):**
+  - build job ✅ (lint, 293 unit tests, debug + release APKs);
+  - emulator job ❌ with **7/8** passing, including both `KeystoreApiKeyStoreTest` cases.
+  - The failure was `InstrumentedReminderTest`, which existed before M2. CI ran at 02:13 UTC,
+    inside the default 21:00–08:00 quiet hours, so the engine correctly deferred the reminder to
+    08:00 and the test's 3-minute wait expired.
+  - It was a time-of-day bug in the test, not in the product or M2.
+- **Run #17 (`ddaec2f`):** the test now disables quiet hours and restores them afterwards.
+  - Build job ✅; emulator job ✅ with **8/8 instrumented tests passed**, run at 02:23 UTC.
+  - That time is inside quiet hours, so the fix is confirmed.
+  - Link: https://github.com/HassanJaveed84/autopilot/actions/runs/39089719813
+
 ### Sample inputs → expected outputs (from `NaturalLanguageScenarioTest`, “now” = Wed 14 Oct 2026 10:00 Chicago)
 
 | Input | Model says (fixture) | App shows / saves |
