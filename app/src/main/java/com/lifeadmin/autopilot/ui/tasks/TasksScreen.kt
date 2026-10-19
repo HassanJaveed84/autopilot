@@ -79,6 +79,7 @@ fun TasksScreen(viewModel: TaskListViewModel, snackbar: SnackbarHostState, onOpe
                             selected = state.filter == f,
                             onClick = { viewModel.setFilter(f) },
                             label = { Text("${f.label} ${state.counts[f] ?: 0}") },
+                            modifier = Modifier.testTag("filter_${f.name.lowercase()}"),
                         )
                     }
                 }

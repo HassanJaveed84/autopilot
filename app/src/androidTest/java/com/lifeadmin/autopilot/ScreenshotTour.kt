@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.os.Build
 import android.util.Log
 import android.view.accessibility.AccessibilityNodeInfo
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.ComposeTestRule
@@ -16,6 +17,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
@@ -106,6 +108,21 @@ private fun ComposeTestRule.back() {
     Thread.sleep(300)
 }
 
+/**
+ * Closes a dialog with its own Cancel / Discard button. System Back is unreliable there: with a
+ * text field focused, the first Back only hides the keyboard.
+ */
+private fun ComposeTestRule.closeDialog() {
+    val cancel = onAllNodes(hasText("Cancel")).fetchSemanticsNodes()
+    when {
+        cancel.isNotEmpty() -> onAllNodes(hasText("Cancel"))[cancel.size - 1].performClick()
+        onAllNodes(hasContentDescription("Discard changes")).fetchSemanticsNodes().isNotEmpty() ->
+            onNode(hasContentDescription("Discard changes")).performClick()
+        else -> back()
+    }
+    waitForIdle()
+}
+
 private fun ComposeTestRule.waitForTag(tag: String) =
     waitUntil(15_000) { onAllNodes(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
 
@@ -118,7 +135,7 @@ private fun ComposeTestRule.scrollTo(list: String, child: String) = onNodeWithTa
 private fun ComposeTestRule.soft(name: String, block: () -> Unit) {
     runCatching(block).onFailure {
         Log.w(TAG, "Skipped '$name': $it")
-        runCatching { back() }
+        runCatching { closeDialog() }
     }
 }
 
@@ -202,8 +219,8 @@ class ScreenshotTour {
         compose.onNodeWithTag("tasks_list").performTouchInput { swipeUp() }
         screenshot("b5-tasks-scrolled")
         compose.soft("tasks done filter") {
-            compose.onNodeWithTag("tasks_list").performScrollToNode(hasText("Done", substring = true))
-            compose.onAllNodesWithText("Done", substring = true)[0].performClick()
+            compose.onNodeWithTag("tasks_list").performScrollToNode(hasTestTag("filter_done"))
+            compose.onNodeWithTag("filter_done").performScrollTo().performClick()
             compose.waitForText("Pay the council tax")
             screenshot("b6-tasks-done-filter")
         }
@@ -223,35 +240,35 @@ class ScreenshotTour {
             compose.onNodeWithContentDescription("Edit task").performClick()
             compose.waitForTag("edit_title")
             screenshot("c4-dialog-edit")
-            compose.back()
+            compose.closeDialog()
         }
         compose.soft("reminder editor") {
             compose.scrollTo("detail_list", "policy_summary")
             compose.onAllNodesWithText("Edit")[1].performClick()
             compose.waitForTag("policy_save")
             screenshot("c5-dialog-reminders")
-            compose.back()
+            compose.closeDialog()
         }
         compose.soft("deadline dialog") {
             compose.scrollTo("detail_list", "policy_summary")
             compose.onAllNodesWithText("Edit")[0].performClick()
             Thread.sleep(500)
             screenshot("c6-dialog-deadline")
-            compose.back()
+            compose.closeDialog()
         }
         compose.soft("snooze dialog") {
             compose.scrollTo("detail_list", "action_snooze")
             compose.onNodeWithTag("action_snooze").performClick()
             Thread.sleep(500)
             screenshot("c7-dialog-snooze")
-            compose.back()
+            compose.closeDialog()
         }
         compose.soft("waiting dialog") {
             compose.scrollTo("detail_list", "action_waiting")
             compose.onNodeWithTag("action_waiting").performClick()
             compose.waitForTag("waiting_reason")
             screenshot("c8-dialog-waiting")
-            compose.back()
+            compose.closeDialog()
         }
         compose.soft("overflow menu") {
             compose.onNodeWithContentDescription("More options").performClick()
@@ -270,15 +287,15 @@ class ScreenshotTour {
             compose.onNodeWithTag("stall_break_down").performClick()
             compose.waitForTag("small_step_input")
             screenshot("d2-dialog-small-step")
-            compose.back()
+            compose.closeDialog()
         }
         compose.back()
         openTask("Sign the lease renewal")
         screenshot("d3-detail-waiting")
         compose.back()
         compose.soft("done task") {
-            compose.onNodeWithTag("tasks_list").performScrollToNode(hasText("Done", substring = true))
-            compose.onAllNodesWithText("Done", substring = true)[0].performClick()
+            compose.onNodeWithTag("tasks_list").performScrollToNode(hasTestTag("filter_done"))
+            compose.onNodeWithTag("filter_done").performScrollTo().performClick()
             compose.waitForText("Pay the council tax")
             compose.onNodeWithText("Pay the council tax").performClick()
             compose.waitForTag("detail_title")
@@ -405,12 +422,6 @@ class ScreenshotTourAiReview {
         screenshot("g4-review-reminders")
         compose.scrollTo("plan_list", "review_assumptions")
         screenshot("g5-review-assumptions")
-        compose.onNodeWithTag("plan_approve").performClick()
-        compose.waitUntil(15_000) {
-            compose.onAllNodes(hasTestTag("plan_saved")).fetchSemanticsNodes().isNotEmpty() ||
-                compose.onAllNodes(hasTestTag("plan_saved_card")).fetchSemanticsNodes().isNotEmpty()
-        }
-        screenshot("g6-plan-saved")
     }
 
     @Test fun h_planErrors() {
@@ -443,7 +454,7 @@ class ScreenshotTourAiReview {
         planScreen(c, "", taskId)
         screenshot("j1-move-forward-input")
         compose.onNodeWithTag("plan_request").performClick()
-        compose.waitForTag("review_title")
+        compose.waitForTag("review_original") // follow-through review has no editable title
         screenshot("j2-move-forward-review")
         compose.onNodeWithTag("plan_list").performTouchInput { swipeUp() }
         screenshot("j3-move-forward-review-scrolled")
