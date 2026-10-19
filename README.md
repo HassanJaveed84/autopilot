@@ -77,7 +77,9 @@ It drives the debug app on an API 34 emulator through every main screen, dialog 
 `screenshots-<display>-<theme>-font<scale>`. Options: display `phone` / `small` (320 dp) /
 `tablet`, `light` / `dark` theme, font scale `1.0` / `1.3` / `2.0`, and an optional subset such as
 `com.lifeadmin.autopilot.ScreenshotTour#c_taskDetail`. AI screens use a scripted answer, not the
-live API.
+live API. It also runs when a push changes `.github/screenshots-request.json` (up to 6 variants per
+request; edit `reason` to request a fresh run) — that is how a coding agent without permission to
+dispatch workflows asks for screenshots.
 
 ### Install on your phone
 

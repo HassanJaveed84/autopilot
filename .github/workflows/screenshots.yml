@@ -1,9 +1,14 @@
 name: Screenshots
 
-# On-demand screenshot tour for UI review (Actions → Screenshots → Run workflow, or the
-# workflow_dispatch API). Builds the debug app, drives it on an API 34 emulator and uploads every
-# screen as the artifact "screenshots-<display>-<theme>-font<scale>".
+# On-demand screenshot tour for UI review. Builds the debug app, drives it on an API 34 emulator
+# and uploads every screen as the artifact "screenshots-<display>-<theme>-font<scale>".
+# Two ways to start it:
+#  - Actions → Screenshots → Run workflow (one variant from the inputs below);
+#  - push a change to .github/screenshots-request.json (one or more variants). This is how a
+#    coding agent without permission to dispatch workflows requests a run.
 on:
+  push:
+    paths: [ ".github/screenshots-request.json" ]
   workflow_dispatch:
     inputs:
       display:
@@ -26,16 +31,49 @@ on:
         type: string
         default: ""
 
-run-name: "Screenshots · ${{ inputs.display }} · ${{ inputs.theme }} · font ${{ inputs.font_scale }}"
+run-name: "${{ github.event_name == 'push' && 'Screenshots · from request file' || format('Screenshots · {0} · {1} · font {2}', inputs.display, inputs.theme, inputs.font_scale) }}"
 
 permissions:
   contents: read
 
 jobs:
+  plan:
+    name: Pick variants
+    runs-on: ubuntu-latest
+    outputs:
+      variants: ${{ steps.pick.outputs.variants }}
+      tests: ${{ steps.pick.outputs.tests }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+          IN_DISPLAY: ${{ inputs.display }}
+          IN_THEME: ${{ inputs.theme }}
+          IN_FONT: ${{ inputs.font_scale }}
+          IN_TESTS: ${{ inputs.tests }}
+        run: |
+          if [ "$EVENT" = workflow_dispatch ]; then
+            variants=$(jq -cn --arg d "$IN_DISPLAY" --arg t "$IN_THEME" --arg f "$IN_FONT" '[{display: $d, theme: $t, font_scale: $f}]')
+            tests="$IN_TESTS"
+          else
+            # At most 6 variants per request; values are validated by the run script.
+            variants=$(jq -c '[.variants[:6][] | {display: (.display // "phone"), theme: (.theme // "light"), font_scale: ((.font_scale // "1.0") | tostring)}]' .github/screenshots-request.json)
+            tests=$(jq -r '.tests // ""' .github/screenshots-request.json)
+          fi
+          echo "variants=$variants" >> "$GITHUB_OUTPUT"
+          echo "tests=$tests" >> "$GITHUB_OUTPUT"
+          echo "Variants: $variants  Tests: ${tests:-all}"
+
   tour:
-    name: Screenshot tour (${{ inputs.display }}, ${{ inputs.theme }}, font ${{ inputs.font_scale }})
+    name: Screenshot tour (${{ matrix.v.display }}, ${{ matrix.v.theme }}, font ${{ matrix.v.font_scale }})
+    needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        v: ${{ fromJSON(needs.plan.outputs.variants) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -75,10 +113,10 @@ jobs:
       - name: Run screenshot tour
         uses: reactivecircus/android-emulator-runner@v2
         env:
-          DISPLAY_PROFILE: ${{ inputs.display }}
-          THEME: ${{ inputs.theme }}
-          FONT_SCALE: ${{ inputs.font_scale }}
-          TESTS: ${{ inputs.tests }}
+          DISPLAY_PROFILE: ${{ matrix.v.display }}
+          THEME: ${{ matrix.v.theme }}
+          FONT_SCALE: ${{ matrix.v.font_scale }}
+          TESTS: ${{ needs.plan.outputs.tests }}
         with:
           api-level: 34
           target: google_apis
@@ -93,7 +131,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: screenshots-${{ inputs.display }}-${{ inputs.theme }}-font${{ inputs.font_scale }}
+          name: screenshots-${{ matrix.v.display }}-${{ matrix.v.theme }}-font${{ matrix.v.font_scale }}
           path: screenshots/
           if-no-files-found: warn
           retention-days: 30

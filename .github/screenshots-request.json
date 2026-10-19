@@ -1,0 +1,9 @@
+{
+  "reason": "First full tour: default phone, plus dark theme and large text",
+  "variants": [
+    { "display": "phone", "theme": "light", "font_scale": "1.0" },
+    { "display": "phone", "theme": "dark", "font_scale": "1.0" },
+    { "display": "phone", "theme": "light", "font_scale": "1.3" }
+  ],
+  "tests": ""
+}
