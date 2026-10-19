@@ -6,6 +6,8 @@ import com.lifeadmin.autopilot.data.local.AppDatabase
 import com.lifeadmin.autopilot.data.repository.NewTask
 import com.lifeadmin.autopilot.data.repository.SettingsRepository
 import com.lifeadmin.autopilot.data.repository.TaskRepository
+import com.lifeadmin.autopilot.domain.model.DeadlineSpec
+import com.lifeadmin.autopilot.domain.model.DeadlineType
 import com.lifeadmin.autopilot.domain.model.Priority
 import com.lifeadmin.autopilot.domain.model.ReminderPolicy
 import com.lifeadmin.autopilot.domain.model.ReminderPreset
@@ -16,6 +18,8 @@ import com.lifeadmin.autopilot.domain.scheduling.PlannedReminder
 import com.lifeadmin.autopilot.domain.scheduling.ReminderPlanner
 import com.lifeadmin.autopilot.domain.scheduling.SnoozeCalculator
 import java.time.Instant
+
+data class CaptureResult(val taskId: String, val firstNudge: PlannedReminder?)
 
 /** Higher-level task commands shared by screens and notification actions. */
 class TaskActions(
@@ -72,6 +76,33 @@ class TaskActions(
                 preset = preset,
             ),
         )
+    }
+
+    /**
+     * Capture from the Flight Plan sheet. With [nudge] on and no custom [policy] this is exactly
+     * [quickCapture] with the default preset (one transaction). A custom follow-up chosen in the
+     * sheet is saved right after creation through the normal policy path, so the engine schedules
+     * it like any edited schedule. Returns the id and the first nudge the engine would plan.
+     */
+    suspend fun capture(
+        title: String,
+        notes: String?,
+        priority: Priority,
+        nudge: Boolean,
+        policy: ReminderPolicy?,
+        deadline: DeadlineSpec?,
+    ): CaptureResult {
+        val id = if (nudge && policy != null) {
+            repository.createTask(NewTask(title = title, notes = notes, priority = priority, status = TaskStatus.ACTIONABLE, preset = null)).also { newId ->
+                repository.savePolicy(policy.copy(taskId = newId))
+            }
+        } else {
+            quickCapture(title, withReminder = nudge, notes = notes, priority = priority)
+        }
+        if (deadline != null && deadline.type != DeadlineType.NONE) {
+            repository.setDeadline(id, deadline.type, deadline.date, deadline.instant)
+        }
+        return CaptureResult(id, previewNext(id))
     }
 
     /** Explicit, user-initiated example matching the canonical spec use case. */

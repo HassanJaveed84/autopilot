@@ -26,7 +26,12 @@ enum class Provenance {
 enum class DraftReminderKind { OFF, ONCE, DAILY, EVERY_N_DAYS }
 
 @Serializable
-data class DraftStep(val text: String, val include: Boolean = true)
+data class DraftStep(
+    val text: String,
+    val include: Boolean = true,
+    /** Presentation only: the user changed the text (solid edge, "Edited by you"). Never persisted to a task. */
+    val edited: Boolean = false,
+)
 
 @Serializable
 data class DraftDeadline(
@@ -123,6 +128,17 @@ data class ProposalDraft(
     /** FOLLOW_THROUGH only: whether to replace the title / notes. */
     val applyTitle: Boolean = false,
     val applyNotes: Boolean = false,
+    /*
+     * Provenance flags for the review screen (dashed "Suggested" → solid "Edited by you"). They
+     * live on the draft only so rotation keeps them; ProposalMapper ignores them and the saved
+     * task model is unchanged.
+     */
+    val titleEdited: Boolean = false,
+    val notesEdited: Boolean = false,
+    val reminderEdited: Boolean = false,
+    val deadlineEdited: Boolean = false,
+    /** "Looks right" was tapped on the interpretation callout. */
+    val interpretationConfirmed: Boolean = false,
 ) {
     fun encode(): String = json.encodeToString(serializer(), this)
 
