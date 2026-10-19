@@ -1,5 +1,5 @@
 {
-  "reason": "Run 4: open task rows via their clickable row; reset the task list scroll before the Done filter",
+  "reason": "Run 5: waiting-dialog 'Next week' fix; tour uses filter_completed and card_action_* tags",
   "variants": [
     {
       "display": "phone",

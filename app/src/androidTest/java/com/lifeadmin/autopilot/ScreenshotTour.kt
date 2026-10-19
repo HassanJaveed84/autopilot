@@ -14,7 +14,6 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -237,7 +236,7 @@ class ScreenshotTour {
         screenshot("b5-tasks-scrolled")
         compose.soft("tasks done filter") {
             compose.onNodeWithTag("tasks_list").performScrollToIndex(0)
-            compose.onNodeWithTag("filter_done").tap()
+            compose.onNodeWithTag("filter_completed").tap()
             compose.waitForText("Pay the council tax")
             screenshot("b6-tasks-done-filter")
         }
@@ -260,23 +259,21 @@ class ScreenshotTour {
             compose.closeDialog()
         }
         compose.soft("reminder editor") {
-            compose.scrollTo("detail_list", "policy_summary")
-            compose.onAllNodesWithText("Edit")[1].tap()
+            compose.onNodeWithTag("card_action_reminders").tap()
             compose.waitForTag("policy_save")
             screenshot("c5-dialog-reminders")
             compose.closeDialog()
         }
         compose.soft("deadline dialog") {
-            compose.scrollTo("detail_list", "policy_summary")
-            compose.onAllNodesWithText("Edit")[0].tap()
-            Thread.sleep(500)
+            compose.onNodeWithTag("card_action_deadline").tap()
+            compose.waitForText("Date and time")
             screenshot("c6-dialog-deadline")
             compose.closeDialog()
         }
         compose.soft("snooze dialog") {
             compose.scrollTo("detail_list", "action_snooze")
             compose.onNodeWithTag("action_snooze").tap()
-            Thread.sleep(500)
+            compose.waitForText("Tomorrow morning")
             screenshot("c7-dialog-snooze")
             compose.closeDialog()
         }
@@ -312,7 +309,7 @@ class ScreenshotTour {
         compose.back()
         compose.soft("done task") {
             compose.onNodeWithTag("tasks_list").performScrollToIndex(0)
-            compose.onNodeWithTag("filter_done").tap()
+            compose.onNodeWithTag("filter_completed").tap()
             compose.waitForText("Pay the council tax")
             compose.onAllNodes(hasClickAction() and hasAnyDescendant(hasText("Pay the council tax"))).onFirst().tap()
             compose.waitForTag("detail_title")

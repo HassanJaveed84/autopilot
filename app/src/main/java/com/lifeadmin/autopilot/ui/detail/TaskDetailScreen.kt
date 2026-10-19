@@ -277,7 +277,7 @@ private fun DetailCard(title: String, action: String? = null, onAction: () -> Un
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f).semantics { heading() })
-                if (action != null) TextButton(onClick = onAction) { Text(action) }
+                if (action != null) TextButton(onClick = onAction, modifier = Modifier.testTag("card_action_${title.lowercase()}")) { Text(action) }
             }
             content()
         }

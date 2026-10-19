@@ -47,12 +47,10 @@ import com.lifeadmin.autopilot.ui.components.DateTimeSelectDialog
 import com.lifeadmin.autopilot.ui.components.Format
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
-import java.time.temporal.TemporalAdjusters
 
 @Composable
 fun EditDetailsDialog(task: Task, onDismiss: () -> Unit, onSave: (String, String?, Priority) -> Unit) {
@@ -143,17 +141,26 @@ fun DeadlineDialog(task: Task, now: Instant, zone: ZoneId, onDismiss: () -> Unit
     }
 }
 
+/**
+ * Check-in choices for the waiting dialog: none, tomorrow, in 3 days and in one week, all at
+ * 09:00 local time. The dated choices are always on different days, so only one is ever selected.
+ */
+internal fun waitingCheckInOptions(today: LocalDate, zone: ZoneId): List<Pair<String, Instant?>> {
+    val nineAm = LocalTime.of(9, 0)
+    val nextWeek = today.plusWeeks(1)
+    return listOf(
+        "No check-in reminder" to null,
+        "Tomorrow 09:00" to LocalTimeResolver.resolve(today.plusDays(1), nineAm, zone),
+        "In 3 days, 09:00" to LocalTimeResolver.resolve(today.plusDays(3), nineAm, zone),
+        "Next week (${Format.date(nextWeek, today)}) 09:00" to LocalTimeResolver.resolve(nextWeek, nineAm, zone),
+    )
+}
+
 @Composable
 fun WaitingDialog(task: Task, now: Instant, zone: ZoneId, onDismiss: () -> Unit, onSave: (String?, Instant?) -> Unit) {
     val today = now.atZone(zone).toLocalDate()
     val nineAm = LocalTime.of(9, 0)
-    val options: List<Pair<String, Instant?>> = listOf(
-        "No check-in reminder" to null,
-        "Tomorrow 09:00" to LocalTimeResolver.resolve(today.plusDays(1), nineAm, zone),
-        "In 3 days, 09:00" to LocalTimeResolver.resolve(today.plusDays(3), nineAm, zone),
-        "Next week (${today.with(TemporalAdjusters.next(DayOfWeek.TUESDAY)).dayOfWeek.name.lowercase().replaceFirstChar { it.uppercase() }}) 09:00" to
-            LocalTimeResolver.resolve(today.with(TemporalAdjusters.next(DayOfWeek.TUESDAY)), nineAm, zone),
-    )
+    val options = waitingCheckInOptions(today, zone)
     var reason by remember { mutableStateOf(task.waitingReason.orEmpty()) }
     var checkIn by remember { mutableStateOf(task.waitingCheckInAt?.takeIf { it > now } ?: options[1].second) }
     var custom by remember { mutableStateOf(false) }
