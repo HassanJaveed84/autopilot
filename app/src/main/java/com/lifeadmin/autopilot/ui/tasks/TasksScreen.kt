@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -39,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -192,14 +194,17 @@ fun InboxScreen(
                 )
                 Text("Captured ${Format.relativeLower(s.task.createdAt, state.now, state.zone)}", style = MaterialTheme.typography.bodySmall, color = c.ink3, modifier = Modifier.padding(top = 4.dp))
                 s.task.notes?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = c.ink2, modifier = Modifier.padding(top = 6.dp), maxLines = 3) }
+                // Two columns normally; one column at large text so no label is cut to "Nudge…".
+                val stacked = LocalDensity.current.fontScale >= 1.3f
+                val triage: List<@Composable RowScope.() -> Unit> = listOf(
+                    { TriageButton(AutopilotIcons.Bell, "Nudge me", c.signalSoft, c.onSignalSoft, Modifier.weight(1f).testTag("inbox_nudge")) { nudging = s } },
+                    { TriageButton(AutopilotIcons.Route, "Plan with AI", c.routeSoft, c.onRouteSoft, Modifier.weight(1f).testTag("inbox_plan")) { onPlanTask(s.task.id) } },
+                    { TriageButton(AutopilotIcons.Hourglass, "Waiting on…", c.sunken, c.ink, Modifier.weight(1f).testTag("inbox_waiting")) { waiting = s } },
+                    { TriageButton(AutopilotIcons.Check, "Done already", c.sunken, c.ink, Modifier.weight(1f).testTag("inbox_done")) { doneWithUndo(scope, snackbar, viewModel, s, "Marked done. Nice.") } },
+                )
                 Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TriageButton(AutopilotIcons.Bell, "Nudge me", c.signalSoft, c.onSignalSoft, Modifier.weight(1f).testTag("inbox_nudge")) { nudging = s }
-                        TriageButton(AutopilotIcons.Route, "Plan with AI", c.routeSoft, c.onRouteSoft, Modifier.weight(1f).testTag("inbox_plan")) { onPlanTask(s.task.id) }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TriageButton(AutopilotIcons.Hourglass, "Waiting on…", c.sunken, c.ink, Modifier.weight(1f).testTag("inbox_waiting")) { waiting = s }
-                        TriageButton(AutopilotIcons.Check, "Done already", c.sunken, c.ink, Modifier.weight(1f).testTag("inbox_done")) { doneWithUndo(scope, snackbar, viewModel, s, "Marked done. Nice.") }
+                    triage.chunked(if (stacked) 1 else 2).forEach { group ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { group.forEach { it() } }
                     }
                 }
                 Row(

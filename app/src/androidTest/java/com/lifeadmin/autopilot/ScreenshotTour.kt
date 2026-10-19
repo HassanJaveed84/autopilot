@@ -261,6 +261,7 @@ class ScreenshotTour {
         screenshot("c3-detail-steps-history")
 
         compose.soft("edit dialog") {
+            compose.onNodeWithTag("detail_list").performScrollToIndex(0) // the header is the list's first item
             compose.onNodeWithContentDescription("Edit task").tap()
             compose.waitForTag("edit_title")
             screenshot("c4-dialog-edit")
@@ -295,6 +296,7 @@ class ScreenshotTour {
             compose.closeDialog()
         }
         compose.soft("overflow menu") {
+            compose.onNodeWithTag("detail_list").performScrollToIndex(0)
             compose.onNodeWithContentDescription("More options").tap()
             compose.waitForText("Delete task")
             screenshot("c9-more-actions")
@@ -333,6 +335,7 @@ class ScreenshotTour {
         compose.waitForTag("capture_title")
         screenshot("e1-capture-empty")
         compose.onNodeWithTag("capture_title").performTextInput("Book the train ride for my daughter, find parking and tickets, remind me at 9 and 6 every day until done")
+        compose.waitForText("104 / 2000") // the typed text reaches the field through the view model
         screenshot("e2-capture-typed-keyboard")
         compose.soft("notes, priority, deadline") {
             compose.onNodeWithTag("capture_details").tap()

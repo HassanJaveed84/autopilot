@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -157,11 +158,14 @@ fun FlightNavBar(
                         Box(Modifier.width(60.dp).height(32.dp).clip(CircleShape).background(if (current) c.sunken else androidx.compose.ui.graphics.Color.Transparent), contentAlignment = Alignment.Center) {
                             Icon(item.icon, contentDescription = null, tint = if (current) c.ink else c.ink2, modifier = Modifier.size(22.dp))
                             if (item.badge > 0) {
+                                // The count is also in the tab's description, so the badge keeps a fixed
+                                // dp size instead of growing with the font scale and covering the icon.
+                                val badgeSize = with(LocalDensity.current) { 11.dp.toSp() }
                                 Box(
                                     Modifier.align(Alignment.TopEnd).padding(end = 6.dp).heightIn(min = 18.dp).clip(CircleShape).background(c.signal).padding(horizontal = 5.dp),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    Text(item.badge.toString(), style = MaterialTheme.typography.labelSmall, color = c.onSignal)
+                                    Text(item.badge.toString(), style = MaterialTheme.typography.labelSmall.copy(fontSize = badgeSize, lineHeight = badgeSize), color = c.onSignal, maxLines = 1)
                                 }
                             }
                         }
