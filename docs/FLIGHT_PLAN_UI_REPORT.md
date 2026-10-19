@@ -133,8 +133,13 @@ small display). See §5 for the run links.
   press to a dialog still settling in `d_otherDetails` (tour timing; Back now repeats until the tab bar is back).
   The 200% artifacts from #9 confirmed the stacked triage buttons and the fixed-size badge, and showed the
   follow-up card's "Change" link squeezing the sentence and "Waiting on…" truncating on the action tiles; both
-  now reflow from font scale 1.3 (final commit). That commit re-runs CI and the four variants; the PR's Checks
-  tab and the Screenshots workflow show their outcome.
+  now reflow from font scale 1.3 (`5913c89`).
+- **Final commit `5913c89` — all green**: Android CI #40 (push) and #41 (pull_request), each with lint, 309 unit
+  tests, APKs and the emulator instrumented tests
+  (https://github.com/HassanJaveed84/autopilot/actions/runs/39244018515,
+  https://github.com/HassanJaveed84/autopilot/actions/runs/39244023678); Screenshots #10 green on all four
+  variants (https://github.com/HassanJaveed84/autopilot/actions/runs/39244018421), whose `screenshots-*`
+  artifacts are the visual evidence for this report.
 - Soft-skipped detail shots (edit dialog, overflow menu) are captured since `42cee13`: the header is the detail
   list's first item and had scrolled out of composition.
 
