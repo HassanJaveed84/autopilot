@@ -23,20 +23,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,7 +43,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -60,13 +55,16 @@ import com.lifeadmin.autopilot.ai.PlanningError
 import com.lifeadmin.autopilot.ai.PlanningMode
 import com.lifeadmin.autopilot.ai.ProposalDraft
 import com.lifeadmin.autopilot.ai.ProposalMapper
+import com.lifeadmin.autopilot.ai.ProposalValidator
 import com.lifeadmin.autopilot.ui.components.AutopilotIcons
 import com.lifeadmin.autopilot.ui.components.DraftPill
 import com.lifeadmin.autopilot.ui.components.IconCircle
+import com.lifeadmin.autopilot.ui.components.LinkButton
 import com.lifeadmin.autopilot.ui.components.PrimaryButton
 import com.lifeadmin.autopilot.ui.components.RoundIconButton
 import com.lifeadmin.autopilot.ui.components.SecondaryButton
 import com.lifeadmin.autopilot.ui.components.SurfaceCard
+import com.lifeadmin.autopilot.ui.components.TimeText
 import com.lifeadmin.autopilot.ui.theme.AutopilotTheme
 import com.lifeadmin.autopilot.ui.theme.Motion
 import com.lifeadmin.autopilot.ui.theme.rememberReducedMotion
@@ -75,7 +73,7 @@ import java.time.ZoneId
 
 /**
  * "Plan with AI" (new task) and "Move this forward" (existing task). Four honest states driven
- * by the real request lifecycle: input, drafting (with Cancel), review (nothing saved yet) and
+ * by the real request lifecycle: input, drafting (the X cancels), review (nothing saved yet) and
  * saved. Errors keep the user's words and always offer "Save without AI".
  */
 @Composable
@@ -92,8 +90,8 @@ fun PlanScreen(
     val stage by viewModel.stage.collectAsStateWithLifecycle()
     val c = AutopilotTheme.colors
     val reduced = rememberReducedMotion()
-    var confirmApply by remember { mutableStateOf(false) }
     val isEdit = s.mode == PlanningMode.FOLLOW_THROUGH
+    val shownError = s.error?.takeIf { it != PlanningError.Cancelled }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshAvailability() }
 
     LaunchedEffect(s.phase, s.savedTaskId) {
@@ -109,20 +107,24 @@ fun PlanScreen(
         topBar = {
             Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 8.dp, end = 16.dp, top = 4.dp).heightIn(min = 60.dp), verticalAlignment = Alignment.CenterVertically) {
                 RoundIconButton(
-                    if (s.phase == PlanPhase.REVIEW) AutopilotIcons.Close else AutopilotIcons.Back,
-                    contentDescription = if (s.phase == PlanPhase.REVIEW) "Discard draft" else if (s.phase == PlanPhase.WORKING) "Cancel" else "Back",
+                    AutopilotIcons.Close,
+                    contentDescription = when (s.phase) { PlanPhase.REVIEW -> "Discard draft"; PlanPhase.WORKING -> "Cancel"; else -> "Close" },
                     onClick = { when (s.phase) { PlanPhase.REVIEW -> viewModel.reject(); PlanPhase.WORKING -> viewModel.cancel(); else -> onBack() } },
                 )
-                Text(
-                    when (s.phase) {
-                        PlanPhase.REVIEW -> if (isEdit) "Review suggestions" else "Review plan"
-                        PlanPhase.WORKING -> ""
-                        else -> if (isEdit) "Move this forward" else "Plan with AI"
-                    },
-                    style = MaterialTheme.typography.titleLarge.copy(fontSize = 22.sp), color = c.ink,
-                    modifier = Modifier.weight(1f).padding(start = 4.dp).semantics { heading() },
-                )
-                if (s.phase == PlanPhase.REVIEW || s.phase == PlanPhase.WORKING) DraftPill(if (s.phase == PlanPhase.REVIEW) "Draft · not saved" else "Draft")
+                val title = when (s.phase) {
+                    PlanPhase.REVIEW -> if (isEdit) "Move this forward" else "Review plan"
+                    PlanPhase.INPUT -> if (shownError != null) "" else if (isEdit) "Move this forward" else "Plan with AI"
+                    else -> ""
+                }
+                if (title.isNotEmpty()) {
+                    Text(title, style = MaterialTheme.typography.titleLarge.copy(fontSize = 22.sp), color = c.ink, modifier = Modifier.weight(1f).padding(start = 4.dp).semantics { heading() })
+                } else {
+                    Spacer(Modifier.weight(1f))
+                }
+                when {
+                    s.phase == PlanPhase.REVIEW && !isEdit -> DraftPill("Draft · not saved")
+                    s.phase == PlanPhase.WORKING || (s.phase == PlanPhase.INPUT && shownError != null) -> DraftPill("Draft")
+                }
             }
         },
         bottomBar = {
@@ -133,12 +135,13 @@ fun PlanScreen(
                         when (s.phase) {
                             PlanPhase.INPUT -> {
                                 val ready = s.availability is AiAvailability.Ready
+                                val retry = shownError?.retryable == true
                                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                     if (!isEdit) SecondaryButton("Save without AI", onClick = viewModel::saveWithoutAi, enabled = s.text.isNotBlank(), modifier = Modifier.weight(1f).testTag("plan_save_without_ai"))
                                     PrimaryButton(
-                                        text = if (s.error?.retryable == true && s.error != PlanningError.Cancelled) "Retry" else if (isEdit) "Get suggestions" else "Create plan",
+                                        text = if (retry) "Try again" else if (isEdit) "Get suggestions" else "Create plan",
                                         onClick = viewModel::requestPlan, enabled = ready && (isEdit || s.text.isNotBlank()),
-                                        icon = if (s.error?.retryable == true && s.error != PlanningError.Cancelled) AutopilotIcons.Refresh else AutopilotIcons.Route,
+                                        icon = if (retry) AutopilotIcons.Refresh else AutopilotIcons.Route,
                                         modifier = Modifier.weight(1.2f).testTag("plan_request"),
                                     )
                                 }
@@ -152,25 +155,39 @@ fun PlanScreen(
                                         style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.weight(1f),
                                     )
                                 }
-                                SecondaryButton("Cancel", onClick = viewModel::cancel, modifier = Modifier.fillMaxWidth().padding(top = 10.dp).testTag("plan_cancel"))
                             }
                             PlanPhase.REVIEW -> {
                                 s.saveError?.let { Text(it, color = c.danger, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = 6.dp).testTag("plan_save_error")) }
-                                s.draft?.let { Text(saveSummary(it, isEdit), style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
-                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    SecondaryButton("Discard", onClick = viewModel::reject, enabled = !s.saving, modifier = Modifier.weight(1f).testTag("plan_reject"))
-                                    PrimaryButton(
-                                        if (isEdit) "Apply changes…" else "Save task",
-                                        onClick = { if (isEdit) confirmApply = true else viewModel.approve() },
-                                        enabled = !s.saving && s.draft?.title?.isNotBlank() == true,
-                                        icon = AutopilotIcons.Check,
-                                        modifier = Modifier.weight(1.6f).testTag("plan_approve"),
+                                val draft = s.draft
+                                if (isEdit) {
+                                    val n = draft?.let(::changeCount) ?: 0
+                                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        SecondaryButton("Not now", onClick = { viewModel.reject(); onBack() }, enabled = !s.saving, modifier = Modifier.weight(1f).testTag("plan_reject"))
+                                        PrimaryButton(
+                                            if (n == 0) "Apply changes" else "Apply $n change${if (n == 1) "" else "s"}",
+                                            onClick = viewModel::approve,
+                                            enabled = !s.saving && n > 0,
+                                            modifier = Modifier.weight(1.4f).testTag("plan_approve"),
+                                        )
+                                    }
+                                    Text(
+                                        "Sent: this task's title, notes, steps, status, deadline and follow-up. Nothing else.",
+                                        style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(top = 8.dp),
                                     )
+                                } else {
+                                    draft?.let { Text(saveSummary(it), style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        SecondaryButton("Discard", onClick = viewModel::reject, enabled = !s.saving, modifier = Modifier.weight(1f).testTag("plan_reject"))
+                                        PrimaryButton(
+                                            "Save task",
+                                            onClick = viewModel::approve,
+                                            enabled = !s.saving && draft?.title?.isNotBlank() == true,
+                                            icon = AutopilotIcons.Check,
+                                            modifier = Modifier.weight(1.6f).testTag("plan_approve"),
+                                        )
+                                    }
+                                    Text("Nothing is saved until you tap Save task.", style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(top = 6.dp))
                                 }
-                                Text(
-                                    "Nothing is saved until you tap ${if (isEdit) "Apply" else "Save task"}.",
-                                    style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(top = 6.dp),
-                                )
                             }
                             PlanPhase.SAVED -> Text("Saved", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("plan_saved"))
                         }
@@ -185,23 +202,30 @@ fun PlanScreen(
                     PlanPhase.INPUT -> {
                         val availability = s.availability
                         if (availability != null && availability !is AiAvailability.Ready) item { SetupCard(availability, isEdit, onOpenAiSettings) }
-                        s.error?.let { e -> if (e != PlanningError.Cancelled) item { ErrorHero(e) } }
-                        item { InputCard(s, isEdit, enabled = true, onText = viewModel::setText) }
+                        if (shownError != null) {
+                            // The words are kept and shown read-only, as on the design board; editing is one tap away.
+                            item { ErrorHero(shownError) }
+                            if (s.text.isNotBlank()) item { YourWordsCard(s.text) }
+                            item { LinkButton("Edit your words", onClick = viewModel::dismissError, modifier = Modifier.padding(horizontal = 4.dp).testTag("plan_edit_words")) }
+                        } else {
+                            item { InputCard(s, isEdit, onText = viewModel::setText) }
+                        }
                         if (s.interrupted) item { MessageCard("The previous request was interrupted (the app was closed). Nothing was saved. Your text is still here — try again.", error = false, tag = "plan_interrupted") }
                         s.error?.let { e -> if (e == PlanningError.Cancelled) item { MessageCard(e.message, error = false, tag = "plan_error") } }
                         s.saveError?.let { item { MessageCard(it, error = true, tag = "plan_save_error_input") } }
                     }
                     PlanPhase.WORKING -> {
-                        item { DraftingHero(isEdit, s.modelLabel) }
+                        item { DraftingHero(isEdit) }
                         if (s.text.isNotBlank()) item { YourWordsCard(s.text) }
                         if (isEdit) s.current?.let { cur -> item { YourWordsCard(cur.task.title, caption = "This task") } }
-                        item { DraftingStages(stage) }
+                        item { DraftingStages(stage, isEdit) }
                     }
                     PlanPhase.REVIEW -> {
                         val draft = s.draft
                         if (draft != null) {
                             val nowInstant = now()
-                            reviewItems(draft, s.current, zone, ProposalMapper.today(nowInstant, zone), nowInstant, viewModel::updateDraft)
+                            if (isEdit) followThroughItems(draft, s.current, zone, nowInstant, viewModel::updateDraft)
+                            else reviewItems(draft, s.current, zone, ProposalMapper.today(nowInstant, zone), nowInstant, viewModel::updateDraft)
                             item { UsageNote(draft, s) }
                         }
                     }
@@ -210,38 +234,16 @@ fun PlanScreen(
             }
         }
     }
-
-    if (confirmApply) {
-        val draft = s.draft
-        AlertDialog(
-            onDismissRequest = { confirmApply = false },
-            title = { Text("Apply these changes?") },
-            text = { Text(draft?.let { changeSummary(it) } ?: "", modifier = Modifier.testTag("plan_confirm_summary")) },
-            confirmButton = { TextButton(onClick = { confirmApply = false; viewModel.approve() }, modifier = Modifier.testTag("plan_confirm_apply")) { Text("Apply") } },
-            dismissButton = { TextButton(onClick = { confirmApply = false }) { Text("Back") } },
-        )
-    }
 }
 
-/** Plain-language list of the selected changes, for the confirmation dialog. */
-fun changeSummary(d: ProposalDraft): String = buildList {
-    if (d.applyTitle) add("• Rename to “${d.title.trim()}”")
-    if (d.applyNotes) add("• Replace the notes")
-    val steps = d.steps.count { it.include } + if (d.addNextStep && d.nextStep.isNotBlank()) 1 else 0
-    if (steps > 0) add("• Add $steps checklist step(s)")
-    if (d.deadline.apply) add("• Set the deadline to ${d.deadline.date}${d.deadline.time?.let { " $it" } ?: ""}")
-    if (d.reminder.apply) add("• Replace the reminders")
-    if (d.waiting.apply) add("• Mark as Waiting")
-    if (d.applyPriority && d.priority != null) add("• Set priority to ${d.priority.lowercase()}")
-}.ifEmpty { listOf("Nothing is selected yet.") }.joinToString("\n")
+/** Number of changes the user has selected on a follow-through draft (the "Apply N changes" count). */
+fun changeCount(d: ProposalDraft): Int =
+    listOf(d.applyTitle, d.applyNotes, d.deadline.apply, d.reminder.apply, d.waiting.apply, d.applyPriority && d.priority != null).count { it } +
+        d.steps.count { it.include } +
+        (if (d.addNextStep && d.nextStep.isNotBlank() && !ProposalValidator.nextStepListed(d)) 1 else 0)
 
-/** Footer summary: "Saves 1 task · 3 steps · nudges 09:00 & 18:00 daily". */
-fun saveSummary(d: ProposalDraft, isEdit: Boolean): String {
-    if (isEdit) {
-        val n = listOf(d.applyTitle, d.applyNotes, d.deadline.apply, d.reminder.apply, d.waiting.apply, d.applyPriority && d.priority != null).count { it } +
-            (d.steps.count { it.include } + if (d.addNextStep && d.nextStep.isNotBlank()) 1 else 0).coerceAtMost(1)
-        return if (n == 0) "Nothing selected yet" else "Applies $n change${if (n == 1) "" else "s"} to this task"
-    }
+/** Footer summary for a new task: "Saves 1 task · 3 steps · nudges 09:00 & 18:00 daily". */
+fun saveSummary(d: ProposalDraft): String {
     val steps = d.steps.count { it.include } + if (d.addNextStep && d.nextStep.isNotBlank()) 1 else 0
     val nudges = if (!d.reminder.apply) "no nudges" else when (d.reminder.kind) {
         com.lifeadmin.autopilot.ai.DraftReminderKind.OFF -> "no nudges"
@@ -252,25 +254,35 @@ fun saveSummary(d: ProposalDraft, isEdit: Boolean): String {
     return "Saves 1 task · $steps step${if (steps == 1) "" else "s"} · $nudges" + if (d.deadline.apply) " · deadline" else ""
 }
 
+/** The Capture field, not a Material form field: label above, sunken box, helper row below. */
 @Composable
-private fun InputCard(s: PlanUiState, isEdit: Boolean, enabled: Boolean, onText: (String) -> Unit) {
+private fun InputCard(s: PlanUiState, isEdit: Boolean, onText: (String) -> Unit) {
     val c = AutopilotTheme.colors
     Column {
         if (isEdit) {
             s.current?.let { Text(it.task.title, style = MaterialTheme.typography.headlineSmall, color = c.ink, modifier = Modifier.padding(bottom = 8.dp)) }
-            Text("Claude suggests a next step, missing steps, or a better date for this task. You choose what to apply — nothing changes until you do.", style = MaterialTheme.typography.bodyMedium, color = c.ink2)
+            Text("Claude suggests a next step, missing steps, or a better date for this task. You choose what to apply — nothing changes until you do.", style = MaterialTheme.typography.bodyMedium, color = c.ink2, modifier = Modifier.padding(bottom = 14.dp))
         }
+        Text(if (isEdit) "Anything to add? (optional)" else "Describe what you need to do", style = MaterialTheme.typography.labelLarge, color = c.ink2, modifier = Modifier.padding(bottom = 8.dp))
         OutlinedTextField(
             value = s.text,
             onValueChange = onText,
-            enabled = enabled,
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("plan_text"),
-            label = { Text(if (isEdit) "Anything to add? (optional)" else "Describe what you need to do") },
-            placeholder = { Text(if (isEdit) "e.g. I keep putting this off because…" else "e.g. Book the train ride for my daughter, find parking and tickets, remind me at 9 and 6 every day until done") },
-            minLines = 3, maxLines = 10, shape = RoundedCornerShape(18.dp),
+            modifier = Modifier.fillMaxWidth().testTag("plan_text"),
+            placeholder = { Text(if (isEdit) "e.g. I keep putting this off because…" else "e.g. Book the train ride for my daughter, find parking and tickets, remind me at 9 and 6 every day until done", color = c.ink3) },
+            minLines = 4, maxLines = 10,
+            textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 18.sp, lineHeight = 25.sp),
+            shape = RoundedCornerShape(18.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = c.sunken, unfocusedContainerColor = c.sunken,
+                focusedBorderColor = c.lineStrong, unfocusedBorderColor = c.sunken, cursorColor = c.ink,
+                focusedTextColor = c.ink, unfocusedTextColor = c.ink,
+            ),
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-            supportingText = { Text("${s.text.length}/${AiConfig.MAX_INPUT_CHARS} · Only this text, the date/time and your reminder settings are sent to Anthropic.") },
         )
+        Row(Modifier.fillMaxWidth().padding(top = 6.dp, start = 4.dp, end = 4.dp), verticalAlignment = Alignment.Top) {
+            Text("Only this text, the date and time, and your reminder settings are sent to Anthropic.", style = MaterialTheme.typography.bodySmall, color = c.ink3, modifier = Modifier.weight(1f).padding(end = 10.dp))
+            TimeText("${s.text.length} / ${AiConfig.MAX_INPUT_CHARS}", size = 13, color = c.ink3)
+        }
     }
 }
 
@@ -306,17 +318,19 @@ private fun MessageCard(text: String, error: Boolean, tag: String) {
 }
 
 @Composable
-private fun DraftingHero(isEdit: Boolean, modelLabel: String) {
+private fun DraftingHero(isEdit: Boolean) {
     val c = AutopilotTheme.colors
     Column(Modifier.padding(top = 14.dp).semantics { liveRegion = LiveRegionMode.Polite }.testTag("plan_working")) {
         Text(if (isEdit) "Looking for a next step…" else "Drafting a plan…", style = MaterialTheme.typography.headlineMedium.copy(fontSize = 32.sp, lineHeight = 34.sp), color = c.ink)
         Text(
-            "$modelLabel is turning ${if (isEdit) "this task" else "your words"} into ${if (isEdit) "suggestions" else "steps and nudges"}. You review everything before it's saved.",
+            if (isEdit) "Claude is reading this task and looking for the next move. You review everything before anything changes."
+            else "Claude is turning your words into steps and nudges. You review everything before it's saved.",
             style = MaterialTheme.typography.bodyLarge, color = c.ink2, modifier = Modifier.padding(top = 8.dp),
         )
     }
 }
 
+/** Headline plus one explanation; the user's words follow as a read-only card. */
 @Composable
 private fun ErrorHero(e: PlanningError) {
     val c = AutopilotTheme.colors
@@ -331,10 +345,10 @@ private fun ErrorHero(e: PlanningError) {
             },
             style = MaterialTheme.typography.headlineMedium, color = c.ink, modifier = Modifier.padding(top = 16.dp),
         )
-        Text(e.message, style = MaterialTheme.typography.bodyLarge, color = c.ink2, modifier = Modifier.padding(top = 8.dp))
+        val kept = "Nothing was saved or lost — your words are still here" + (if (e.retryable) ", and you can save them without AI." else ".")
         Text(
-            "Nothing was saved or lost — your words are still here" + (if (e.retryable) ", and you can save them without AI." else "."),
-            style = MaterialTheme.typography.bodyLarge, color = c.ink2, modifier = Modifier.padding(top = 6.dp),
+            if (e == PlanningError.Offline) "Your phone seems to be offline. $kept" else "${e.message.trimEnd('.')}. $kept",
+            style = MaterialTheme.typography.bodyLarge, color = c.ink2, modifier = Modifier.padding(top = 8.dp).testTag("plan_error_message"),
         )
     }
 }
@@ -350,9 +364,10 @@ private fun YourWordsCard(text: String, caption: String = "Your words") {
 
 /** Three stages driven by the real request lifecycle (sent → waiting → checking), never by timers. */
 @Composable
-private fun DraftingStages(stage: Int) {
+private fun DraftingStages(stage: Int, isEdit: Boolean) {
     val c = AutopilotTheme.colors
-    val labels = listOf("Sending your note", "Claude is drafting", "Checking dates, times and quiet hours")
+    val labels = if (isEdit) listOf("Reading this task", "Looking for the next move", "Checking dates and quiet hours")
+    else listOf("Reading your note", "Breaking it into steps", "Fitting nudges around your quiet hours")
     Column(Modifier.padding(top = 14.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         labels.forEachIndexed { i, label ->
             val done = i < stage

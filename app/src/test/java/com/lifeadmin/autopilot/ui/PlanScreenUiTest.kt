@@ -165,8 +165,8 @@ class PlanScreenUiTest {
         waitFor("plan_text")
         compose.onNodeWithTag("plan_request").performClick()
         waitFor("plan_error")
-        compose.onNodeWithText("Anthropic is rate-limiting this key (429). Try again in 20 s.").assertIsDisplayed()
-        compose.onNodeWithText("Retry").assertIsDisplayed()
+        compose.onNodeWithText("Anthropic is rate-limiting this key (429). Try again in 20 s.", substring = true).assertIsDisplayed() // one explanation, words kept
+        compose.onNodeWithText("Try again").assertIsDisplayed()
         compose.onNodeWithTag("plan_save_without_ai").assertIsDisplayed()
         assertEquals(0, runBlocking { container.database.taskDao().getAll() }.size)
     }

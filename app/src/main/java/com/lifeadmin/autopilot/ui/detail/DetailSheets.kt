@@ -12,17 +12,13 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,11 +31,9 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.lifeadmin.autopilot.domain.model.OccurrenceKind
 import com.lifeadmin.autopilot.domain.model.SnoozePreset
 import com.lifeadmin.autopilot.domain.model.Task
 import com.lifeadmin.autopilot.domain.scheduling.LocalTimeResolver
-import com.lifeadmin.autopilot.domain.scheduling.PlannedReminder
 import com.lifeadmin.autopilot.domain.scheduling.SnoozeCalculator
 import com.lifeadmin.autopilot.ui.components.AutopilotIcons
 import com.lifeadmin.autopilot.ui.components.AutopilotSheet
@@ -48,16 +42,16 @@ import com.lifeadmin.autopilot.ui.components.DateTimeSelectDialog
 import com.lifeadmin.autopilot.ui.components.Format
 import com.lifeadmin.autopilot.ui.components.GroupDivider
 import com.lifeadmin.autopilot.ui.components.PrimaryButton
-import com.lifeadmin.autopilot.ui.components.SecondaryButton
+import com.lifeadmin.autopilot.ui.components.SwitchRow
 import com.lifeadmin.autopilot.ui.components.TimeText
 import com.lifeadmin.autopilot.ui.theme.AutopilotTheme
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import java.time.temporal.TemporalAdjusters
 
 /** One snooze choice: label, resulting instant, and the clock text shown on the right. */
@@ -79,84 +73,60 @@ internal fun snoozeOptions(now: Instant, zone: ZoneId): List<SnoozeOption> {
 }
 
 /**
- * Snooze sheet: each option shows the resulting time, the exact next reminder the engine would
- * plan is previewed before confirming, and "Remind me when the snooze ends" is kept.
+ * Snooze sheet: concrete times, one tap each. "Remind me when the snooze ends" is a switch at
+ * the bottom so a single row tap still applies the snooze (the board's one-tap rows).
  */
 @Composable
 fun SnoozeSheet(
     now: Instant,
     zone: ZoneId,
-    preview: suspend (Instant, Boolean) -> PlannedReminder?,
     onDismiss: () -> Unit,
     onConfirm: (Instant, Boolean) -> Unit,
 ) {
     val c = AutopilotTheme.colors
     val options = remember(now, zone) { snoozeOptions(now, zone) }
-    var until by remember { mutableStateOf(options.first { it.label == "Tomorrow morning" }.at) }
     var remind by remember { mutableStateOf(true) }
     var custom by remember { mutableStateOf(false) }
-    var next by remember { mutableStateOf<PlannedReminder?>(null) }
-    var computed by remember { mutableStateOf(false) }
-    LaunchedEffect(until, remind) {
-        computed = false
-        val result = runCatching { preview(until, remind) }.getOrNull()
-        withContext(Dispatchers.Main.immediate) { next = result; computed = true }
-    }
+    val today = now.atZone(zone).toLocalDate()
     AutopilotSheet(title = "Snooze until…", onDismiss = onDismiss) {
         Text("Quiet until then. After that, the normal follow-up resumes.", style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = c.ink2, modifier = Modifier.padding(bottom = 6.dp))
-        Column(Modifier.selectableGroup()) {
+        Column {
             options.forEachIndexed { i, o ->
-                SnoozeRow(o.icon, o.label, Format.time(o.at, zone) + if (o.at.atZone(zone).toLocalDate() != now.atZone(zone).toLocalDate()) " · ${Format.date(o.at.atZone(zone).toLocalDate(), now.atZone(zone).toLocalDate())}" else "", selected = until == o.at, divider = i > 0) { until = o.at }
+                val local = o.at.atZone(zone)
+                val clock = if (local.toLocalDate() == today) Format.time(o.at, zone) else local.format(snoozeDayFmt)
+                SnoozeRow(o.icon, o.label, clock, divider = i > 0, testTag = "snooze_" + o.label.lowercase().replace(' ', '_')) { onConfirm(o.at, remind) }
             }
-            val isCustom = options.none { it.at == until }
-            SnoozeRow(AutopilotIcons.Calendar, if (isCustom) "Custom" else "Pick a date & time", if (isCustom) Format.relative(until, now, zone) else "", selected = isCustom, divider = true) { custom = true }
+            SnoozeRow(AutopilotIcons.Calendar, "Pick a date & time", "", divider = true, testTag = "snooze_custom") { custom = true }
         }
-        Row(
-            Modifier.fillMaxWidth().toggleable(value = remind, onValueChange = { remind = it }, role = Role.Checkbox).heightIn(min = 48.dp).padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Checkbox(checked = remind, onCheckedChange = null)
-            Text("Remind me when the snooze ends", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 10.dp))
-        }
-        val text = when {
-            !computed -> "Calculating next reminder…"
-            next == null -> "No reminder is scheduled after this snooze."
-            else -> {
-                val n = next!!
-                val what = when (n.kind) {
-                    OccurrenceKind.SNOOZE_END -> "Snooze-end reminder"
-                    OccurrenceKind.CHECK_IN -> "Check-in reminder"
-                    OccurrenceKind.POLICY -> "Next scheduled reminder"
-                }
-                "$what: ${Format.full(n.plannedAt, zone)}" + if (n.deferred) " (moved out of quiet hours)" else ""
-            }
-        }
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = c.signal, modifier = Modifier.padding(top = 4.dp).testTag("snooze_next"))
-        Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SecondaryButton("Cancel", onClick = onDismiss, modifier = Modifier.weight(1f))
-            PrimaryButton("Snooze", onClick = { onConfirm(until, remind) }, enabled = until > now, modifier = Modifier.weight(1.4f).testTag("snooze_confirm"))
-        }
+        SwitchRow(
+            title = "Remind me when the snooze ends",
+            subtitle = "One nudge when it's over; the normal follow-up resumes after.",
+            checked = remind, onCheckedChange = { remind = it },
+            modifier = Modifier.padding(top = 6.dp), switchTestTag = "snooze_remind",
+        )
     }
     if (custom) {
-        DateTimeSelectDialog(now.atZone(zone).toLocalDate(), now.atZone(zone).toLocalTime().plusHours(2).withMinute(0), onDismiss = { custom = false }, onConfirm = { d, t ->
-            LocalTimeResolver.resolve(d, t, zone).takeIf { it > now }?.let { until = it }
+        DateTimeSelectDialog(today, now.atZone(zone).toLocalTime().plusHours(2).withMinute(0), onDismiss = { custom = false }, onConfirm = { d, t ->
             custom = false
+            LocalTimeResolver.resolve(d, t, zone).takeIf { it > now }?.let { onConfirm(it, remind) }
         })
     }
 }
 
+private val snoozeDayFmt: DateTimeFormatter get() = DateTimeFormatter.ofPattern("EEE HH:mm", Locale.getDefault())
+
 @Composable
-private fun SnoozeRow(icon: ImageVector, label: String, time: String, selected: Boolean, divider: Boolean, onClick: () -> Unit) {
+private fun SnoozeRow(icon: ImageVector, label: String, time: String, divider: Boolean, testTag: String, onClick: () -> Unit) {
     val c = AutopilotTheme.colors
     if (divider) GroupDivider()
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 60.dp).selectable(selected = selected, role = Role.RadioButton, onClick = onClick).padding(horizontal = 6.dp),
+        Modifier.fillMaxWidth().heightIn(min = 60.dp).clickable(role = Role.Button, onClickLabel = "Snooze until $label", onClick = onClick).padding(horizontal = 6.dp).testTag(testTag),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Icon(icon, contentDescription = null, tint = if (selected) c.signal else c.ink2, modifier = Modifier.size(22.dp))
+        Icon(icon, contentDescription = null, tint = c.ink2, modifier = Modifier.size(22.dp))
         Text(label, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold), color = c.ink, modifier = Modifier.weight(1f))
-        TimeText(time, size = 14, color = if (selected) c.signal else c.ink2)
+        if (time.isNotEmpty()) TimeText(time, size = 14, color = c.ink2)
     }
 }
 

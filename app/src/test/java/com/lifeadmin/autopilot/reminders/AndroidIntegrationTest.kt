@@ -102,7 +102,8 @@ class AndroidIntegrationTest {
         await { shadowOf(notificationManager).allNotifications.isNotEmpty() }
         val n = shadowOf(notificationManager).allNotifications.single()
         assertEquals(AndroidNotificationPublisher.CHANNEL_REMINDERS, n.channelId)
-        assertEquals(listOf("Done", "Snooze", "Open"), n.actions.map { it.title.toString() })
+        // The Snooze action names where it lands (the default preset is "tomorrow morning").
+        assertEquals(listOf("Done", "Snooze · tomorrow 09:00", "Open"), n.actions.map { it.title.toString() })
         assertNotNull(n.contentIntent)
         assertTrue("one-time reminder consumed", scheduledAlarms().isEmpty())
 

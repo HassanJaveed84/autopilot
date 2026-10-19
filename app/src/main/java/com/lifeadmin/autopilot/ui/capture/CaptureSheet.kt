@@ -344,7 +344,7 @@ private fun AiSetupSheet(
         Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SecondaryButton("Not now", onClick = onNotNow, modifier = Modifier.weight(1f).testTag("capture_ai_not_now"))
             PrimaryButton(
-                if (state.aiSetupBusy) "Turning on…" else "I understand · Turn on & plan",
+                if (state.aiSetupBusy) "Turning on…" else "Turn on & plan",
                 onClick = { onTurnOn(key) },
                 enabled = !state.aiSetupBusy && (!needsKey || key.isNotBlank()),
                 modifier = Modifier.weight(1.3f).testTag("capture_ai_turn_on"),

@@ -81,9 +81,9 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 // Built per use so they follow a locale change while the app runs.
-private val dayFmt: DateTimeFormatter get() = DateTimeFormatter.ofPattern("EEE d MMM yyyy", Locale.getDefault())
-private val dayTimeFmt: DateTimeFormatter get() = DateTimeFormatter.ofPattern("EEE d MMM, HH:mm", Locale.getDefault())
-private val hhmm = DateTimeFormatter.ofPattern("HH:mm")
+internal val dayFmt: DateTimeFormatter get() = DateTimeFormatter.ofPattern("EEE d MMM yyyy", Locale.getDefault())
+internal val dayTimeFmt: DateTimeFormatter get() = DateTimeFormatter.ofPattern("EEE d MMM, HH:mm", Locale.getDefault())
+internal val hhmm = DateTimeFormatter.ofPattern("HH:mm")
 
 /**
  * All review sections, as LazyColumn items. Dashed indigo = suggested by AI; the moment a field
@@ -183,7 +183,7 @@ private fun Banner(isEdit: Boolean) {
 }
 
 @Composable
-private fun TipCard(text: String) {
+internal fun TipCard(text: String) {
     val c = AutopilotTheme.colors
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(c.sunken).padding(14.dp).testTag("review_advice"), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
         Icon(AutopilotIcons.Info, contentDescription = null, tint = c.ink2, modifier = Modifier.size(20.dp))
@@ -195,7 +195,7 @@ private fun TipCard(text: String) {
 }
 
 @Composable
-private fun Notices(draft: ProposalDraft) {
+internal fun Notices(draft: ProposalDraft) {
     val c = AutopilotTheme.colors
     Column(Modifier.testTag("review_notices"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         draft.notices.forEach { n ->
@@ -545,14 +545,14 @@ private fun ReminderCard(draft: ProposalDraft, current: TaskDetails?, isEdit: Bo
     }
 }
 
-private fun currentDeadline(d: TaskDetails, zone: ZoneId): String = when (d.task.deadlineType) {
+internal fun currentDeadline(d: TaskDetails, zone: ZoneId): String = when (d.task.deadlineType) {
     DeadlineType.NONE -> "No deadline"
     DeadlineType.DATE_ONLY -> d.task.deadlineLocalDate?.format(dayFmt) ?: "No deadline"
     DeadlineType.EXACT -> d.task.deadlineInstant?.atZone(zone)?.format(dayTimeFmt) ?: "No deadline"
 }
 
 @Composable
-private fun ReviewCard(title: String, tag: String, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+internal fun ReviewCard(title: String, tag: String, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
     SurfaceCard(contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), modifier = Modifier.testTag(tag)) {
         Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 6.dp).semantics { heading() })
         content()

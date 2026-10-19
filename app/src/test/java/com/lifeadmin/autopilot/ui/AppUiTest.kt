@@ -114,15 +114,16 @@ class AppUiTest {
     // combination never reports idle, so its UI flow lives in androidTest (emulator, CI) and the
     // logic is covered by TaskRepositoryTest.statusLifecycleAndReopen.
 
-    @Test fun snoozeDialogShowsExactNextReminderBeforeConfirming() {
+    @Test fun snoozeSheetSnoozesOnOneTapAndShowsTheResultingTime() {
         createTask("Pay invoice", preset = null)
         waitForText("Pay invoice")
         compose.onNodeWithText("Pay invoice").performClick()
         waitForTag("action_snooze")
         compose.onNodeWithTag("action_snooze").performClick()
-        // Default selection is "Tomorrow morning" (Sat 17 Oct 09:00 at a 07:30 Friday clock).
-        compose.waitUntil(5_000) { compose.onAllNodesWithTextCount("Snooze-end reminder: Sat 17 Oct 2026, 09:00") > 0 }
-        compose.onNodeWithText("Cancel").performClick()
+        // "Tomorrow morning" resolves to Sat 17 Oct 09:00 at a 07:30 Friday clock; one tap applies it.
+        waitForTag("snooze_tomorrow_morning")
+        compose.onNodeWithTag("snooze_tomorrow_morning").performClick()
+        waitForText("Snoozed until tomorrow 09:00")
     }
 
     @Test fun editReminderScheduleFromDetail() {
@@ -157,7 +158,8 @@ class AppUiTest {
         compose.onNodeWithContentDescription("Back").assertIsDisplayed()
         compose.onNodeWithContentDescription("Edit task").assertIsDisplayed()
         compose.onNodeWithContentDescription("More options").assertIsDisplayed()
-        compose.onNodeWithTag("detail_list").performScrollToNode(hasTestTag("step_add"))
+        compose.onNodeWithTag("detail_list").performScrollToNode(hasTestTag("step_input"))
+        compose.onNodeWithTag("step_input").performTextInput("Pack the bag")
         compose.onNodeWithContentDescription("Add step").assertExists()
     }
 

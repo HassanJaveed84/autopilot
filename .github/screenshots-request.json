@@ -1,5 +1,5 @@
 {
-  "reason": "Flight Plan redesign: final tour after the Back-to-tabs fix; light, dark, 200% text, small",
+  "reason": "Flight Plan redesign: design parity pass: diff cards, plan field, snooze, steps, empty states, notification",
   "variants": [
     {
       "display": "phone",

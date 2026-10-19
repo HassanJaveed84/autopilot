@@ -3,6 +3,7 @@ package com.lifeadmin.autopilot
 import android.Manifest
 import android.accessibilityservice.AccessibilityService
 import android.graphics.Bitmap
+import android.app.NotificationManager
 import android.os.Build
 import android.util.Log
 import android.view.accessibility.AccessibilityNodeInfo
@@ -48,6 +49,7 @@ import com.lifeadmin.autopilot.domain.model.AppSettings
 import com.lifeadmin.autopilot.domain.model.DeadlineType
 import com.lifeadmin.autopilot.domain.model.Priority
 import com.lifeadmin.autopilot.domain.model.ReminderPreset
+import com.lifeadmin.autopilot.domain.model.ReminderKind
 import com.lifeadmin.autopilot.domain.model.TaskStatus
 import com.lifeadmin.autopilot.ui.ai.AiSettingsScreen
 import com.lifeadmin.autopilot.ui.ai.AiSettingsViewModel
@@ -228,6 +230,17 @@ class ScreenshotTour {
         compose.waitForTag("detail_title")
     }
 
+    /** Empty states (board 13 and 14): no tasks at all. The next test's seed puts the data back. */
+    @Test fun a0_emptyStates() {
+        runBlocking { container.database.taskDao().getAll().forEach { container.taskRepository.delete(it.id) } }
+        launch()
+        compose.waitForText("A clear day")
+        screenshot("a0-today-empty")
+        compose.onNodeWithTag("nav_inbox").tap()
+        compose.waitForText("Inbox clear")
+        screenshot("a0-inbox-clear")
+    }
+
     @Test fun a_onboarding() {
         runBlocking { container.settingsRepository.update { it.copy(onboardingCompleted = false) } }
         try {
@@ -297,7 +310,7 @@ class ScreenshotTour {
             compose.onNodeWithTag("action_snooze").tap()
             compose.waitForText("Tomorrow morning")
             screenshot("c7-dialog-snooze")
-            compose.closeDialog()
+            compose.back()
         }
         compose.soft("waiting dialog") {
             compose.scrollTo("detail_list", "action_waiting")
@@ -387,6 +400,44 @@ class ScreenshotTour {
         repeat(3) { i ->
             compose.onNodeWithTag("health_list").performTouchInput { swipeUp() }
             screenshot("f${i + 7}-health-scrolled")
+        }
+    }
+
+    /**
+     * The nudge itself (board 06): a one-off reminder due in a few seconds, then the shade is
+     * opened with the status-bar shell command (no UiAutomator dependency). Best effort: the
+     * alarm can take a while on a busy emulator, so a timeout only skips the shot.
+     */
+    @Test fun z_notification() {
+        val title = "Book train ride for daughter"
+        val id = runBlocking {
+            val id = container.taskRepository.createTask(NewTask(title, status = TaskStatus.ACTIONABLE))
+            container.taskRepository.addStep(id, "Check train times and prices")
+            listOf("Buy the tickets", "Find and book parking").forEach { container.taskRepository.addStep(id, it) }
+            val p = container.taskRepository.getPolicy(id)!!
+            container.taskRepository.savePolicy(p.copy(enabled = true, kind = ReminderKind.ONCE, atInstant = container.clock.now().plusSeconds(5), times = emptyList()))
+            id
+        }
+        launch()
+        try {
+            compose.soft("notification shade") {
+                val nm = instrumentation.targetContext.getSystemService(NotificationManager::class.java)
+                val deadline = System.currentTimeMillis() + 120_000
+                while (System.currentTimeMillis() < deadline && nm.activeNotifications.none { it.tag == id }) Thread.sleep(1_000)
+                check(nm.activeNotifications.any { it.tag == id }) { "reminder not posted within 2 minutes" }
+                shell("cmd statusbar expand-notifications")
+                Thread.sleep(2_000)
+                screenshot("n1-notification")
+            }
+        } finally {
+            shell("cmd statusbar collapse")
+            runBlocking { container.taskRepository.delete(id) }
+        }
+    }
+
+    private fun shell(command: String) {
+        instrumentation.uiAutomation.executeShellCommand(command).use { fd ->
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(fd).use { it.readBytes() }
         }
     }
 
@@ -498,10 +549,10 @@ class ScreenshotTourAiReview {
         screenshot("j2-move-forward-review")
         compose.onNodeWithTag("plan_list").performTouchInput { swipeUp() }
         screenshot("j3-move-forward-review-scrolled")
-        compose.soft("apply confirmation") {
-            compose.onNodeWithTag("plan_approve").tap()
-            compose.waitForTag("plan_confirm_summary")
-            screenshot("j4-move-forward-confirm")
+        compose.soft("deselect a change") {
+            compose.scrollTo("plan_list", "review_step_check_1")
+            compose.onNodeWithTag("review_step_check_1").tap() // the Apply count follows the selection
+            screenshot("j4-move-forward-two-changes")
         }
     }
 

@@ -174,7 +174,6 @@ fun TaskDetailScreen(
         }
         DetailDialog.SNOOZE -> SnoozeSheet(
             now = viewModel.now(), zone = state.zone,
-            preview = { until, remind -> viewModel.previewSnooze(until, remind) },
             onDismiss = { dialog = null },
         ) { until, remind ->
             viewModel.snooze(until, remind); dialog = null
@@ -402,10 +401,13 @@ private fun StepsCard(d: TaskDetails, vm: TaskDetailViewModel) {
         vm.addStep(newStep) { error = it }
         newStep = ""
     }
+    // Reorder and delete live behind "Edit" so the resting list is a plain checklist (the board).
+    var editing by rememberSaveable { mutableStateOf(false) }
     SurfaceCard(modifier = Modifier.padding(top = 22.dp), contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 8.dp)) {
-        Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 10.dp, bottom = 6.dp), verticalAlignment = Alignment.Bottom) {
+        Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 10.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Steps", style = MaterialTheme.typography.titleMedium, color = c.ink, modifier = Modifier.weight(1f).semantics { heading() })
             Text(if (d.steps.isEmpty()) "None yet" else "$done of ${d.steps.size} done", style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = c.ink2)
+            if (d.steps.size > 1 || editing) LinkButton(if (editing) "Done" else "Edit", onClick = { editing = !editing }, modifier = Modifier.testTag("steps_edit"))
         }
         d.steps.forEachIndexed { index, step ->
             GroupDivider()
@@ -421,9 +423,11 @@ private fun StepsCard(d: TaskDetails, vm: TaskDetailViewModel) {
                 if (firstOpen?.id == step.id) {
                     Text("Next", style = MaterialTheme.typography.labelSmall, color = c.onSignalSoft, modifier = Modifier.padding(end = 6.dp).clip(RoundedCornerShape(12.dp)).background(c.signalSoft).padding(horizontal = 8.dp, vertical = 4.dp))
                 }
-                if (index > 0) RoundIconButton(AutopilotIcons.ChevronDown, contentDescription = "Move ${step.title} up", tint = c.ink3, onClick = { vm.moveStep(step.id, -1) }, modifier = Modifier.size(40.dp).rotate(180f))
-                if (index < d.steps.lastIndex) RoundIconButton(AutopilotIcons.ChevronDown, contentDescription = "Move ${step.title} down", tint = c.ink3, onClick = { vm.moveStep(step.id, 1) }, modifier = Modifier.size(40.dp))
-                RoundIconButton(AutopilotIcons.Trash, contentDescription = "Remove step ${step.title}", tint = c.ink3, onClick = { vm.deleteStep(step.id) }, modifier = Modifier.size(40.dp))
+                if (editing) {
+                    if (index > 0) RoundIconButton(AutopilotIcons.ChevronDown, contentDescription = "Move ${step.title} up", tint = c.ink3, onClick = { vm.moveStep(step.id, -1) }, modifier = Modifier.size(40.dp).rotate(180f))
+                    if (index < d.steps.lastIndex) RoundIconButton(AutopilotIcons.ChevronDown, contentDescription = "Move ${step.title} down", tint = c.ink3, onClick = { vm.moveStep(step.id, 1) }, modifier = Modifier.size(40.dp))
+                    RoundIconButton(AutopilotIcons.Trash, contentDescription = "Remove step ${step.title}", tint = c.ink3, onClick = { vm.deleteStep(step.id) }, modifier = Modifier.size(40.dp))
+                }
             }
         }
         GroupDivider()
@@ -442,7 +446,8 @@ private fun StepsCard(d: TaskDetails, vm: TaskDetailViewModel) {
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { add() }),
             )
-            RoundIconButton(AutopilotIcons.Plus, contentDescription = "Add step", tint = if (newStep.isNotBlank()) c.ink else c.ink3, onClick = { add() }, modifier = Modifier.testTag("step_add"))
+            // One plus on the left is the design; the add button appears only once there is text to add.
+            if (newStep.isNotBlank()) RoundIconButton(AutopilotIcons.Plus, contentDescription = "Add step", tint = c.ink, onClick = { add() }, modifier = Modifier.testTag("step_add"))
         }
         if (d.steps.isNotEmpty() && done == d.steps.size && !d.task.status.isTerminal) {
             Text("All steps are checked. Mark the task done when you're finished — it won't close automatically.", style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(8.dp))

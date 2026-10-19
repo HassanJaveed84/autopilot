@@ -167,6 +167,9 @@ class PlanViewModel(
 
     fun retry() = requestPlan()
 
+    /** "Edit your words" on the error screen: back to the editable field, text untouched. */
+    fun dismissError() = _state.update { it.copy(error = null) }
+
     fun updateDraft(transform: (ProposalDraft) -> ProposalDraft) {
         val d = _state.value.draft ?: return
         val next = transform(d)
