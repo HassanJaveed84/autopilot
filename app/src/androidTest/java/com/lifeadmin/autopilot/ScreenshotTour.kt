@@ -16,8 +16,9 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
@@ -115,9 +116,9 @@ private fun ComposeTestRule.back() {
 private fun ComposeTestRule.closeDialog() {
     val cancel = onAllNodes(hasText("Cancel")).fetchSemanticsNodes()
     when {
-        cancel.isNotEmpty() -> onAllNodes(hasText("Cancel"))[cancel.size - 1].performClick()
+        cancel.isNotEmpty() -> onAllNodes(hasText("Cancel"))[cancel.size - 1].tap()
         onAllNodes(hasContentDescription("Discard changes")).fetchSemanticsNodes().isNotEmpty() ->
-            onNode(hasContentDescription("Discard changes")).performClick()
+            onNode(hasContentDescription("Discard changes")).tap()
         else -> back()
     }
     waitForIdle()
@@ -131,10 +132,21 @@ private fun ComposeTestRule.waitForText(text: String) =
 
 private fun ComposeTestRule.scrollTo(list: String, child: String) = onNodeWithTag(list).performScrollToNode(hasTestTag(child))
 
-/** Optional extra shots: log and carry on, so a renamed label doesn't cost the rest of the tour. */
+/**
+ * Clicks through the semantics tree instead of injecting a touch, so a target hidden behind the
+ * keyboard or the Capture button (or scrolled just off screen) still gets the click.
+ */
+private fun SemanticsNodeInteraction.tap() = performSemanticsAction(SemanticsActions.OnClick)
+
+/**
+ * Optional extra shots: record and carry on, so a renamed label doesn't cost the rest of the tour.
+ * Skips are listed in screenshots/skipped.txt next to the PNGs.
+ */
 private fun ComposeTestRule.soft(name: String, block: () -> Unit) {
     runCatching(block).onFailure {
         Log.w(TAG, "Skipped '$name': $it")
+        val dir = File(instrumentation.targetContext.getExternalFilesDir(null), "screenshots").apply { mkdirs() }
+        File(dir, "skipped.txt").appendText("$name: ${it.toString().lineSequence().take(3).joinToString(" | ")}\n")
         runCatching { closeDialog() }
     }
 }
@@ -186,10 +198,10 @@ class ScreenshotTour {
     }
 
     private fun openTask(title: String) {
-        compose.onNodeWithTag("nav_tasks").performClick()
+        compose.onNodeWithTag("nav_tasks").tap()
         compose.waitForTag("tasks_list")
         compose.onNodeWithTag("tasks_list").performScrollToNode(hasText(title))
-        compose.onNodeWithText(title).performClick()
+        compose.onNodeWithText(title).tap()
         compose.waitForTag("detail_title")
     }
 
@@ -209,18 +221,18 @@ class ScreenshotTour {
         compose.onNodeWithTag("today_list").performTouchInput { swipeUp() }
         screenshot("b2-today-scrolled")
 
-        compose.onNodeWithTag("nav_inbox").performClick()
+        compose.onNodeWithTag("nav_inbox").tap()
         compose.waitForText("Call the bank")
         screenshot("b3-inbox")
 
-        compose.onNodeWithTag("nav_tasks").performClick()
+        compose.onNodeWithTag("nav_tasks").tap()
         compose.waitForTag("tasks_list")
         screenshot("b4-tasks")
         compose.onNodeWithTag("tasks_list").performTouchInput { swipeUp() }
         screenshot("b5-tasks-scrolled")
         compose.soft("tasks done filter") {
             compose.onNodeWithTag("tasks_list").performScrollToNode(hasTestTag("filter_done"))
-            compose.onNodeWithTag("filter_done").performScrollTo().performClick()
+            compose.onNodeWithTag("filter_done").tap()
             compose.waitForText("Pay the council tax")
             screenshot("b6-tasks-done-filter")
         }
@@ -237,41 +249,41 @@ class ScreenshotTour {
         screenshot("c3-detail-steps-history")
 
         compose.soft("edit dialog") {
-            compose.onNodeWithContentDescription("Edit task").performClick()
+            compose.onNodeWithContentDescription("Edit task").tap()
             compose.waitForTag("edit_title")
             screenshot("c4-dialog-edit")
             compose.closeDialog()
         }
         compose.soft("reminder editor") {
             compose.scrollTo("detail_list", "policy_summary")
-            compose.onAllNodesWithText("Edit")[1].performClick()
+            compose.onAllNodesWithText("Edit")[1].tap()
             compose.waitForTag("policy_save")
             screenshot("c5-dialog-reminders")
             compose.closeDialog()
         }
         compose.soft("deadline dialog") {
             compose.scrollTo("detail_list", "policy_summary")
-            compose.onAllNodesWithText("Edit")[0].performClick()
+            compose.onAllNodesWithText("Edit")[0].tap()
             Thread.sleep(500)
             screenshot("c6-dialog-deadline")
             compose.closeDialog()
         }
         compose.soft("snooze dialog") {
             compose.scrollTo("detail_list", "action_snooze")
-            compose.onNodeWithTag("action_snooze").performClick()
+            compose.onNodeWithTag("action_snooze").tap()
             Thread.sleep(500)
             screenshot("c7-dialog-snooze")
             compose.closeDialog()
         }
         compose.soft("waiting dialog") {
             compose.scrollTo("detail_list", "action_waiting")
-            compose.onNodeWithTag("action_waiting").performClick()
+            compose.onNodeWithTag("action_waiting").tap()
             compose.waitForTag("waiting_reason")
             screenshot("c8-dialog-waiting")
             compose.closeDialog()
         }
         compose.soft("overflow menu") {
-            compose.onNodeWithContentDescription("More options").performClick()
+            compose.onNodeWithContentDescription("More options").tap()
             compose.waitForText("Delete permanently")
             screenshot("c9-menu")
             compose.back()
@@ -284,7 +296,7 @@ class ScreenshotTour {
         screenshot("d1-detail-stuck-hint")
         compose.soft("small step") {
             compose.scrollTo("detail_list", "stall_hint")
-            compose.onNodeWithTag("stall_break_down").performClick()
+            compose.onNodeWithTag("stall_break_down").tap()
             compose.waitForTag("small_step_input")
             screenshot("d2-dialog-small-step")
             compose.closeDialog()
@@ -295,9 +307,9 @@ class ScreenshotTour {
         compose.back()
         compose.soft("done task") {
             compose.onNodeWithTag("tasks_list").performScrollToNode(hasTestTag("filter_done"))
-            compose.onNodeWithTag("filter_done").performScrollTo().performClick()
+            compose.onNodeWithTag("filter_done").tap()
             compose.waitForText("Pay the council tax")
-            compose.onNodeWithText("Pay the council tax").performClick()
+            compose.onNodeWithText("Pay the council tax").tap()
             compose.waitForTag("detail_title")
             screenshot("d4-detail-done")
         }
@@ -305,27 +317,27 @@ class ScreenshotTour {
 
     @Test fun e_captureAndAiEntry() {
         launch()
-        compose.onNodeWithTag("fab_capture").performClick()
+        compose.onNodeWithTag("fab_capture").tap()
         compose.waitForTag("capture_title")
         screenshot("e1-capture-empty")
         compose.onNodeWithTag("capture_title").performTextInput("Book the train ride for my daughter, find parking and tickets, remind me at 9 and 6 every day until done")
         screenshot("e2-capture-typed-keyboard")
         compose.soft("notes and priority") {
-            compose.onNodeWithText("Add notes or priority").performClick()
+            compose.onNodeWithText("Add notes or priority").tap()
             compose.waitForTag("capture_notes")
             screenshot("e3-capture-more")
         }
-        compose.onNodeWithTag("capture_plan_ai").performClick()
+        compose.onNodeWithTag("capture_plan_ai").tap()
         compose.waitForTag("plan_setup")
         screenshot("e4-plan-ai-not-set-up")
-        compose.onNodeWithTag("plan_open_ai_settings").performClick()
+        compose.onNodeWithTag("plan_open_ai_settings").tap()
         compose.waitForTag("ai_settings_list")
         screenshot("e5-ai-settings-off")
         compose.onNodeWithTag("ai_settings_list").performTouchInput { swipeUp() }
         screenshot("e6-ai-settings-off-scrolled")
         compose.soft("consent dialog") {
             compose.scrollTo("ai_settings_list", "ai_enabled_row")
-            compose.onNodeWithTag("ai_enabled_row").performClick()
+            compose.onNodeWithTag("ai_enabled_row").tap()
             compose.waitForTag("ai_consent_text")
             screenshot("e7-ai-consent")
             compose.back() // declined: AI stays off in the installed app
@@ -334,7 +346,7 @@ class ScreenshotTour {
 
     @Test fun f_settingsAndHealth() {
         launch()
-        compose.onNodeWithTag("nav_settings").performClick()
+        compose.onNodeWithTag("nav_settings").tap()
         compose.waitForTag("settings_list")
         screenshot("f1-settings")
         repeat(4) { i ->
@@ -342,7 +354,7 @@ class ScreenshotTour {
             screenshot("f${i + 2}-settings-scrolled")
         }
         compose.scrollTo("settings_list", "open_health")
-        compose.onNodeWithTag("open_health").performClick()
+        compose.onNodeWithTag("open_health").tap()
         compose.waitForText("Reminder health")
         screenshot("f6-health")
         repeat(3) { i ->
@@ -412,7 +424,7 @@ class ScreenshotTourAiReview {
         provider.hold = CompletableDeferred()
         planScreen(container(provider), "Need to book the train ride for my daughter, find parking and tickets, remind me at 9 and 6 every day until done.")
         screenshot("g1-plan-input")
-        compose.onNodeWithTag("plan_request").performClick()
+        compose.onNodeWithTag("plan_request").tap()
         compose.waitForTag("plan_working")
         screenshot("g2-plan-working")
         provider.hold!!.complete(Unit)
@@ -427,7 +439,7 @@ class ScreenshotTourAiReview {
     @Test fun h_planErrors() {
         val provider = ScriptedProvider { PlanningResult.Failure(PlanningError.RateLimited(null)) }
         planScreen(container(provider), "Renew the car insurance before the end of the month")
-        compose.onNodeWithTag("plan_request").performClick()
+        compose.onNodeWithTag("plan_request").tap()
         compose.waitForTag("plan_error")
         screenshot("h1-plan-error-rate-limited")
     }
@@ -435,7 +447,7 @@ class ScreenshotTourAiReview {
     @Test fun i_planOffline() {
         val provider = ScriptedProvider { PlanningResult.Success(trainPlan, null) }
         planScreen(container(provider, online = false), "Renew the car insurance before the end of the month")
-        compose.onNodeWithTag("plan_request").performClick()
+        compose.onNodeWithTag("plan_request").tap()
         compose.waitForTag("plan_error")
         screenshot("i1-plan-error-offline")
     }
@@ -451,15 +463,15 @@ class ScreenshotTourAiReview {
         val taskId = runBlocking {
             c.taskRepository.createTask(NewTask("Cancel the gym membership", status = TaskStatus.ACTIONABLE, preset = ReminderPreset.DAILY))
         }
-        planScreen(c, "", taskId)
+        planScreen(c, "I keep putting this off. What's the first thing to do?", taskId)
         screenshot("j1-move-forward-input")
-        compose.onNodeWithTag("plan_request").performClick()
-        compose.waitForTag("review_original") // follow-through review has no editable title
+        compose.onNodeWithTag("plan_request").tap()
+        compose.waitForTag("plan_approve")
         screenshot("j2-move-forward-review")
         compose.onNodeWithTag("plan_list").performTouchInput { swipeUp() }
         screenshot("j3-move-forward-review-scrolled")
         compose.soft("apply confirmation") {
-            compose.onNodeWithTag("plan_approve").performClick()
+            compose.onNodeWithTag("plan_approve").tap()
             compose.waitForTag("plan_confirm_summary")
             screenshot("j4-move-forward-confirm")
         }
