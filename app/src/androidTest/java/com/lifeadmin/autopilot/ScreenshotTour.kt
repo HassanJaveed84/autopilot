@@ -114,7 +114,8 @@ private fun ComposeTestRule.back() {
 
 /**
  * Closes a dialog with its own Cancel / Discard button. System Back is unreliable there: with a
- * text field focused, the first Back only hides the keyboard.
+ * text field focused, the first Back only hides the keyboard. Does nothing when no dialog is open,
+ * so a failed optional step can't navigate away from the screen the next steps need.
  */
 private fun ComposeTestRule.closeDialog() {
     val cancel = onAllNodes(hasText("Cancel")).fetchSemanticsNodes()
@@ -122,7 +123,6 @@ private fun ComposeTestRule.closeDialog() {
         cancel.isNotEmpty() -> onAllNodes(hasText("Cancel"))[cancel.size - 1].tap()
         onAllNodes(hasContentDescription("Discard changes")).fetchSemanticsNodes().isNotEmpty() ->
             onNode(hasContentDescription("Discard changes")).tap()
-        else -> back()
     }
     waitForIdle()
 }
@@ -259,12 +259,14 @@ class ScreenshotTour {
             compose.closeDialog()
         }
         compose.soft("reminder editor") {
+            compose.scrollTo("detail_list", "card_action_reminders")
             compose.onNodeWithTag("card_action_reminders").tap()
             compose.waitForTag("policy_save")
             screenshot("c5-sheet-follow-up")
             compose.back()
         }
         compose.soft("deadline dialog") {
+            compose.scrollTo("detail_list", "card_action_deadline")
             compose.onNodeWithTag("card_action_deadline").tap()
             compose.waitForText("Date and time")
             screenshot("c6-dialog-deadline")
