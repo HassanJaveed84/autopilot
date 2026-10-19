@@ -261,8 +261,8 @@ class ScreenshotTour {
         compose.soft("reminder editor") {
             compose.onNodeWithTag("card_action_reminders").tap()
             compose.waitForTag("policy_save")
-            screenshot("c5-dialog-reminders")
-            compose.closeDialog()
+            screenshot("c5-sheet-follow-up")
+            compose.back()
         }
         compose.soft("deadline dialog") {
             compose.onNodeWithTag("card_action_deadline").tap()
@@ -286,8 +286,8 @@ class ScreenshotTour {
         }
         compose.soft("overflow menu") {
             compose.onNodeWithContentDescription("More options").tap()
-            compose.waitForText("Delete permanently")
-            screenshot("c9-menu")
+            compose.waitForText("Delete task")
+            screenshot("c9-more-actions")
             compose.back()
         }
     }
@@ -324,15 +324,16 @@ class ScreenshotTour {
         screenshot("e1-capture-empty")
         compose.onNodeWithTag("capture_title").performTextInput("Book the train ride for my daughter, find parking and tickets, remind me at 9 and 6 every day until done")
         screenshot("e2-capture-typed-keyboard")
-        compose.soft("notes and priority") {
-            compose.onNodeWithText("Add notes or priority").tap()
+        compose.soft("notes, priority, deadline") {
+            compose.onNodeWithTag("capture_details").tap()
             compose.waitForTag("capture_notes")
             screenshot("e3-capture-more")
         }
+        // With AI off, "Plan with AI" opens the setup sheet in place (the note is kept).
         compose.onNodeWithTag("capture_plan_ai").tap()
-        compose.waitForTag("plan_setup")
-        screenshot("e4-plan-ai-not-set-up")
-        compose.onNodeWithTag("plan_open_ai_settings").tap()
+        compose.waitForTag("capture_ai_turn_on")
+        screenshot("e4-ai-setup-in-place")
+        compose.onNodeWithTag("capture_ai_settings").tap()
         compose.waitForTag("ai_settings_list")
         screenshot("e5-ai-settings-off")
         compose.onNodeWithTag("ai_settings_list").performTouchInput { swipeUp() }

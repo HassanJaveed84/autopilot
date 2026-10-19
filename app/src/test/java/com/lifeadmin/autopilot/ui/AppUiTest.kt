@@ -7,6 +7,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -19,6 +20,7 @@ import com.lifeadmin.autopilot.data.repository.InMemorySettingsRepository
 import com.lifeadmin.autopilot.data.repository.NewTask
 import com.lifeadmin.autopilot.di.AppContainer
 import com.lifeadmin.autopilot.domain.model.AppSettings
+import com.lifeadmin.autopilot.domain.model.ReminderPreset
 import com.lifeadmin.autopilot.domain.model.TaskStatus
 import com.lifeadmin.autopilot.testing.CHICAGO
 import com.lifeadmin.autopilot.testing.FakeClock
@@ -58,18 +60,23 @@ class AppUiTest {
 
     @After fun tearDown() = container.database.close()
 
-    private fun createTask(title: String, status: TaskStatus = TaskStatus.ACTIONABLE) = runBlocking {
-        container.taskRepository.createTask(NewTask(title, status = status))
+    /** Nudging tasks land on the Today rail (card with a check); tasks without nudges sit in "Not today". */
+    private fun createTask(title: String, status: TaskStatus = TaskStatus.ACTIONABLE, preset: ReminderPreset? = ReminderPreset.PERSISTENT) = runBlocking {
+        container.taskRepository.createTask(NewTask(title, status = status, preset = preset))
     }
 
     @Test fun quickCaptureSavesToInboxInTwoTaps() {
         compose.onNodeWithTag("fab_capture").performClick()
         compose.onNodeWithTag("capture_title").performTextInput("Renew car registration")
-        compose.onNodeWithTag("capture_save_inbox").performClick()
+        // The follow-up switch is on by default (Save & nudge); off = Save to Inbox.
+        compose.onNodeWithTag("capture_nudge_switch").performClick()
+        compose.onNodeWithTag("capture_save").performClick()
         compose.waitForIdle()
         compose.onNodeWithTag("nav_inbox").performClick()
+        waitForTag("inbox_list")
         waitForText("Renew car registration")
-        compose.onNodeWithText("Renew car registration").assertIsDisplayed()
+        // Today's inbox prompt also previews the note while the tab transition finishes.
+        compose.onAllNodes(hasText("Renew car registration")).onFirst().assertIsDisplayed()
         val task = runBlocking { container.database.taskDao().getAll().single() }
         assertEquals(TaskStatus.INBOX, task.status)
     }
@@ -77,10 +84,10 @@ class AppUiTest {
     @Test fun saveAndRemindCreatesActionableTaskWithDefaultSchedule() {
         compose.onNodeWithTag("fab_capture").performClick()
         compose.onNodeWithTag("capture_title").performTextInput("Book train ride")
-        compose.onNodeWithTag("capture_save_remind").performClick()
+        compose.onNodeWithTag("capture_save").performClick()
         compose.waitUntil(10_000) { runBlocking { container.database.taskDao().count() == 1 } }
         waitForText("Book train ride")
-        // Shown under "Needs action" and "Upcoming reminders".
+        // Shown on the Today rail (09:00 card, 18:00 ghost repeat).
         compose.onAllNodesWithText("Book train ride")[0].assertIsDisplayed()
         val task = runBlocking { container.database.taskDao().getAll().single() }
         assertEquals(TaskStatus.ACTIONABLE, task.status)
@@ -94,8 +101,8 @@ class AppUiTest {
         compose.onNodeWithContentDescription("Mark Call the bank done").performClick()
         compose.waitUntil(10_000) { runBlocking { container.database.taskDao().getAll().single().status == TaskStatus.DONE } }
         compose.onNodeWithTag("nav_tasks").performClick()
-        waitForText("Completed 1")
-        compose.onNodeWithText("Completed 1").performClick()
+        waitForTag("filter_completed")
+        compose.onNodeWithTag("filter_completed").performClick()
         waitForText("Call the bank")
         compose.onNodeWithText("Call the bank").performClick()
         waitForTag("action_reopen")
@@ -108,7 +115,7 @@ class AppUiTest {
     // logic is covered by TaskRepositoryTest.statusLifecycleAndReopen.
 
     @Test fun snoozeDialogShowsExactNextReminderBeforeConfirming() {
-        createTask("Pay invoice")
+        createTask("Pay invoice", preset = null)
         waitForText("Pay invoice")
         compose.onNodeWithText("Pay invoice").performClick()
         waitForTag("action_snooze")
@@ -119,20 +126,21 @@ class AppUiTest {
     }
 
     @Test fun editReminderScheduleFromDetail() {
-        createTask("Book train ride")
+        createTask("Book train ride", preset = null)
         waitForText("Book train ride")
         compose.onNodeWithText("Book train ride").performClick()
-        compose.onNodeWithTag("detail_list").let { waitForTag("policy_summary") }
-        compose.onNodeWithText("Set up").performClick()
-        // Editor pre-fills the editable Persistent preset (09:00 and 18:00).
-        compose.waitUntil(3_000) { compose.onAllNodesWithTextCount("Next reminder: Fri 16 Oct 2026, 09:00") > 0 }
+        waitForTag("policy_summary")
+        compose.onNodeWithTag("card_action_reminders").performClick()
+        // The Follow-up sheet pre-fills the editable Persistent preset (09:00 and 18:00) and previews
+        // the next nudges with the engine's own planner.
+        compose.waitUntil(3_000) { compose.onAllNodesWithTextCount("Today 09:00") > 0 }
         compose.onNodeWithTag("policy_save").performClick()
-        compose.waitUntil(3_000) { compose.onAllNodesWithTextCount("Daily at 09:00 and 18:00") > 0 }
+        compose.waitUntil(5_000) { compose.onAllNodesWithTextCount("Nudging 09:00 & 18:00 daily") > 0 }
     }
 
     @Test fun searchFiltersTasks() {
-        createTask("Book train ride")
-        createTask("Renew passport")
+        createTask("Book train ride", preset = null)
+        createTask("Renew passport", preset = null)
         compose.onNodeWithTag("nav_tasks").performClick()
         waitForText("Renew passport")
         compose.onNodeWithTag("search_field").performTextInput("passport")

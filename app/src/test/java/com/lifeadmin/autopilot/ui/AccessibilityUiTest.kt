@@ -84,8 +84,8 @@ class AccessibilityUiTest {
         done.assertTouchTargetAtLeast(48.dp)
         compose.onNodeWithTag("fab_capture").assertTouchTargetAtLeast(48.dp)
         // At 2x text the list scrolls; content must remain reachable.
-        compose.onNodeWithTag("today_list").performScrollToNode(hasText("Upcoming reminders"))
-        compose.onNodeWithText("Upcoming reminders").assertIsDisplayed()
+        compose.onNodeWithTag("today_list").performScrollToNode(hasText("Today's nudges"))
+        compose.onNodeWithText("Today's nudges").assertIsDisplayed()
     }
 
     @Test fun sectionTitlesAreHeadings() {

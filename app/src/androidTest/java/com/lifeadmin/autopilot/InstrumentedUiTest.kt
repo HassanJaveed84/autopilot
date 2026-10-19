@@ -31,14 +31,15 @@ class InstrumentedUiTest {
         val title = "Repair car ${System.nanoTime() % 100000}"
         compose.onNodeWithTag("fab_capture").performClick()
         compose.onNodeWithTag("capture_title").performTextInput(title)
-        compose.onNodeWithTag("capture_save_inbox").performClick()
+        compose.onNodeWithTag("capture_nudge_switch").performClick() // off = Save to Inbox
+        compose.onNodeWithTag("capture_save").performClick()
         compose.onNodeWithTag("nav_inbox").performClick()
         waitForText(title)
         compose.onNodeWithText(title).performClick()
         compose.waitUntil(10_000) { compose.onAllNodes(androidx.compose.ui.test.hasTestTag("action_waiting")).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("action_waiting").performClick()
         compose.onNodeWithTag("waiting_reason").performTextInput("Mechanic to call back")
-        compose.onNodeWithText("Save").performClick()
+        compose.onNodeWithTag("waiting_save").performClick()
         compose.waitUntil(10_000) {
             runBlocking { container.database.taskDao().getAll().firstOrNull { it.title == title }?.status == TaskStatus.WAITING }
         }

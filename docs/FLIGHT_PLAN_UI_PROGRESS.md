@@ -56,10 +56,21 @@ No pre-existing failures.
 ## Checklist
 
 - [x] Phase A — baseline build/tests, environment notes, preservation matrix
-- [ ] Phase B — theme tokens, bundled OFL fonts, shapes, motion, icons, shared components, shell (capture bar + 3 tabs + settings button)
-- [ ] Phase C — capture sheet, AI setup / drafting / review, follow-up sheet, task detail
-- [ ] Phase D — Today flight plan, Inbox triage, Tasks list
-- [ ] Phase E — Settings, Reminder health, AI settings, appearance, accessibility pass
+- [x] Phase B — theme tokens (`ui/theme/Color.kt`, light + dark), bundled OFL fonts (`res/font`, licences in
+      `assets/licenses` and a Licences screen), typography/shapes/motion, icon set ported from the prototype path data
+      (`ui/components/AutopilotIcons.kt`), shared primitives (buttons, chips, pills, cards, groups, switch rows, provenance
+      border, task card, status-sentence formatter), shell (capture bar + Today/Inbox/Tasks + Settings header button with
+      health dot), appearance preference (System/Light/Dark) persisted in DataStore
+- [x] Phase C — capture sheet (one field, follow-up row + switch, one primary button, Plan with AI beside it, notes/priority/
+      deadline disclosure, in-place AI setup sheet with consent + key), Follow-up sheet (presets, No nudges, fine-tune,
+      next-three preview via the engine's planner, advanced start/quiet-hours/zone), drafting screen driven by the real
+      request lifecycle, review with dashed/solid provenance, task detail (status pill, follow-up card, Mark done, Snooze /
+      Waiting on… / Pause tiles, inline steps with Next, deadline + priority rows, AI card, history), snooze/waiting/more sheets
+- [x] Phase D — Today planner (`ui/today/TodayPlanner.kt`: Now marker, first nudge card + ghost repeats from
+      `ReminderProjection`, attention rows for overdue / due-today / due check-ins / late nudges, Waiting on others, Not today,
+      Done today, inbox prompt, empty "A clear day" state), Inbox triage cards, Tasks filters with counts + sort + search
+- [x] Phase E — Settings (health first, Follow-up group, Privacy, AI row, Appearance, Your data, About + licences), Reminder
+      health (hero, test a nudge, What Android reports with Fix deep links, timing, battery, switches, log), AI planning screen
 - [ ] Phase F — tests, lint, APKs, report, push, draft PR
 
 ## Changed files

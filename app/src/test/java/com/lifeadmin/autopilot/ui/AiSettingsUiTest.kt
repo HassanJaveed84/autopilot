@@ -120,8 +120,9 @@ class AiSettingsUiTest {
     @Test fun deleteAllAiSettings() {
         runBlocking { settings.update { it.copy(aiEnabled = true, aiConsentAt = clock.now(), aiModel = "claude-sonnet-5-5") } }
         keys.save(FAKE_KEY)
+        waitFor("ai_enabled_switch")
+        scrollTo("ai_delete_all") // the Remove section sits below the fold of the lazy list
         waitFor("ai_delete_all")
-        scrollTo("ai_delete_all")
         compose.onNodeWithTag("ai_delete_all").performClick()
         compose.onNodeWithTag("ai_delete_all_confirm").performClick()
         compose.waitUntil(5_000) { !keys.hasKey() }
