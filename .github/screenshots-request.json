@@ -1,5 +1,5 @@
 {
-  "reason": "Run 3: semantic clicks (targets behind the keyboard/FAB), skipped.txt log, follow-through wait fix",
+  "reason": "Run 4: open task rows via their clickable row; reset the task list scroll before the Done filter",
   "variants": [
     {
       "display": "phone",

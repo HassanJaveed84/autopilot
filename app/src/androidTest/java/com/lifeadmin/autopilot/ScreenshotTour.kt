@@ -6,6 +6,8 @@ import android.graphics.Bitmap
 import android.os.Build
 import android.util.Log
 import android.view.accessibility.AccessibilityNodeInfo
+import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -19,6 +21,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
@@ -200,8 +204,9 @@ class ScreenshotTour {
     private fun openTask(title: String) {
         compose.onNodeWithTag("nav_tasks").tap()
         compose.waitForTag("tasks_list")
-        compose.onNodeWithTag("tasks_list").performScrollToNode(hasText(title))
-        compose.onNodeWithText(title).tap()
+        compose.onNodeWithTag("tasks_list").performScrollToNode(hasText(title, substring = true))
+        // The row's text is its own merged node; the click lives on the enclosing row.
+        compose.onAllNodes(hasClickAction() and hasAnyDescendant(hasText(title, substring = true))).onFirst().tap()
         compose.waitForTag("detail_title")
     }
 
@@ -231,7 +236,7 @@ class ScreenshotTour {
         compose.onNodeWithTag("tasks_list").performTouchInput { swipeUp() }
         screenshot("b5-tasks-scrolled")
         compose.soft("tasks done filter") {
-            compose.onNodeWithTag("tasks_list").performScrollToNode(hasTestTag("filter_done"))
+            compose.onNodeWithTag("tasks_list").performScrollToIndex(0)
             compose.onNodeWithTag("filter_done").tap()
             compose.waitForText("Pay the council tax")
             screenshot("b6-tasks-done-filter")
@@ -306,10 +311,10 @@ class ScreenshotTour {
         screenshot("d3-detail-waiting")
         compose.back()
         compose.soft("done task") {
-            compose.onNodeWithTag("tasks_list").performScrollToNode(hasTestTag("filter_done"))
+            compose.onNodeWithTag("tasks_list").performScrollToIndex(0)
             compose.onNodeWithTag("filter_done").tap()
             compose.waitForText("Pay the council tax")
-            compose.onNodeWithText("Pay the council tax").tap()
+            compose.onAllNodes(hasClickAction() and hasAnyDescendant(hasText("Pay the council tax"))).onFirst().tap()
             compose.waitForTag("detail_title")
             screenshot("d4-detail-done")
         }
