@@ -69,6 +69,16 @@ Toolchain: AGP 8.13.2, Gradle 8.14.3 (wrapper), Kotlin 2.2.21, Compose BOM 2026.
 WorkManager 2.11.2, DataStore 1.2.1. CI: `.github/workflows/android-ci.yml` (lint, unit tests, debug
 and release APKs as artifacts, emulator instrumented tests).
 
+### Screenshots for UI review
+
+`.github/workflows/screenshots.yml` runs only on demand (Actions → **Screenshots** → *Run workflow*).
+It drives the debug app on an API 34 emulator through every main screen, dialog and AI state
+(`app/src/androidTest/.../ScreenshotTour.kt`) and uploads the PNGs as the artifact
+`screenshots-<display>-<theme>-font<scale>`. Options: display `phone` / `small` (320 dp) /
+`tablet`, `light` / `dark` theme, font scale `1.0` / `1.3` / `2.0`, and an optional subset such as
+`com.lifeadmin.autopilot.ScreenshotTour#c_taskDetail`. AI screens use a scripted answer, not the
+live API.
+
 ### Install on your phone
 
 ```bash
