@@ -7,35 +7,34 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.selection.toggleable
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -46,13 +45,17 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -71,7 +74,21 @@ import com.lifeadmin.autopilot.domain.usecase.AlertIssue
 import com.lifeadmin.autopilot.domain.usecase.AlertLevel
 import com.lifeadmin.autopilot.notifications.AndroidNotificationPublisher
 import com.lifeadmin.autopilot.reminders.RoomDiagnosticsLog
+import com.lifeadmin.autopilot.ui.components.AutopilotIcons
+import com.lifeadmin.autopilot.ui.components.AutopilotSnackbar
+import com.lifeadmin.autopilot.ui.components.BackHeader
 import com.lifeadmin.autopilot.ui.components.Format
+import com.lifeadmin.autopilot.ui.components.GroupDivider
+import com.lifeadmin.autopilot.ui.components.IconCircle
+import com.lifeadmin.autopilot.ui.components.LinkButton
+import com.lifeadmin.autopilot.ui.components.PrimaryButton
+import com.lifeadmin.autopilot.ui.components.RowGroup
+import com.lifeadmin.autopilot.ui.components.SecondaryButton
+import com.lifeadmin.autopilot.ui.components.SectionTitle
+import com.lifeadmin.autopilot.ui.components.SurfaceCard
+import com.lifeadmin.autopilot.ui.components.SwitchRow
+import com.lifeadmin.autopilot.ui.theme.AutopilotColors
+import com.lifeadmin.autopilot.ui.theme.AutopilotTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -122,6 +139,14 @@ private fun rememberQuickAssessment(container: AppContainer): QuickHealth? {
     return result
 }
 
+/** True when reminders exist and would be blocked or probably silent: drives the settings warning dot. */
+@Composable
+fun rememberHealthIssue(container: AppContainer): Boolean {
+    val q = rememberQuickAssessment(container) ?: return false
+    if (q.activeReminders == 0) return false
+    return q.assessment.level == AlertLevel.BLOCKED || q.assessment.level == AlertLevel.SILENT || q.recentLateApproximate != null
+}
+
 private fun levelHeadline(level: AlertLevel): String = when (level) {
     AlertLevel.BLOCKED -> "Reminders can't be shown"
     AlertLevel.SILENT -> "Reminders will probably be silent"
@@ -130,11 +155,25 @@ private fun levelHeadline(level: AlertLevel): String = when (level) {
     AlertLevel.UNCERTAIN -> "Reminders may be silenced"
 }
 
-@Composable
-private fun levelColors(level: AlertLevel): Pair<Color, Color> = when (level) {
-    AlertLevel.BLOCKED, AlertLevel.SILENT -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
-    AlertLevel.UNCERTAIN, AlertLevel.VIBRATE_ONLY -> MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
-    AlertLevel.AUDIBLE -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
+private fun shortHeadline(level: AlertLevel): String = when (level) {
+    AlertLevel.BLOCKED -> "Reminders are blocked"
+    AlertLevel.SILENT -> "Reminders will be silent"
+    AlertLevel.VIBRATE_ONLY -> "Reminders vibrate only"
+    AlertLevel.AUDIBLE -> "Reminders are working"
+    AlertLevel.UNCERTAIN -> "Reminders may be silenced"
+}
+
+/** Background, foreground and icon tint for a health level (soft done / signal / danger). */
+private fun levelColors(c: AutopilotColors, level: AlertLevel): Triple<Color, Color, Color> = when (level) {
+    AlertLevel.BLOCKED -> Triple(c.dangerSoft, c.onDangerSoft, c.danger)
+    AlertLevel.SILENT, AlertLevel.UNCERTAIN, AlertLevel.VIBRATE_ONLY -> Triple(c.signalSoft, c.onSignalSoft, c.signal)
+    AlertLevel.AUDIBLE -> Triple(c.doneSoft, c.onDoneSoft, c.done)
+}
+
+private fun levelIcon(level: AlertLevel): ImageVector = when (level) {
+    AlertLevel.AUDIBLE -> AutopilotIcons.Sound
+    AlertLevel.VIBRATE_ONLY -> AutopilotIcons.Vibrate
+    else -> AutopilotIcons.Warn
 }
 
 /**
@@ -143,33 +182,34 @@ private fun levelColors(level: AlertLevel): Pair<Color, Color> = when (level) {
  */
 @Composable
 fun HealthBanner(container: AppContainer, onFix: () -> Unit) {
+    val c = AutopilotTheme.colors
     val q = rememberQuickAssessment(container) ?: return
     val a = q.assessment
-    val active = q.activeReminders
-    if (active == 0) return
+    if (q.activeReminders == 0) return
     if (a.level != AlertLevel.BLOCKED && a.level != AlertLevel.SILENT) {
         val late = q.recentLateApproximate ?: return
-        Card(
-            Modifier.fillMaxWidth().padding(12.dp).testTag("late_banner"),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
-        ) {
-            Column(Modifier.padding(16.dp)) {
-                Text("Your last reminder arrived ${humanDuration(late)} late", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onTertiaryContainer)
-                Text(
-                    "Reminders use approximate timing, so Android may delay them to save battery. Precise timing (with “Alarms & reminders” access) makes them arrive on time.",
-                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onTertiaryContainer,
-                )
-                TextButton(onClick = onFix) { Text("Review timing") }
-            }
-        }
+        BannerCard(
+            AutopilotIcons.Clock, c.signalSoft, c.onSignalSoft, c.signal,
+            "Your last reminder arrived ${humanDuration(late)} late",
+            "Reminders use approximate timing, so Android may delay them to save battery. Precise timing (with “Alarms & reminders” access) makes them arrive on time.",
+            "Review timing", onFix, Modifier.testTag("late_banner"),
+        )
         return
     }
-    val (bg, fg) = levelColors(a.level)
-    Card(Modifier.fillMaxWidth().padding(12.dp).testTag("health_banner"), colors = CardDefaults.cardColors(containerColor = bg)) {
-        Column(Modifier.padding(16.dp)) {
-            Text(levelHeadline(a.level), style = MaterialTheme.typography.titleMedium, color = fg)
-            Text(a.summary + " Your tasks and schedules are kept.", style = MaterialTheme.typography.bodyMedium, color = fg)
-            TextButton(onClick = onFix) { Text("Review reminder health") }
+    val (bg, fg, tint) = levelColors(c, a.level)
+    BannerCard(AutopilotIcons.Warn, bg, fg, tint, levelHeadline(a.level), a.summary + " Your tasks and schedules are kept.", "Review reminder health", onFix, Modifier.testTag("health_banner"))
+}
+
+@Composable
+private fun BannerCard(icon: ImageVector, bg: Color, fg: Color, tint: Color, title: String, body: String, action: String, onFix: () -> Unit, modifier: Modifier) {
+    Column(modifier.fillMaxWidth().padding(top = 14.dp).clip(RoundedCornerShape(22.dp)).background(bg).clickable(role = Role.Button, onClick = onFix).padding(16.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(title, style = MaterialTheme.typography.titleMedium, color = fg)
+                Text(body, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = fg)
+                Text(action, style = MaterialTheme.typography.labelLarge, color = fg, modifier = Modifier.padding(top = 4.dp))
+            }
         }
     }
 }
@@ -177,18 +217,23 @@ fun HealthBanner(container: AppContainer, onFix: () -> Unit) {
 /** Compact entry point shown at the top of Settings. */
 @Composable
 fun HealthSummaryCard(container: AppContainer, onOpen: () -> Unit) {
+    val c = AutopilotTheme.colors
     val q = rememberQuickAssessment(container)
     val level = q?.assessment?.level ?: AlertLevel.UNCERTAIN
-    val (bg, fg) = levelColors(level)
-    Card(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).testTag("health_summary"),
-        colors = CardDefaults.cardColors(containerColor = bg),
+    val (bg, fg, tint) = levelColors(c, level)
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(bg).clickable(role = Role.Button, onClick = onOpen)
+            .semantics(mergeDescendants = true) { contentDescription = "Reminder health. " + (if (q == null) "Checking" else "${levelHeadline(level)}. ${q.assessment.summary}") + ". Opens reminder health and tests." }
+            .testTag("open_health").padding(start = 16.dp, end = 12.dp, top = 16.dp, bottom = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Column(Modifier.padding(16.dp)) {
-            Text("Reminder health", style = MaterialTheme.typography.titleMedium, color = fg, modifier = Modifier.semantics { heading() })
-            Text(if (q == null) "Checking…" else "${levelHeadline(level)}. ${q.assessment.summary}", style = MaterialTheme.typography.bodyMedium, color = fg)
-            Button(onClick = onOpen, modifier = Modifier.padding(top = 8.dp).testTag("open_health")) { Text("Open reminder health & tests") }
+        IconCircle(if (q == null) AutopilotIcons.Refresh else if (level == AlertLevel.AUDIBLE) AutopilotIcons.Shield else levelIcon(level), tint = tint, background = c.surface, size = 48.dp)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(if (q == null) "Checking reminder health…" else shortHeadline(level), style = MaterialTheme.typography.titleMedium, color = fg, modifier = Modifier.semantics { heading() })
+            Text(if (q == null) "Reading what Android reports" else q.assessment.summary, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = fg, maxLines = 3)
         }
+        Icon(AutopilotIcons.ChevronRight, contentDescription = null, tint = fg, modifier = Modifier.size(20.dp))
     }
 }
 
@@ -204,6 +249,7 @@ fun ReminderHealthScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val recent by viewModel.recent.collectAsStateWithLifecycle()
+    val c = AutopilotTheme.colors
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -215,93 +261,102 @@ fun ReminderHealthScreen(
     // Refresh while a scheduled test is pending so its result appears without leaving the screen.
     LaunchedEffect(recent.firstOrNull()?.id) { viewModel.refresh() }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Reminder health") },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") } },
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbar) },
-    ) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("health_list"), contentPadding = PaddingValues(bottom = 48.dp)) {
-            item { StatusCard(state.assessment, state.loading) }
+    Scaffold(containerColor = c.paper, contentWindowInsets = WindowInsets(0), snackbarHost = { SnackbarHost(snackbar) { data -> AutopilotSnackbar(data) } }) { padding ->
+        LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("health_list"), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 48.dp)) {
+            item { BackHeader("Reminder health", onBack, Modifier.statusBarsPadding().offset(x = (-8).dp), backLabel = "Back") }
+            item { Hero(state.assessment, state.loading) }
 
-            item { Section("Test delivery") }
             item {
-                Column(Modifier.padding(horizontal = 20.dp)) {
+                SurfaceCard(modifier = Modifier.padding(top = 14.dp), radius = 22.dp, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 16.dp)) {
+                    Text("Test a nudge", style = MaterialTheme.typography.titleMedium, color = c.ink, modifier = Modifier.semantics { heading() })
                     Text(
-                        "Tests use the same notification channel and alarm timing as real reminders. Android accepting a notification " +
-                            "doesn't prove you noticed it — tell from the sound/vibration you got.",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        "Uses the same notification channel and alarm timing as real nudges. Android can only say it delivered one — you know if you noticed.",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = c.ink2, modifier = Modifier.padding(top = 4.dp),
                     )
-                    FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = viewModel::sendTestNow, modifier = Modifier.testTag("test_now")) { Text("Send test notification now") }
-                        OutlinedButton(onClick = viewModel::scheduleTest, modifier = Modifier.testTag("test_in_2_min")) { Text("Schedule test reminder in 2 minutes") }
+                    Column(Modifier.padding(top = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        PrimaryButton("Send a test now", onClick = viewModel::sendTestNow, minHeight = 52.dp, modifier = Modifier.fillMaxWidth().testTag("test_now"))
+                        SecondaryButton("Test with phone locked · in 2 min", onClick = viewModel::scheduleTest, minHeight = 52.dp, modifier = Modifier.fillMaxWidth().testTag("test_in_2_min"))
                     }
                     state.pendingTestAt?.let {
-                        Text("Test reminder due ${Format.time(it, zone)} — lock the phone and wait.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 6.dp))
+                        Row(Modifier.fillMaxWidth().padding(top = 12.dp).clip(RoundedCornerShape(16.dp)).background(c.sunken).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(AutopilotIcons.Clock, contentDescription = null, tint = c.ink2, modifier = Modifier.size(20.dp))
+                            Text("Test reminder due ${Format.time(it, zone)} — lock the phone and wait.", style = MaterialTheme.typography.bodyMedium, color = c.ink)
+                        }
                     }
                     if (state.lastTest.isNotEmpty()) TestResult(state.lastTest, zone)
                 }
             }
 
-            item { Section("How reminders alert you") }
-            item { AlertDetails(state, onOpenChannel = { context.openChannelSettings() }, onOpenApp = { context.openAppNotificationSettings() }, onOpenDnd = { context.openDndSettings() }, requestPermission = requestPermission) }
+            item { SectionTitle("What Android reports", Modifier.padding(top = 26.dp, bottom = 10.dp, start = 4.dp)) }
             item {
-                TextButton(onClick = { showModes = !showModes }, modifier = Modifier.padding(horizontal = 8.dp)) {
-                    Text(if (showModes) "Hide: how Vibrate, Silent and Do Not Disturb affect reminders" else "How Vibrate, Silent and Do Not Disturb affect reminders")
+                AlertReport(
+                    state,
+                    onOpenChannel = { context.openChannelSettings() }, onOpenApp = { context.openAppNotificationSettings() },
+                    onOpenDnd = { context.openDndSettings() }, onOpenSound = { context.openSoundSettings() },
+                    onOpenAppDetails = { context.openAppDetails() }, onGrantExact = { context.openExactAlarmSettings() },
+                    requestPermission = requestPermission,
+                )
+            }
+            item {
+                FlowRow(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SecondaryButton("Reminder channel settings", onClick = { context.openChannelSettings() }, minHeight = 44.dp, modifier = Modifier.testTag("open_channel_settings"))
+                    SecondaryButton("App notification settings", onClick = { context.openAppNotificationSettings() }, minHeight = 44.dp)
+                    SecondaryButton("Do Not Disturb settings", onClick = { context.openDndSettings() }, minHeight = 44.dp)
                 }
+                Text(
+                    "In channel settings: choose “Alert”, turn on “Vibrate” if your phone is usually in Vibrate mode, and pick a sound. " +
+                        "“Show as pop-up” is optional — turn it on if you want reminders to appear over other apps. Android keeps these " +
+                        "choices; the app never changes them for you.",
+                    style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(top = 8.dp, start = 4.dp, end = 4.dp),
+                )
+                LinkButton(if (showModes) "Hide: how Vibrate, Silent and Do Not Disturb affect reminders" else "How Vibrate, Silent and Do Not Disturb affect reminders", onClick = { showModes = !showModes })
                 if (showModes) ModesExplanation()
             }
 
-            item { Section("Timing") }
+            item { SectionTitle("Timing", Modifier.padding(top = 26.dp, bottom = 10.dp, start = 4.dp)) }
             item { TimingDetails(state, zone, now(), onPrecision = { on -> if (on && !state.environment.canScheduleExact) explainExact = true; viewModel.setPrecision(on) }, onGrant = { context.openExactAlarmSettings() }) }
             item { BatteryDetails(state.environment, onOpenApp = { context.openAppDetails() }) }
 
-            item { Section("App switches") }
+            item { SectionTitle("App switches", Modifier.padding(top = 26.dp, bottom = 10.dp, start = 4.dp)) }
             item {
-                Row(
-                    Modifier.fillMaxWidth().toggleable(state.settings.allowReminderNotifications, role = Role.Switch, onValueChange = viewModel::setNotificationsEnabled).padding(horizontal = 20.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Reminder notifications", style = MaterialTheme.typography.bodyLarge)
-                        Text("Off keeps schedules but shows nothing", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                RowGroup {
+                    SwitchRow(
+                        title = "Reminder notifications", subtitle = "Off keeps schedules but shows nothing",
+                        checked = state.settings.allowReminderNotifications, onCheckedChange = viewModel::setNotificationsEnabled, icon = AutopilotIcons.Bell,
+                    )
+                    GroupDivider()
+                    Column(Modifier.padding(16.dp)) {
+                        SecondaryButton("Re-check schedule", onClick = viewModel::recheck, icon = AutopilotIcons.Refresh, minHeight = 44.dp, modifier = Modifier.testTag("reconcile_now"))
+                        Text(
+                            state.settings.lastReconcileAt?.let { "Last check: ${Format.relative(it, now(), zone)} — ${state.settings.lastReconcileSummary.orEmpty()}" } ?: "Not checked yet",
+                            style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(top = 6.dp),
+                        )
                     }
-                    Switch(checked = state.settings.allowReminderNotifications, onCheckedChange = null)
                 }
-                OutlinedButton(onClick = viewModel::recheck, modifier = Modifier.padding(horizontal = 20.dp).testTag("reconcile_now")) { Text("Re-check schedule") }
-                Text(
-                    state.settings.lastReconcileAt?.let { "Last check: ${Format.relative(it, now(), zone)} — ${state.settings.lastReconcileSummary.orEmpty()}" } ?: "Not checked yet",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-                )
             }
 
-            item { Section("Recent delivery log") }
+            item { SectionTitle("Recent delivery log", Modifier.padding(top = 26.dp, bottom = 10.dp, start = 4.dp)) }
             item {
-                Column(Modifier.padding(horizontal = 20.dp)) {
-                    Text("Actual times on this phone. Contains no task titles or notes.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = {
-                            scope.launch {
-                                val text = viewModel.diagnosticsText()
-                                context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Reminder diagnostics", text))
-                                snackbar.showSnackbar("Diagnostics copied")
-                            }
-                        }, modifier = Modifier.testTag("copy_diagnostics")) { Text("Copy diagnostics") }
-                        OutlinedButton(onClick = {
-                            scope.launch {
-                                val text = viewModel.diagnosticsText()
-                                val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_SUBJECT, "Life Admin reminder diagnostics").putExtra(Intent.EXTRA_TEXT, text)
-                                runCatching { context.startActivity(Intent.createChooser(send, "Share diagnostics").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-                            }
-                        }) { Text("Share…") }
-                    }
+                Text("Actual times on this phone. Contains no task titles or notes.", style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(start = 4.dp))
+                FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SecondaryButton("Copy diagnostics", onClick = {
+                        scope.launch {
+                            val text = viewModel.diagnosticsText()
+                            context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Reminder diagnostics", text))
+                            snackbar.showSnackbar("Diagnostics copied")
+                        }
+                    }, icon = AutopilotIcons.Clip, minHeight = 44.dp, modifier = Modifier.testTag("copy_diagnostics"))
+                    SecondaryButton("Share…", onClick = {
+                        scope.launch {
+                            val text = viewModel.diagnosticsText()
+                            val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_SUBJECT, "Life Admin reminder diagnostics").putExtra(Intent.EXTRA_TEXT, text)
+                            runCatching { context.startActivity(Intent.createChooser(send, "Share diagnostics").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                        }
+                    }, icon = AutopilotIcons.Export, minHeight = 44.dp)
                 }
             }
             if (recent.isEmpty()) {
-                item { Text("Nothing recorded yet.", modifier = Modifier.padding(20.dp), style = MaterialTheme.typography.bodyMedium) }
+                item { Text("Nothing recorded yet.", modifier = Modifier.padding(top = 12.dp, start = 4.dp), style = MaterialTheme.typography.bodyMedium, color = c.ink2) }
             }
             items(recent, key = { it.id }) { LedgerRow(it, zone) }
         }
@@ -324,30 +379,25 @@ fun ReminderHealthScreen(
 }
 
 @Composable
-private fun Section(text: String) {
-    Column {
-        HorizontalDivider(Modifier.padding(top = 12.dp))
-        Text(text, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 4.dp).semantics { heading() })
-    }
-}
-
-@Composable
-private fun StatusCard(a: AlertAssessment?, loading: Boolean) {
+private fun Hero(a: AlertAssessment?, loading: Boolean) {
+    val c = AutopilotTheme.colors
     val level = a?.level ?: AlertLevel.UNCERTAIN
-    val (bg, fg) = levelColors(level)
-    Card(Modifier.fillMaxWidth().padding(12.dp).testTag("health_status"), colors = CardDefaults.cardColors(containerColor = bg)) {
-        Column(Modifier.padding(16.dp)) {
-            Text(if (loading || a == null) "Checking…" else levelHeadline(level), style = MaterialTheme.typography.titleLarge, color = fg, modifier = Modifier.testTag("health_headline"))
-            a?.let {
-                Text(it.summary, style = MaterialTheme.typography.bodyMedium, color = fg, modifier = Modifier.padding(top = 4.dp))
-                val fixes = it.issues.mapNotNull(::issueAdvice)
-                fixes.forEach { f -> Text("• $f", style = MaterialTheme.typography.bodyMedium, color = fg) }
-            }
-            Text(
-                "Based on settings Android reports. It can't confirm you actually heard or felt a reminder — use the tests below.",
-                style = MaterialTheme.typography.bodySmall, color = fg, modifier = Modifier.padding(top = 6.dp),
-            )
+    val (bg, fg, tint) = levelColors(c, level)
+    Column(Modifier.fillMaxWidth().padding(top = 10.dp).clip(RoundedCornerShape(24.dp)).background(bg).padding(horizontal = 20.dp, vertical = 22.dp).testTag("health_status")) {
+        IconCircle(if (loading || a == null) AutopilotIcons.Refresh else levelIcon(level), tint = tint, background = c.surface, size = 56.dp)
+        Text(
+            if (loading || a == null) "Checking…" else levelHeadline(level),
+            style = MaterialTheme.typography.headlineSmall.copy(fontSize = 28.sp, lineHeight = 31.sp), color = fg,
+            modifier = Modifier.padding(top = 14.dp, bottom = 6.dp).semantics { heading() }.testTag("health_headline"),
+        )
+        a?.let {
+            Text(it.summary, style = MaterialTheme.typography.bodyMedium, color = fg)
+            it.issues.mapNotNull(::issueAdvice).forEach { f -> Text("• $f", style = MaterialTheme.typography.bodyMedium, color = fg, modifier = Modifier.padding(top = 4.dp)) }
         }
+        Text(
+            "Based on settings Android reports. It can't confirm you actually heard or felt a reminder — use the test below.",
+            style = MaterialTheme.typography.bodySmall, color = fg, modifier = Modifier.padding(top = 8.dp),
+        )
     }
 }
 
@@ -366,33 +416,58 @@ private fun issueAdvice(i: AlertIssue): String? = when (i) {
     AlertIssue.NO_POPUP -> null // optional preference, explained in the details section
 }
 
+private data class ReportRow(val icon: ImageVector, val label: String, val value: String, val ok: Boolean, val help: String? = null, val fix: (() -> Unit)? = null, val tag: String? = null, val informational: Boolean = false)
+
 @Composable
-private fun AlertDetails(state: HealthUiState, onOpenChannel: () -> Unit, onOpenApp: () -> Unit, onOpenDnd: () -> Unit, requestPermission: () -> Unit) {
+private fun AlertReport(
+    state: HealthUiState,
+    onOpenChannel: () -> Unit, onOpenApp: () -> Unit, onOpenDnd: () -> Unit, onOpenSound: () -> Unit, onOpenAppDetails: () -> Unit, onGrantExact: () -> Unit,
+    requestPermission: () -> Unit,
+) {
     val env = state.environment
-    Column(Modifier.padding(horizontal = 20.dp)) {
-        Status("Notification permission", if (state.health.permissionGranted) "Allowed" else "Not allowed", state.health.permissionGranted)
-        if (!state.health.permissionGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !state.settings.notificationPermissionRequested) {
-            OutlinedButton(onClick = requestPermission) { Text("Allow notifications") }
+    val canAsk = !state.health.permissionGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !state.settings.notificationPermissionRequested
+    val rows = buildList {
+        add(ReportRow(AutopilotIcons.Bell, "Notification permission", if (state.health.permissionGranted) "Allowed" else "Not allowed", state.health.permissionGranted, "Without it, no reminder can be shown.", if (canAsk) requestPermission else onOpenApp))
+        add(ReportRow(AutopilotIcons.Bell, "App notifications", if (state.health.appNotificationsEnabled) "On" else "Off", state.health.appNotificationsEnabled, "Turned off for the whole app in Android settings.", onOpenApp))
+        add(ReportRow(AutopilotIcons.Bell, "“Task reminders” channel", importanceLabel(env), env.channelImportance != 0, "The reminder category is blocked in Android.", onOpenChannel))
+        add(ReportRow(AutopilotIcons.Sound, "Nudge sound", when (env.channelHasSound) { true -> "On"; false -> "None"; null -> "Unknown" }, env.channelHasSound != false, "Pick a sound in channel settings if you want one.", onOpenChannel))
+        add(ReportRow(AutopilotIcons.Vibrate, "Vibration", when (env.channelVibrates) { true -> "On"; false -> "Off"; null -> "Unknown" }, env.channelVibrates == true, "Turn on “Vibrate” in channel settings to feel reminders in Vibrate mode.", onOpenChannel, tag = "channel_vibration"))
+        add(ReportRow(AutopilotIcons.Info, "Pop-up on screen", if ((env.channelImportance ?: 0) >= 4) "On" else "Off (optional)", true, informational = true))
+        add(ReportRow(AutopilotIcons.Sound, "Phone sound mode", when (env.ringerMode) { RingerMode.NORMAL -> "Sound"; RingerMode.VIBRATE -> "Vibrate"; RingerMode.SILENT -> "Silent"; RingerMode.UNKNOWN -> "Unknown" }, env.ringerMode == RingerMode.NORMAL, "In Vibrate or Silent mode, reminders don't play a sound.", onOpenSound, tag = "ringer_mode"))
+        add(ReportRow(AutopilotIcons.Dnd, "Do Not Disturb", when (env.interruptionFilter) { InterruptionFilter.ALL -> "Off"; InterruptionFilter.PRIORITY -> "On (priority only)"; InterruptionFilter.ALARMS -> "On (alarms only)"; InterruptionFilter.NONE -> "On (total silence)"; InterruptionFilter.UNKNOWN -> "Unknown" }, env.interruptionFilter == InterruptionFilter.ALL, "Add this app as an exception if reminders should break through.", onOpenDnd))
+        env.notificationVolume?.let { add(ReportRow(AutopilotIcons.Sound, "Notification volume", "$it of ${env.notificationVolumeMax ?: "?"}", it > 0, "Turn up notification volume, not just media.", onOpenSound)) }
+        add(ReportRow(AutopilotIcons.Alarm, "Exact alarms", if (env.canScheduleExact) "Allowed" else "Not granted", env.canScheduleExact || !state.settings.precisionMode, "Precise timing needs “Alarms & reminders” access.", if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) onGrantExact else null))
+        add(ReportRow(AutopilotIcons.Battery, "Battery", when (env.ignoringBatteryOptimizations) { true -> "Unrestricted"; false -> "Optimized"; null -> "Unknown" }, env.ignoringBatteryOptimizations == true, "Android may hold nudges while the phone sleeps. Choose “Unrestricted” for this app.", onOpenAppDetails))
+    }
+    RowGroup { rows.forEachIndexed { i, r -> ReportRowView(r, divider = i > 0) } }
+}
+
+@Composable
+private fun ReportRowView(r: ReportRow, divider: Boolean) {
+    val c = AutopilotTheme.colors
+    if (divider) GroupDivider()
+    val problem = !r.ok && !r.informational
+    Column(
+        Modifier.fillMaxWidth().background(if (problem) c.signalSoft else Color.Transparent).padding(horizontal = 14.dp, vertical = 12.dp)
+            .let { if (r.tag != null) it.testTag(r.tag) else it }
+            .semantics(mergeDescendants = true) { contentDescription = "${r.label}: ${r.value}" + (if (problem) ". Needs attention" else "") },
+    ) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 36.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Icon(r.icon, contentDescription = null, tint = if (problem) c.onSignalSoft else c.ink2, modifier = Modifier.size(20.dp))
+            Text(r.label, style = MaterialTheme.typography.bodyMedium, color = c.ink, modifier = Modifier.weight(1f))
+            Text(r.value, style = MaterialTheme.typography.labelLarge, color = if (problem) c.onSignalSoft else c.ink2)
+            if (!r.informational) {
+                Box(Modifier.size(22.dp).clip(CircleShape).background(if (r.ok) c.doneSoft else c.signal), contentAlignment = Alignment.Center) {
+                    Icon(if (r.ok) AutopilotIcons.Check else AutopilotIcons.Warn, contentDescription = null, tint = if (r.ok) c.onDoneSoft else c.onSignal, modifier = Modifier.size(14.dp))
+                }
+            }
         }
-        Status("App notifications", if (state.health.appNotificationsEnabled) "On" else "Off", state.health.appNotificationsEnabled)
-        Status("“Task reminders” channel", importanceLabel(env), env.channelImportance != 0)
-        Status("Channel sound", when (env.channelHasSound) { true -> "On"; false -> "None"; null -> "Unknown" }, env.channelHasSound != false)
-        Status("Channel vibration", when (env.channelVibrates) { true -> "On"; false -> "Off"; null -> "Unknown" }, env.channelVibrates == true, tag = "channel_vibration")
-        Status("Pop-up on screen", if ((env.channelImportance ?: 0) >= 4) "On" else "Off (optional)", true)
-        Status("Phone sound mode", when (env.ringerMode) { RingerMode.NORMAL -> "Sound"; RingerMode.VIBRATE -> "Vibrate"; RingerMode.SILENT -> "Silent"; RingerMode.UNKNOWN -> "Unknown" }, env.ringerMode == RingerMode.NORMAL, tag = "ringer_mode")
-        Status("Do Not Disturb", when (env.interruptionFilter) { InterruptionFilter.ALL -> "Off"; InterruptionFilter.PRIORITY -> "On (priority only)"; InterruptionFilter.ALARMS -> "On (alarms only)"; InterruptionFilter.NONE -> "On (total silence)"; InterruptionFilter.UNKNOWN -> "Unknown" }, env.interruptionFilter == InterruptionFilter.ALL)
-        env.notificationVolume?.let { Status("Notification volume", "$it of ${env.notificationVolumeMax ?: "?"}", it > 0) }
-        FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = onOpenChannel, modifier = Modifier.testTag("open_channel_settings")) { Text("Open reminder channel settings") }
-            OutlinedButton(onClick = onOpenApp) { Text("App notification settings") }
-            OutlinedButton(onClick = onOpenDnd) { Text("Do Not Disturb settings") }
+        if (problem && r.help != null) {
+            Row(Modifier.padding(start = 32.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(r.help, style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.weight(1f))
+                if (r.fix != null) PrimaryButton("Fix", onClick = r.fix, minHeight = 40.dp)
+            }
         }
-        Text(
-            "In channel settings: choose “Alert”, turn on “Vibrate” if your phone is usually in Vibrate mode, and pick a sound. " +
-                "“Show as pop-up” is optional — turn it on if you want reminders to appear over other apps. Android keeps these " +
-                "choices; the app never changes them for you.",
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp),
-        )
     }
 }
 
@@ -413,56 +488,59 @@ private fun ModesExplanation() {
             "• Silent mode: no sound and no vibration — reminders only appear in the notification shade.\n" +
             "• Do Not Disturb: silences reminders unless you allow this app (or its “Task reminders” category) as an exception.\n" +
             "• Pop-up (“Show as pop-up”) only changes whether the reminder appears on top of the screen; it doesn't add sound.",
-        style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 20.dp).testTag("modes_explanation"),
+        style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = AutopilotTheme.colors.ink2, modifier = Modifier.padding(horizontal = 4.dp).testTag("modes_explanation"),
     )
 }
 
 @Composable
 private fun TimingDetails(state: HealthUiState, zone: ZoneId, now: Instant, onPrecision: (Boolean) -> Unit, onGrant: () -> Unit) {
+    val c = AutopilotTheme.colors
     val env = state.environment
     val precise = state.settings.precisionMode && env.canScheduleExact
-    Column(Modifier.padding(horizontal = 20.dp)) {
-        Text(
-            if (precise) "Precise timing is active: reminders use exact alarms."
-            else "Approximate timing: Android may deliver reminders many minutes late (it batches alarms to save battery, more in deep sleep or with battery restrictions).",
-            style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("timing_mode"),
-            color = if (precise) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-        )
-        Row(
-            Modifier.fillMaxWidth().toggleable(state.settings.precisionMode, role = Role.Switch, onValueChange = onPrecision).padding(vertical = 8.dp).testTag("precision_toggle"),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text("Precise timing", style = MaterialTheme.typography.bodyLarge)
-                Text("Exact-alarm access (“Alarms & reminders”): " + if (env.canScheduleExact) "granted" else "not granted", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Switch(checked = state.settings.precisionMode, onCheckedChange = null)
+    RowGroup {
+        Column(Modifier.padding(16.dp)) {
+            Text(
+                if (precise) "Precise timing is active: reminders use exact alarms."
+                else "Approximate timing: Android may deliver reminders many minutes late (it batches alarms to save battery, more in deep sleep or with battery restrictions).",
+                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("timing_mode"), color = if (precise) c.done else c.ink,
+            )
         }
+        SwitchRow(
+            title = "Precise timing",
+            subtitle = "Exact-alarm access (“Alarms & reminders”): " + if (env.canScheduleExact) "granted" else "not granted",
+            checked = state.settings.precisionMode, onCheckedChange = onPrecision, icon = AutopilotIcons.Alarm, divider = true,
+            switchTestTag = "precision_toggle",
+        )
         if (state.settings.precisionMode && !env.canScheduleExact && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            OutlinedButton(onClick = onGrant) { Text("Grant “Alarms & reminders” access…") }
-            Text("Until granted, reminders stay approximate.", style = MaterialTheme.typography.bodySmall)
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                SecondaryButton("Grant “Alarms & reminders” access…", onClick = onGrant, minHeight = 44.dp)
+                Text("Until granted, reminders stay approximate.", style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(top = 4.dp))
+            }
         }
         val ls = state.lateStats
-        if (ls.deliveries > 0) {
+        Column(Modifier.padding(16.dp)) {
+            if (ls.deliveries > 0) {
+                Text(
+                    "Last ${ls.deliveries} deliveries: ${ls.lateOver5Min} alarms arrived more than 5 min late" +
+                        (ls.worst?.let { " (worst ${RoomDiagnosticsLog.formatLateness(it)})" } ?: "") + "." +
+                        (if (ls.caughtUp > 0) " ${ls.caughtUp} were caught up later (alarm not received, phone off or app force-stopped)." else ""),
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = c.ink, modifier = Modifier.testTag("late_stats"),
+                )
+                if (ls.lateOver5Min > 0 && !precise) Text("Turning on Precise timing is the most effective fix for late reminders.", style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = c.signal, modifier = Modifier.padding(top = 4.dp))
+            }
             Text(
-                "Last ${ls.deliveries} deliveries: ${ls.lateOver5Min} alarms arrived more than 5 min late" +
-                    (ls.worst?.let { " (worst ${RoomDiagnosticsLog.formatLateness(it)})" } ?: "") + "." +
-                    (if (ls.caughtUp > 0) " ${ls.caughtUp} were caught up later (alarm not received, phone off or app force-stopped)." else ""),
-                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp).testTag("late_stats"),
+                state.nextAt?.let { "Next reminder: ${state.nextTitle ?: "task"} · ${Format.relative(it, now, zone)} (${if (state.nextExact) "precise" else "approximate"})" } ?: "No reminders scheduled",
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = c.ink2, modifier = Modifier.padding(top = if (ls.deliveries > 0) 6.dp else 0.dp).testTag("health_next"),
             )
-            if (ls.lateOver5Min > 0 && !precise) Text("Turning on Precise timing is the most effective fix for late reminders.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
         }
-        Text(
-            state.nextAt?.let { "Next reminder: ${state.nextTitle ?: "task"} · ${Format.relative(it, now, zone)} (${if (state.nextExact) "precise" else "approximate"})" } ?: "No reminders scheduled",
-            style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp).testTag("health_next"),
-        )
     }
 }
 
 @Composable
 private fun BatteryDetails(env: DeliveryEnvironment, onOpenApp: () -> Unit) {
-    Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
-        Text("Battery", style = MaterialTheme.typography.labelLarge)
+    val c = AutopilotTheme.colors
+    Column(Modifier.padding(top = 12.dp, start = 4.dp, end = 4.dp)) {
+        Text("Battery", style = MaterialTheme.typography.labelLarge, color = c.ink2)
         Status("Battery optimisation", when (env.ignoringBatteryOptimizations) { true -> "Unrestricted"; false -> "Optimised (default)"; null -> "Unknown" }, env.ignoringBatteryOptimizations == true)
         env.backgroundRestricted?.let { Status("Background restriction", if (it) "Restricted" else "Not restricted", !it) }
         env.standbyBucket?.let { Status("App standby", bucketName(it), it <= 20) }
@@ -471,10 +549,10 @@ private fun BatteryDetails(env: DeliveryEnvironment, onOpenApp: () -> Unit) {
             "Samsung: Settings › Apps › Life Admin Autopilot › Battery › choose “Unrestricted”, and make sure the app is not under " +
                 "Settings › Battery › Background usage limits › “Sleeping apps” or “Deep sleeping apps” (optionally add it to “Never sleeping apps”). " +
                 "The app never requests a battery exemption itself.",
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(top = 6.dp),
         )
-        OutlinedButton(onClick = onOpenApp, modifier = Modifier.padding(top = 4.dp)) { Text("Open app settings…") }
-        Text("Force stop cancels all reminders until you open the app again.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        SecondaryButton("Open app settings…", onClick = onOpenApp, minHeight = 44.dp, modifier = Modifier.padding(top = 8.dp))
+        Text("Force stop cancels all reminders until you open the app again.", style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(top = 6.dp))
     }
 }
 
@@ -489,9 +567,10 @@ private fun bucketName(b: Int): String = when {
 
 @Composable
 private fun Status(label: String, value: String, ok: Boolean, tag: String? = null) {
+    val c = AutopilotTheme.colors
     Row(Modifier.fillMaxWidth().padding(vertical = 3.dp).let { if (tag != null) it.testTag(tag) else it }) {
-        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-        Text(value, style = MaterialTheme.typography.bodyLarge, color = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = c.ink)
+        Text(value, style = MaterialTheme.typography.labelLarge, color = if (ok) c.done else c.signal)
     }
 }
 
@@ -506,8 +585,9 @@ private val dayHms = DateTimeFormatter.ofPattern("EEE d MMM HH:mm:ss")
 
 @Composable
 private fun TestResult(entries: List<DiagnosticEntry>, zone: ZoneId) {
-    Column(Modifier.padding(top = 8.dp).testTag("test_result")) {
-        Text("Last test", style = MaterialTheme.typography.labelLarge)
+    val c = AutopilotTheme.colors
+    Column(Modifier.padding(top = 12.dp).testTag("test_result")) {
+        Text("Last test", style = MaterialTheme.typography.labelLarge, color = c.ink2)
         entries.forEach { e ->
             val time = e.at.atZone(zone).format(hms)
             val text = when (e.type) {
@@ -516,13 +596,15 @@ private fun TestResult(entries: List<DiagnosticEntry>, zone: ZoneId) {
                 DiagnosticType.TEST_NOTIFICATION -> "$time notification posted (${e.outcome?.replace('_', ' ')})"
                 else -> "$time ${e.type.name.lowercase().replace('_', ' ')} ${e.outcome.orEmpty()}"
             }
-            Text(text, style = MaterialTheme.typography.bodyMedium)
+            Text(text, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = c.ink)
         }
+        Text("Did you hear and feel it? Android can only confirm it was posted.", style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(top = 4.dp))
     }
 }
 
 @Composable
 private fun LedgerRow(e: DiagnosticEntry, zone: ZoneId) {
+    val c = AutopilotTheme.colors
     val label = when (e.type) {
         DiagnosticType.SCHEDULED -> "Scheduled"
         DiagnosticType.SCHEDULE_FAILED -> "Android refused alarm"
@@ -548,9 +630,9 @@ private fun LedgerRow(e: DiagnosticEntry, zone: ZoneId) {
         e.source?.let { add(it.removePrefix("reconcile:")) }
         e.outcome?.let { add(it.replace('_', ' ')) }
     }.joinToString(" · ")
-    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)) {
-        Text("${e.at.atZone(zone).format(dayHms)}  $label", style = MaterialTheme.typography.bodyMedium)
-        if (details.isNotEmpty()) Text(details, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 5.dp)) {
+        Text("${e.at.atZone(zone).format(dayHms)}  $label", style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = c.ink)
+        if (details.isNotEmpty()) Text(details, style = MaterialTheme.typography.bodySmall, color = c.ink2)
     }
 }
 
@@ -578,6 +660,8 @@ fun Context.openDndSettings() {
     runCatching { startActivity(Intent("android.settings.ZEN_MODE_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
         .onFailure { safeStart(Intent(Settings.ACTION_SOUND_SETTINGS)) }
 }
+
+fun Context.openSoundSettings() = safeStart(Intent(Settings.ACTION_SOUND_SETTINGS))
 
 fun Context.openAppDetails() =
     safeStart(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))
