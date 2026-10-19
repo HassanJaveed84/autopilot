@@ -71,11 +71,19 @@ No pre-existing failures.
       Done today, inbox prompt, empty "A clear day" state), Inbox triage cards, Tasks filters with counts + sort + search
 - [x] Phase E — Settings (health first, Follow-up group, Privacy, AI row, Appearance, Your data, About + licences), Reminder
       health (hero, test a nudge, What Android reports with Fix deep links, timing, battery, switches, log), AI planning screen
-- [ ] Phase F — tests, lint, APKs, report, push, draft PR
+- [x] Phase F — final run `lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest`:
+      lint clean, 309 unit tests green, debug + release + test APKs built; branch pushed; CI and the screenshot
+      tour requested on GitHub Actions; `docs/FLIGHT_PLAN_UI_REPORT.md` written; draft PR opened
 
 ## Changed files
 
-Maintained in `docs/FLIGHT_PLAN_UI_REPORT.md` at the end of the run (git history has the per-phase detail).
+See the per-phase commits on the branch ("Flight Plan Phase B/C/D/E", "Flight Plan tests", "Flight Plan polish").
+Summary: `ui/theme/*` (new tokens, type, shapes, motion), `ui/components/*` (icons, primitives, shell, task card,
+presentation, sheets), `ui/today/*`, `ui/tasks/*`, `ui/capture/*`, `ui/plan/*`, `ui/detail/*`, `ui/settings/*`,
+`ui/health/Health.kt`, `ui/ai/AiSettingsScreen.kt`, `ui/LifeAdminRoot.kt`, `MainActivity.kt`, `res/font`,
+`assets/licenses`, launcher/notification icons; additive data changes (`TaskSummary.policy`,
+`AppSettings.appearance`, `ProposalDraft` provenance flags, `TaskActions.capture`, `ReminderProjection`).
+Note: the Phase B–E commits were developed together and build only from Phase E onwards.
 
 ## Blockers / limitations
 
