@@ -94,7 +94,8 @@ jobs:
           emulator-boot-timeout: 900
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: ./gradlew --stacktrace connectedDebugAndroidTest
+          # The screenshot tour runs in its own job on a phone-sized emulator.
+          script: ./gradlew --stacktrace connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=com.lifeadmin.autopilot.ScreenshotTour,com.lifeadmin.autopilot.ScreenshotTourAiReview
       - name: Upload instrumented reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -102,3 +103,65 @@ jobs:
           name: instrumented-reports
           path: app/build/reports/androidTests/
           if-no-files-found: ignore
+
+  screenshots:
+    name: Screenshots (emulator API 34, Pixel 6 size)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: AVD cache (Pixel 6)
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-34-google_apis-x86_64-pixel6-v1
+      - name: Create AVD snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          force-avd-creation: false
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: echo "Generated AVD snapshot for caching."
+      - name: Install APKs, run screenshot tour, pull PNGs
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          force-avd-creation: false
+          emulator-boot-timeout: 900
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          # Not via connectedDebugAndroidTest: that uninstalls the app (and its screenshots) afterwards.
+          script: |
+            ./gradlew --stacktrace installDebug installDebugAndroidTest
+            adb shell am instrument -w -e class com.lifeadmin.autopilot.ScreenshotTour,com.lifeadmin.autopilot.ScreenshotTourAiReview com.lifeadmin.autopilot.debug.test/androidx.test.runner.AndroidJUnitRunner | tee instrument.txt
+            mkdir -p screenshots && adb pull /sdcard/Android/data/com.lifeadmin.autopilot.debug/files/screenshots/. screenshots/ && cp instrument.txt screenshots/
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: screenshots/
+          if-no-files-found: warn
