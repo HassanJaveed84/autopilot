@@ -1,5 +1,5 @@
 {
-  "reason": "Flight Plan redesign: parity pass 2: card-based Apply count, stacked button pairs at 200%, steadier first launch",
+  "reason": "Flight Plan redesign: parity pass 2 verification: Apply count after deselect, notification shade",
   "variants": [
     {
       "display": "phone",

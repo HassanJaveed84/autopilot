@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -62,6 +63,11 @@ class PlanScreenUiTest {
     private val text = "Need to book the train ride for my daughter, find parking and tickets, remind me at 9 and 6 every day until done."
 
     private fun launch(aiOn: Boolean, initial: String = text) {
+        prepare(aiOn)
+        show(initial)
+    }
+
+    private fun prepare(aiOn: Boolean) {
         val settings = InMemorySettingsRepository(
             AppSettings(onboardingCompleted = true, aiEnabled = aiOn, aiConsentAt = if (aiOn) at(CHICAGO, 2026, 10, 1, 9, 0) else null),
         )
@@ -84,15 +90,32 @@ class PlanScreenUiTest {
             nextStep = "Check train times and prices", reminder = daily("09:00", "18:00", phrase = "remind me at 9 and 6 every day until done"),
             assumptions = listOf("Interpreted '9 and 6' as 09:00 and 18:00"),
         ))
+    }
+
+    private fun show(initial: String, taskId: String? = null) {
         vm = PlanViewModel(
             SavedStateHandle(), container.aiPlanning, container.taskRepository, container.taskActions,
-            container.settingsRepository, container.clock, container.zoneProvider, null, initial,
+            container.settingsRepository, container.clock, container.zoneProvider, taskId, initial,
         )
         compose.setContent {
             LifeAdminTheme(dynamicColor = false) {
                 PlanScreen(vm, zone = CHICAGO, now = container.clock::now, onBack = {}, onOpenTask = { opened = it }, onOpenAiSettings = { openedSettings = true })
             }
         }
+    }
+
+    /** "Move this forward" on an existing task: the Apply count follows the selected cards. */
+    @Test fun followThroughCountFollowsTheSelectedCards() {
+        prepare(aiOn = true)
+        val taskId = runBlocking { container.taskRepository.createTask(com.lifeadmin.autopilot.data.repository.NewTask("Cancel the gym membership", status = com.lifeadmin.autopilot.domain.model.TaskStatus.ACTIONABLE)) }
+        provider.respond(rawPlan("", steps = listOf("Find the cancellation clause", "Email the gym", "Cancel the direct debit"), nextStep = "Find the cancellation clause"))
+        show("What first?", taskId)
+        waitFor("plan_request")
+        compose.onNodeWithTag("plan_request").performClick()
+        waitFor("review_step_check_1")
+        compose.onNodeWithText("Apply 3 changes").assertExists()
+        compose.onNodeWithTag("review_step_check_1").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("Apply 2 changes").fetchSemanticsNodes().isNotEmpty() }
     }
 
     @After fun tearDown() = compose.waitForIdle()

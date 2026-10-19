@@ -565,6 +565,7 @@ class ScreenshotTourAiReview {
         compose.soft("deselect a change") {
             compose.scrollTo("plan_list", "review_step_check_1")
             compose.onNodeWithTag("review_step_check_1").tap() // the Apply count follows the selection
+            compose.waitForText("Apply 2 changes")
             screenshot("j4-move-forward-two-changes")
         }
     }

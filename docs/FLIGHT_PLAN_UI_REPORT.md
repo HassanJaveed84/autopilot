@@ -143,6 +143,39 @@ small display). See §5 for the run links.
 - Soft-skipped detail shots (edit dialog, overflow menu) are captured since `42cee13`: the header is the detail
   list's first item and had scrolled out of composition.
 
+## 5b. Design parity pass (after the first review)
+
+A screen-by-screen comparison of the CI screenshots with the handoff boards found seven gaps. All seven are
+fixed on the branch (`4661328`, `ad52a10`) and verified again on the emulator:
+
+| # | Board | Was | Now |
+|---|-------|-----|-----|
+| 1 | 09 Move this forward | Reused the Plan-review layout; "Apply changes…" truncated; extra confirmation dialog | Checkable diff cards (uppercase kind, route tint when selected), "Not now" / "Apply N changes" counting the selected cards, "Sent: …" footer, no dialog |
+| 2 | 15 AI unreachable / plan input | Stock Material field with floating label; two overlapping explanations; back arrow; "Retry" | Capture-style field (label above, sunken box, helper row); X + Draft pill; one explanation; the words as a read-only card with "Edit your words"; "Try again" |
+| 3 | 03 AI setup | "I understand · Turn on & plan" truncated | "Turn on & plan" |
+| 4 | 04 Drafting | Different stage copy, model name in the subline, large Cancel button | Board copy ("Reading your note / Breaking it into steps / Fitting nudges around your quiet hours"), no model name, X cancels |
+| 5 | 07 Task detail steps | Reorder/delete controls on every row, two plus icons | Plain checklist; reorder/delete behind "Edit" in the card header; one plus |
+| 6 | 10 Snooze | Checkbox, preview line and Cancel/Snooze buttons | One tap per row; "Remind me when the snooze ends" as a switch at the bottom; "09:42" / "Tue 09:00" column |
+| 7 | 06 Notification | "Snooze" | "Snooze · tomorrow 09:00" from the same per-task or preset target the action uses |
+
+Also verified for the first time (the tour now captures them): the empty Today (board 13), Inbox clear (board 14)
+and the notification shade (board 06). Two further large-text fixes came out of the 200% screenshots: button
+pairs stack from font scale 1.3 (Plan screen, Capture, AI setup) and the detail follow-up card / action tiles
+reflow.
+
+Evidence: Android CI #45 (push) and #46 (pull_request) green on `ad52a10`, including the emulator tests
+(https://github.com/HassanJaveed84/autopilot/actions/runs/39324032239). Screenshots #12: phone light and phone
+dark green (https://github.com/HassanJaveed84/autopilot/actions/runs/39324032160); the 200% and small-display
+jobs in that run never booted their emulator ("Timeout waiting for emulator to boot", no test ran) — the same
+two variants had passed on the previous commit's run #11, which exercised the same tour code. The notification
+shot comes from run #11's 200% job; in run #12 the one-off alarm did not fire within the tour's two-minute wait.
+`PlanScreenUiTest.followThroughCountFollowsTheSelectedCards` covers the Apply count going from 3 to 2 when a
+card is deselected.
+
+Kept deliberately off the boards: "approximate timing" on the follow-up card and the "Once" preset wording
+(the spec forbids claiming exact delivery and hard-coded prototype times), and the extra privacy/billing links
+on the AI setup sheet.
+
 ## 6. Known limitations and risks
 
 - Rail times beyond the first are previews computed with the planner; the engine schedules one occurrence per task
