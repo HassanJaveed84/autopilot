@@ -1,5 +1,5 @@
 {
-  "reason": "Run 5: waiting-dialog 'Next week' fix; tour uses filter_completed and card_action_* tags",
+  "reason": "Run 6: scroll detail cards into view before tapping; skipped steps no longer press Back",
   "variants": [
     {
       "display": "phone",
