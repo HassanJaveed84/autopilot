@@ -26,14 +26,25 @@ jobs:
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
       - name: Build and test
-        run: ./gradlew --stacktrace lintDebug testDebugUnitTest assembleDebug assembleRelease
+        run: ./gradlew --stacktrace lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest
       - name: Upload APKs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: apks
-          path: app/build/outputs/apk/**/*.apk
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
           if-no-files-found: ignore
+      # Installed as-is by the screenshots job, so it needs no Gradle build of its own.
+      - name: Upload test APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-apks
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          retention-days: 3
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -61,6 +72,10 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      # Compile before the emulator starts: compiling while it runs competes for the runner's
+      # CPUs (run #19 spent ~11 min there). The emulator step then reuses this warm daemon.
+      - name: Build app and test APKs
+        run: ./gradlew --stacktrace assembleDebug assembleDebugAndroidTest
       # AVD snapshot cache (pattern documented by reactivecircus/android-emulator-runner): the
       # first run creates and caches a booted snapshot; later runs boot from it, which avoids most
       # of the "Timeout waiting for emulator to boot" flakes seen on cold boots.
@@ -110,12 +125,11 @@ jobs:
     timeout-minutes: 60
     needs: build
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      # No checkout or Gradle: installs the APKs the build job already produced.
+      - uses: actions/download-artifact@v4
         with:
-          distribution: temurin
-          java-version: "21"
-      - uses: gradle/actions/setup-gradle@v4
+          name: test-apks
+          path: test-apks
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -158,7 +172,8 @@ jobs:
             adb shell settings put global hide_error_dialogs 1 || true
             sleep 20
             adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS || true
-            ./gradlew --stacktrace installDebug installDebugAndroidTest
+            adb install -r -t test-apks/debug/app-debug.apk
+            adb install -r -t test-apks/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w -e class com.lifeadmin.autopilot.ScreenshotTour,com.lifeadmin.autopilot.ScreenshotTourAiReview com.lifeadmin.autopilot.debug.test/androidx.test.runner.AndroidJUnitRunner | tee instrument.txt
             mkdir -p screenshots && adb pull /sdcard/Android/data/com.lifeadmin.autopilot.debug/files/screenshots/. screenshots/ && cp instrument.txt screenshots/
       - name: Upload screenshots
