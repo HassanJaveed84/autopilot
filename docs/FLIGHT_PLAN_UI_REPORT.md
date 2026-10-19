@@ -125,9 +125,18 @@ small display). See §5 for the run links.
   one column from font scale 1.3) and the Inbox badge grew over its icon (fixed dp size).
   Run #7 on `8f5b297` had failed in the tour's own selectors after the card redesign (title merged into the
   clickable node; cards below the fold at 200% / 320dp); fixed in `e1a9011`.
-- The latest push (`42cee13` + the instrumented-test fix) re-runs Android CI and the four screenshot variants; the
-  PR's Checks tab shows their outcome. The two soft-skipped detail shots (edit dialog, overflow menu) are also
-  addressed there: the header is the detail list's first item and had scrolled out of composition.
+- **Runs on `33c69d9`**: Android CI #38 (push event) green incl. emulator tests
+  (https://github.com/HassanJaveed84/autopilot/actions/runs/39239561905); its pull_request twin #39 failed one
+  pre-existing emulator test, `InstrumentedReminderTest.oneTimeReminderPostsNotificationThenDoneClearsIt`, which
+  gave the notification's Done broadcast 15 s to land while two emulator jobs shared the runner (test timing; the
+  wait is now 60 s). Screenshots #9 on `42cee13`: three of four variants green; the dark variant lost one Back
+  press to a dialog still settling in `d_otherDetails` (tour timing; Back now repeats until the tab bar is back).
+  The 200% artifacts from #9 confirmed the stacked triage buttons and the fixed-size badge, and showed the
+  follow-up card's "Change" link squeezing the sentence and "Waiting on…" truncating on the action tiles; both
+  now reflow from font scale 1.3 (final commit). That commit re-runs CI and the four variants; the PR's Checks
+  tab and the Screenshots workflow show their outcome.
+- Soft-skipped detail shots (edit dialog, overflow menu) are captured since `42cee13`: the header is the detail
+  list's first item and had scrolled out of composition.
 
 ## 6. Known limitations and risks
 

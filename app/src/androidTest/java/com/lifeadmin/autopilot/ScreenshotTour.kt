@@ -113,6 +113,17 @@ private fun ComposeTestRule.back() {
 }
 
 /**
+ * Back until the tab bar is on screen again. A dialog that outlived closeDialog() (its Cancel
+ * click still settling) would otherwise swallow the one press meant for the screen.
+ */
+private fun ComposeTestRule.backToTabs() {
+    repeat(3) {
+        if (onAllNodes(hasTestTag("nav_tasks")).fetchSemanticsNodes().isNotEmpty()) return
+        back()
+    }
+}
+
+/**
  * Closes a dialog with its own Cancel / Discard button. System Back is unreliable there: with a
  * text field focused, the first Back only hides the keyboard. Does nothing when no dialog is open,
  * so a failed optional step can't navigate away from the screen the next steps need.
@@ -315,10 +326,10 @@ class ScreenshotTour {
             screenshot("d2-dialog-small-step")
             compose.closeDialog()
         }
-        compose.back()
+        compose.backToTabs()
         openTask("Sign the lease renewal")
         screenshot("d3-detail-waiting")
-        compose.back()
+        compose.backToTabs()
         compose.soft("done task") {
             compose.onNodeWithTag("tasks_list").performScrollToIndex(0)
             compose.onNodeWithTag("filter_completed").tap()

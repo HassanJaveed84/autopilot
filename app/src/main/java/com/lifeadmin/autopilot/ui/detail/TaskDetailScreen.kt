@@ -48,6 +48,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -353,14 +354,17 @@ private fun FollowUpCard(d: TaskDetails, summary: TaskSummary, now: Instant, zon
             "Change", { openDialog(DetailDialog.POLICY) },
         )
     }
+    // At large text the action link moves under the sentence so the text keeps its width.
+    val largeText = LocalDensity.current.fontScale >= 1.3f
     SurfaceCard(modifier = Modifier.padding(top = 18.dp), contentPadding = PaddingValues(start = 14.dp, end = 8.dp, top = 14.dp, bottom = 14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             IconCircle(fu.icon, tint = fu.fg, background = fu.bg, size = 44.dp)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(fu.title, style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp), color = c.ink, modifier = Modifier.testTag("policy_summary"))
                 Text(fu.sub, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = c.ink2, modifier = Modifier.testTag("next_reminder"))
+                if (largeText && fu.action != null && fu.onAction != null) LinkButton(fu.action, onClick = fu.onAction, modifier = Modifier.testTag("card_action_reminders"))
             }
-            if (fu.action != null && fu.onAction != null) LinkButton(fu.action, onClick = fu.onAction, modifier = Modifier.testTag("card_action_reminders"))
+            if (!largeText && fu.action != null && fu.onAction != null) LinkButton(fu.action, onClick = fu.onAction, modifier = Modifier.testTag("card_action_reminders"))
         }
     }
 }
@@ -380,7 +384,9 @@ private fun ActionTile(icon: ImageVector, label: String, modifier: Modifier = Mo
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Icon(icon, contentDescription = null, tint = if (enabled) c.ink else c.ink3, modifier = Modifier.size(22.dp))
-        Text(label, style = MaterialTheme.typography.labelLarge, color = if (enabled) c.ink else c.ink3, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        // Two lines at large text so "Waiting on…" is never cut to "Waitin…".
+        val lines = if (LocalDensity.current.fontScale >= 1.3f) 2 else 1
+        Text(label, style = MaterialTheme.typography.labelLarge, color = if (enabled) c.ink else c.ink3, maxLines = lines, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
     }
 }
 

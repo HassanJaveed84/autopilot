@@ -59,7 +59,9 @@ class InstrumentedReminderTest {
         assertEquals(3, posted!!.notification.actions.size)
 
         posted.notification.actions[0].actionIntent.send() // Done
-        val doneBy = System.currentTimeMillis() + 15_000
+        // The action is a broadcast handled off the main thread; on a busy CI emulator delivery to
+        // the backgrounded app has taken longer than 15 s (CI run #39), so allow a minute.
+        val doneBy = System.currentTimeMillis() + 60_000
         while (System.currentTimeMillis() < doneBy && runBlocking { container.taskRepository.getTask(id)!!.status } != TaskStatus.DONE) Thread.sleep(250)
         assertEquals(TaskStatus.DONE, runBlocking { container.taskRepository.getTask(id)!!.status })
         Thread.sleep(500)
