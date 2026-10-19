@@ -3,6 +3,7 @@ package com.lifeadmin.autopilot
 import android.Manifest
 import android.graphics.Bitmap
 import android.os.Build
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -51,11 +52,27 @@ import java.time.LocalDate
  */
 private fun screenshot(name: String) {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
+    dismissSystemAnrDialog()
     instrumentation.waitForIdleSync()
     Thread.sleep(600) // let ripples/animations settle
     val bitmap = instrumentation.uiAutomation.takeScreenshot() ?: return
     val dir = File(instrumentation.targetContext.getExternalFilesDir(null), "screenshots").apply { mkdirs() }
     File(dir, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+}
+
+/**
+ * CI emulators sometimes show "<another app> isn't responding" over the app under test (run #19:
+ * Pixel Launcher). Tap "Wait" so the dialog neither appears in screenshots nor steals focus.
+ */
+private fun dismissSystemAnrDialog() {
+    val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+    repeat(3) {
+        val root = automation.rootInActiveWindow ?: return
+        if (root.findAccessibilityNodeInfosByText("isn't responding").isEmpty()) return
+        root.findAccessibilityNodeInfosByText("Wait").firstOrNull { it.isClickable }?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            ?: root.findAccessibilityNodeInfosByText("Wait").firstOrNull()?.parent?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        Thread.sleep(1_000)
+    }
 }
 
 /** The installed app, launched normally, with a few realistic tasks. */
@@ -88,6 +105,13 @@ class ScreenshotTour {
     private fun waitForTag(tag: String) = compose.waitUntil(15_000) { compose.onAllNodes(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
     private fun waitForText(text: String) = compose.waitUntil(15_000) { compose.onAllNodes(hasText(text, substring = true)).fetchSemanticsNodes().isNotEmpty() }
 
+    /** Back via the dispatcher: unlike Espresso.pressBack it doesn't wait for window focus. */
+    private fun back() {
+        dismissSystemAnrDialog()
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        compose.waitForIdle()
+    }
+
     @Test fun tour() {
         waitForText("Book train ride")
         screenshot("01-today")
@@ -103,12 +127,13 @@ class ScreenshotTour {
         compose.onNodeWithText("Book train ride").performClick()
         waitForTag("detail_title")
         screenshot("04-task-detail")
-        Espresso.pressBack()
+        back()
 
         compose.onNodeWithTag("fab_capture").performClick()
         waitForTag("capture_title")
         compose.onNodeWithTag("capture_title").performTextInput("Book the train ride for my daughter, find parking and tickets, remind me at 9 and 6 every day until done")
-        Espresso.closeSoftKeyboard()
+        dismissSystemAnrDialog()
+        runCatching { Espresso.closeSoftKeyboard() } // cosmetic only; never fail the tour on it
         screenshot("05-capture")
 
         compose.onNodeWithTag("capture_plan_ai").performClick()
@@ -117,8 +142,8 @@ class ScreenshotTour {
         compose.onNodeWithTag("plan_open_ai_settings").performClick()
         waitForTag("ai_settings_list")
         screenshot("07-ai-settings")
-        Espresso.pressBack()
-        Espresso.pressBack()
+        back()
+        back()
 
         compose.onNodeWithTag("nav_settings").performClick()
         waitForTag("settings_list")
