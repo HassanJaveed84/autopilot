@@ -62,7 +62,7 @@ fun ScreenHeader(
             }
             Spacer(Modifier.width(10.dp))
         }
-        Text(dateText, style = MaterialTheme.typography.titleSmall, color = c.ink2, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(dateText, style = MaterialTheme.typography.titleSmall, color = c.ink2, modifier = Modifier.weight(1f).testTag("header_date"), maxLines = 1, overflow = TextOverflow.Ellipsis)
         Box {
             RoundIconButton(
                 AutopilotIcons.Sliders,

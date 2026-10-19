@@ -1,5 +1,5 @@
 {
-  "reason": "Flight Plan redesign: design parity pass: diff cards, plan field, snooze, steps, empty states, notification",
+  "reason": "Flight Plan redesign: parity pass 2: card-based Apply count, stacked button pairs at 200%, steadier first launch",
   "variants": [
     {
       "display": "phone",

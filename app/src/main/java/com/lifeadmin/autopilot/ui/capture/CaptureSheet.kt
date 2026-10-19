@@ -57,6 +57,7 @@ import com.lifeadmin.autopilot.domain.scheduling.ReminderPresets
 import com.lifeadmin.autopilot.ui.ai.AI_BILLING_TEXT
 import com.lifeadmin.autopilot.ui.ai.AI_PRIVACY_TEXT
 import com.lifeadmin.autopilot.ui.components.AutopilotIcons
+import com.lifeadmin.autopilot.ui.components.ButtonPair
 import com.lifeadmin.autopilot.ui.components.AutopilotSheet
 import com.lifeadmin.autopilot.ui.components.ChoiceChip
 import com.lifeadmin.autopilot.ui.components.DateSelectDialog
@@ -227,16 +228,21 @@ fun CaptureSheet(
             }
         }
 
-        Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SecondaryButton(
-                "Plan with AI", onClick = { viewModel.planWithAi(onPlanWithAi) }, enabled = !d.isEmpty && !s.saving,
-                icon = AutopilotIcons.Route, route = true, modifier = Modifier.weight(1f).testTag("capture_plan_ai"),
-            )
-            PrimaryButton(
-                if (d.nudge) "Save & nudge" else "Save to Inbox", onClick = { viewModel.save(onSaved) }, enabled = !d.isEmpty && !s.saving,
-                modifier = Modifier.weight(1.1f).testTag("capture_save"),
-            )
-        }
+        ButtonPair(
+            modifier = Modifier.padding(top = 10.dp), primaryWeight = 1.1f,
+            secondary = { m ->
+                SecondaryButton(
+                    "Plan with AI", onClick = { viewModel.planWithAi(onPlanWithAi) }, enabled = !d.isEmpty && !s.saving,
+                    icon = AutopilotIcons.Route, route = true, modifier = m.testTag("capture_plan_ai"),
+                )
+            },
+            primary = { m ->
+                PrimaryButton(
+                    if (d.nudge) "Save & nudge" else "Save to Inbox", onClick = { viewModel.save(onSaved) }, enabled = !d.isEmpty && !s.saving,
+                    modifier = m.testTag("capture_save"),
+                )
+            },
+        )
         Text(
             when (s.availability) {
                 is AiAvailability.Ready -> "Plan with AI sends only this text, the date and time, and your reminder settings to Anthropic. You review the plan before it's saved."
@@ -341,14 +347,17 @@ private fun AiSetupSheet(
             Text(AI_BILLING_TEXT, style = MaterialTheme.typography.bodySmall, color = c.ink2)
         }
         LinkButton("Open AI planning settings", onClick = onOpenAiSettings, modifier = Modifier.testTag("capture_ai_settings"))
-        Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SecondaryButton("Not now", onClick = onNotNow, modifier = Modifier.weight(1f).testTag("capture_ai_not_now"))
-            PrimaryButton(
-                if (state.aiSetupBusy) "Turning on…" else "Turn on & plan",
-                onClick = { onTurnOn(key) },
-                enabled = !state.aiSetupBusy && (!needsKey || key.isNotBlank()),
-                modifier = Modifier.weight(1.3f).testTag("capture_ai_turn_on"),
-            )
-        }
+        ButtonPair(
+            modifier = Modifier.padding(top = 10.dp), primaryWeight = 1.3f,
+            secondary = { m -> SecondaryButton("Not now", onClick = onNotNow, modifier = m.testTag("capture_ai_not_now")) },
+            primary = { m ->
+                PrimaryButton(
+                    if (state.aiSetupBusy) "Turning on…" else "Turn on & plan",
+                    onClick = { onTurnOn(key) },
+                    enabled = !state.aiSetupBusy && (!needsKey || key.isNotBlank()),
+                    modifier = m.testTag("capture_ai_turn_on"),
+                )
+            },
+        )
     }
 }

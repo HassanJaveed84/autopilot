@@ -41,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextDecoration
 import com.lifeadmin.autopilot.ui.theme.LocalAutopilot
@@ -133,6 +134,31 @@ fun SecondaryButton(
 }
 
 /** Underlined inline action ("Change", "Add") inside a row. */
+/**
+ * A secondary + primary pair: side by side normally, stacked (primary first, full width) from
+ * font scale 1.3 so neither label is ever cut to "Save wi…". Each slot receives the modifier to
+ * apply (weight or fillMaxWidth).
+ */
+@Composable
+fun ButtonPair(
+    modifier: Modifier = Modifier,
+    primaryWeight: Float = 1.2f,
+    secondary: @Composable (Modifier) -> Unit,
+    primary: @Composable (Modifier) -> Unit,
+) {
+    if (LocalDensity.current.fontScale >= 1.3f) {
+        Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            primary(Modifier.fillMaxWidth())
+            secondary(Modifier.fillMaxWidth())
+        }
+    } else {
+        Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            secondary(Modifier.weight(1f))
+            primary(Modifier.weight(primaryWeight))
+        }
+    }
+}
+
 @Composable
 fun LinkButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     val c = AutopilotTheme.colors

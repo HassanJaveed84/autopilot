@@ -19,6 +19,9 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.onFirst
@@ -140,6 +143,11 @@ private fun ComposeTestRule.closeDialog() {
     waitForIdle()
 }
 
+/** The screen's state has loaded (the header date is blank until it has). */
+private val hasNonBlankText = SemanticsMatcher("has non-blank text") { node ->
+    node.config.getOrNull(SemanticsProperties.Text)?.any { it.text.isNotBlank() } == true
+}
+
 private fun ComposeTestRule.waitForTag(tag: String) =
     waitUntil(15_000) { onAllNodes(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
 
@@ -218,8 +226,11 @@ class ScreenshotTour {
     private fun launch() {
         scenario = ActivityScenario.launch(MainActivity::class.java)
         // Wait for the day's headline rather than a card: at 200% text or on a small display the
-        // train card can sit below the fold of the lazy rail, where it is not composed yet.
+        // train card can sit below the fold of the lazy rail, where it is not composed yet. The
+        // tab bar and a non-empty header date mean the first frame after launch is behind us.
         compose.waitForTag("today_headline")
+        compose.waitForTag("nav_tasks")
+        compose.waitUntil(15_000) { compose.onAllNodes(hasTestTag("header_date") and hasNonBlankText).fetchSemanticsNodes().isNotEmpty() }
     }
 
     private fun openTask(title: String) {
@@ -234,7 +245,9 @@ class ScreenshotTour {
     @Test fun a0_emptyStates() {
         runBlocking { container.database.taskDao().getAll().forEach { container.taskRepository.delete(it.id) } }
         launch()
-        compose.waitForText("A clear day")
+        compose.waitForText("Try something like") // the whole empty state, not just its headline
+        compose.waitForIdle()
+        Thread.sleep(800)
         screenshot("a0-today-empty")
         compose.onNodeWithTag("nav_inbox").tap()
         compose.waitForText("Inbox clear")

@@ -41,7 +41,7 @@ import java.time.Instant
 import java.time.ZoneId
 
 /** One proposed change on an existing task, shown as a checkable card. */
-private data class DiffCardSpec(
+internal data class DiffCardSpec(
     val kind: String,
     val title: String,
     val description: String?,
@@ -65,7 +65,34 @@ fun LazyListScope.followThroughItems(
     item { Intro(current?.task?.title ?: draft.title) }
     if (draft.notices.isNotEmpty()) item { Notices(draft) }
 
-    val cards = buildList {
+    val cards = followThroughChanges(draft, current, zone, update)
+    if (cards.isEmpty()) item { NothingToChange() }
+    cards.forEach { spec -> item(key = spec.tag) { DiffCard(spec) } }
+    if (draft.advice.isNotBlank()) item { TipCard(draft.advice) }
+
+    if (draft.assumptions.isNotEmpty() || draft.questions.isNotEmpty()) item {
+        ReviewCard("Check these", tag = "review_assumptions") {
+            draft.assumptions.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
+            if (draft.questions.isNotEmpty()) {
+                Text("Open questions", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
+                draft.questions.forEach { Text("? $it", style = MaterialTheme.typography.bodyMedium) }
+            }
+        }
+    }
+}
+
+/** Selected cards = the "Apply N changes" count, so a flag with no card never counts. */
+fun changeCount(draft: ProposalDraft, current: TaskDetails?, zone: ZoneId): Int =
+    followThroughChanges(draft, current, zone) {}.count { it.selected }
+
+/** The proposed changes as cards, in display order. */
+internal fun followThroughChanges(
+    draft: ProposalDraft,
+    current: TaskDetails?,
+    zone: ZoneId,
+    update: ((ProposalDraft) -> ProposalDraft) -> Unit,
+): List<DiffCardSpec> {
+    return buildList {
         if (current != null && draft.title.trim() != current.task.title) add(
             DiffCardSpec("Rename", draft.title.trim(), "Now: ${current.task.title}", draft.applyTitle, "review_apply_title") { on -> update { it.copy(applyTitle = on) } },
         )
@@ -121,20 +148,6 @@ fun LazyListScope.followThroughItems(
                 draft.priorityReason.takeIf { it.isNotBlank() }, draft.applyPriority, "review_apply_priority",
             ) { on -> update { it.copy(applyPriority = on) } },
         )
-    }
-
-    if (cards.isEmpty()) item { NothingToChange() }
-    cards.forEach { spec -> item(key = spec.tag) { DiffCard(spec) } }
-    if (draft.advice.isNotBlank()) item { TipCard(draft.advice) }
-
-    if (draft.assumptions.isNotEmpty() || draft.questions.isNotEmpty()) item {
-        ReviewCard("Check these", tag = "review_assumptions") {
-            draft.assumptions.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
-            if (draft.questions.isNotEmpty()) {
-                Text("Open questions", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
-                draft.questions.forEach { Text("? $it", style = MaterialTheme.typography.bodyMedium) }
-            }
-        }
     }
 }
 

@@ -55,8 +55,8 @@ import com.lifeadmin.autopilot.ai.PlanningError
 import com.lifeadmin.autopilot.ai.PlanningMode
 import com.lifeadmin.autopilot.ai.ProposalDraft
 import com.lifeadmin.autopilot.ai.ProposalMapper
-import com.lifeadmin.autopilot.ai.ProposalValidator
 import com.lifeadmin.autopilot.ui.components.AutopilotIcons
+import com.lifeadmin.autopilot.ui.components.ButtonPair
 import com.lifeadmin.autopilot.ui.components.DraftPill
 import com.lifeadmin.autopilot.ui.components.IconCircle
 import com.lifeadmin.autopilot.ui.components.LinkButton
@@ -136,15 +136,19 @@ fun PlanScreen(
                             PlanPhase.INPUT -> {
                                 val ready = s.availability is AiAvailability.Ready
                                 val retry = shownError?.retryable == true
-                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    if (!isEdit) SecondaryButton("Save without AI", onClick = viewModel::saveWithoutAi, enabled = s.text.isNotBlank(), modifier = Modifier.weight(1f).testTag("plan_save_without_ai"))
+                                val request: @Composable (Modifier) -> Unit = { m ->
                                     PrimaryButton(
                                         text = if (retry) "Try again" else if (isEdit) "Get suggestions" else "Create plan",
                                         onClick = viewModel::requestPlan, enabled = ready && (isEdit || s.text.isNotBlank()),
                                         icon = if (retry) AutopilotIcons.Refresh else AutopilotIcons.Route,
-                                        modifier = Modifier.weight(1.2f).testTag("plan_request"),
+                                        modifier = m.testTag("plan_request"),
                                     )
                                 }
+                                if (isEdit) request(Modifier.fillMaxWidth())
+                                else ButtonPair(
+                                    secondary = { m -> SecondaryButton("Save without AI", onClick = viewModel::saveWithoutAi, enabled = s.text.isNotBlank(), modifier = m.testTag("plan_save_without_ai")) },
+                                    primary = request,
+                                )
                             }
                             PlanPhase.WORKING -> {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
@@ -160,32 +164,38 @@ fun PlanScreen(
                                 s.saveError?.let { Text(it, color = c.danger, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = 6.dp).testTag("plan_save_error")) }
                                 val draft = s.draft
                                 if (isEdit) {
-                                    val n = draft?.let(::changeCount) ?: 0
-                                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        SecondaryButton("Not now", onClick = { viewModel.reject(); onBack() }, enabled = !s.saving, modifier = Modifier.weight(1f).testTag("plan_reject"))
-                                        PrimaryButton(
-                                            if (n == 0) "Apply changes" else "Apply $n change${if (n == 1) "" else "s"}",
-                                            onClick = viewModel::approve,
-                                            enabled = !s.saving && n > 0,
-                                            modifier = Modifier.weight(1.4f).testTag("plan_approve"),
-                                        )
-                                    }
+                                    val n = draft?.let { changeCount(it, s.current, zone) } ?: 0
+                                    ButtonPair(
+                                        primaryWeight = 1.4f,
+                                        secondary = { m -> SecondaryButton("Not now", onClick = { viewModel.reject(); onBack() }, enabled = !s.saving, modifier = m.testTag("plan_reject")) },
+                                        primary = { m ->
+                                            PrimaryButton(
+                                                if (n == 0) "Apply changes" else "Apply $n change${if (n == 1) "" else "s"}",
+                                                onClick = viewModel::approve,
+                                                enabled = !s.saving && n > 0,
+                                                modifier = m.testTag("plan_approve"),
+                                            )
+                                        },
+                                    )
                                     Text(
                                         "Sent: this task's title, notes, steps, status, deadline and follow-up. Nothing else.",
                                         style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(top = 8.dp),
                                     )
                                 } else {
                                     draft?.let { Text(saveSummary(it), style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
-                                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        SecondaryButton("Discard", onClick = viewModel::reject, enabled = !s.saving, modifier = Modifier.weight(1f).testTag("plan_reject"))
-                                        PrimaryButton(
-                                            "Save task",
-                                            onClick = viewModel::approve,
-                                            enabled = !s.saving && draft?.title?.isNotBlank() == true,
-                                            icon = AutopilotIcons.Check,
-                                            modifier = Modifier.weight(1.6f).testTag("plan_approve"),
-                                        )
-                                    }
+                                    ButtonPair(
+                                        primaryWeight = 1.6f,
+                                        secondary = { m -> SecondaryButton("Discard", onClick = viewModel::reject, enabled = !s.saving, modifier = m.testTag("plan_reject")) },
+                                        primary = { m ->
+                                            PrimaryButton(
+                                                "Save task",
+                                                onClick = viewModel::approve,
+                                                enabled = !s.saving && draft?.title?.isNotBlank() == true,
+                                                icon = AutopilotIcons.Check,
+                                                modifier = m.testTag("plan_approve"),
+                                            )
+                                        },
+                                    )
                                     Text("Nothing is saved until you tap Save task.", style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(top = 6.dp))
                                 }
                             }
@@ -235,12 +245,6 @@ fun PlanScreen(
         }
     }
 }
-
-/** Number of changes the user has selected on a follow-through draft (the "Apply N changes" count). */
-fun changeCount(d: ProposalDraft): Int =
-    listOf(d.applyTitle, d.applyNotes, d.deadline.apply, d.reminder.apply, d.waiting.apply, d.applyPriority && d.priority != null).count { it } +
-        d.steps.count { it.include } +
-        (if (d.addNextStep && d.nextStep.isNotBlank() && !ProposalValidator.nextStepListed(d)) 1 else 0)
 
 /** Footer summary for a new task: "Saves 1 task · 3 steps · nudges 09:00 & 18:00 daily". */
 fun saveSummary(d: ProposalDraft): String {
