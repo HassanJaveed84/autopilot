@@ -14,11 +14,19 @@ own Anthropic API key; the network is used only when you tap a button that asks 
 
 ## Features
 
-- **Today** dashboard: Needs action / Waiting / Next 24 h counts, overdue, upcoming reminders,
-  snoozed items, one-tap Done (with Undo) and Snooze.
-- **Inbox** for quick captures; **Tasks** with filters (All, Actionable, Waiting, Paused,
-  Completed, Archived) and search over titles and notes.
-- **Quick capture** (FAB): type a title, then one tap for “Save to Inbox” or “Save & remind”.
+The UI follows the **Flight Plan** design (see `docs/FLIGHT_PLAN_UI_REPORT.md`): calm ink on
+mineral paper, orange for time, indigo (always dashed) for anything AI suggested, green for done.
+
+- **Today** is a flight plan: a headline sentence, then the day's nudges on a rail with a "Now"
+  marker — the first nudge of each task as a card, later repeats as dashed ghost rows, plus
+  attention rows for overdue deadlines, deadlines due today and check-ins that have passed even
+  when no reminder is set. Waiting on others, Not today and Done today follow as compact rows.
+- **Inbox** triage: each note gets Nudge me · Plan with AI · Waiting on… · Done already · Delete.
+  **Tasks**: search, All / Needs you / Waiting / Snoozed / Paused / Done / Archived with counts,
+  sort by next nudge, deadline or newest.
+- **Capture** bar on every tab: one field, a follow-up row with a switch (the primary button
+  reads "Save & nudge" or "Save to Inbox"), "Plan with AI" beside it, and a notes / priority /
+  deadline disclosure.
 - **Task detail**: title, notes, priority, date-only or exact deadline, status actions
   (Make actionable, Waiting with check-in, Pause/Resume, Done, Cancel, Reopen), snooze with exact
   next-reminder preview, checklist (add/check/reorder/remove), reminder schedule, activity log and
@@ -110,10 +118,11 @@ WorkManager's `FOREGROUND_SERVICE` is explicitly removed.)
 
 1. Create an API key at [console.anthropic.com](https://console.anthropic.com) (API usage is billed
    to that Console account; a Claude app or Claude Code subscription does **not** cover it).
-2. In the app: Settings → AI planning settings → turn on **Use AI planning**. Read and accept the
+2. In the app: Settings → **Plan with AI** → turn on **Use AI planning**. Read and accept the
    privacy note: only the text you submit, the date/time/zone and your reminder settings are sent.
 3. Paste the key, tap **Save key**, then **Test connection** (a free models-endpoint check).
-4. Capture → **Plan with AI…**, or on a task → **Help me move this forward**.
+4. Capture → **Plan with AI** (with AI off this opens the setup sheet in place, keeping your
+   note), or on a task → **Stuck? Ask Claude → Suggest**.
 
 The key is encrypted with an Android Keystore key, stored only in app-private storage, excluded
 from backups and Export, and never logged. This is a personal-use compromise; a public app would
