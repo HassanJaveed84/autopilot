@@ -105,7 +105,7 @@ jobs:
           if-no-files-found: ignore
 
   screenshots:
-    name: Screenshots (emulator API 34, Pixel 6 size)
+    name: Screenshots (emulator API 34, phone-sized display)
     runs-on: ubuntu-latest
     timeout-minutes: 60
     needs: build
@@ -121,14 +121,16 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: AVD cache (Pixel 6)
+      # Same cached AVD as the instrumented job (a fresh Pixel-6 AVD timed out on cold boot in
+      # run #18); the display is switched to a phone size at runtime with `wm size/density`.
+      - name: AVD cache
         uses: actions/cache@v4
         id: avd-cache
         with:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-34-google_apis-x86_64-pixel6-v1
+          key: avd-34-google_apis-x86_64-v1
       - name: Create AVD snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
@@ -136,7 +138,6 @@ jobs:
           api-level: 34
           target: google_apis
           arch: x86_64
-          profile: pixel_6
           force-avd-creation: false
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
@@ -148,13 +149,15 @@ jobs:
           api-level: 34
           target: google_apis
           arch: x86_64
-          profile: pixel_6
           force-avd-creation: false
           emulator-boot-timeout: 900
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           # Not via connectedDebugAndroidTest: that uninstalls the app (and its screenshots) afterwards.
           script: |
+            adb shell wm size 1080x2400
+            adb shell wm density 420
+            adb shell wm size; adb shell wm density
             ./gradlew --stacktrace installDebug installDebugAndroidTest
             adb shell am instrument -w -e class com.lifeadmin.autopilot.ScreenshotTour,com.lifeadmin.autopilot.ScreenshotTourAiReview com.lifeadmin.autopilot.debug.test/androidx.test.runner.AndroidJUnitRunner | tee instrument.txt
             mkdir -p screenshots && adb pull /sdcard/Android/data/com.lifeadmin.autopilot.debug/files/screenshots/. screenshots/ && cp instrument.txt screenshots/
