@@ -1,75 +1,88 @@
 package com.lifeadmin.autopilot.ui.theme
 
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ReadOnlyComposable
+import com.lifeadmin.autopilot.domain.model.Appearance
 
-private val Teal = Color(0xFF0F6E73)
-private val TealDark = Color(0xFF7FD3D6)
-private val Amber = Color(0xFFB7791F)
-
-private val LightColors: ColorScheme = lightColorScheme(
-    primary = Teal,
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFB4EEF0),
-    onPrimaryContainer = Color(0xFF002022),
-    secondary = Color(0xFF4A6364),
-    secondaryContainer = Color(0xFFCCE8E9),
-    tertiary = Amber,
-    tertiaryContainer = Color(0xFFFFDDB0),
-    background = Color(0xFFF8FAF9),
-    surface = Color(0xFFF8FAF9),
-    error = Color(0xFFBA1A1A),
-)
-
-private val DarkColors: ColorScheme = darkColorScheme(
-    primary = TealDark,
-    onPrimary = Color(0xFF003739),
-    primaryContainer = Color(0xFF004F53),
-    onPrimaryContainer = Color(0xFFB4EEF0),
-    secondary = Color(0xFFB0CCCD),
-    secondaryContainer = Color(0xFF324B4C),
-    tertiary = Color(0xFFFFB952),
-    tertiaryContainer = Color(0xFF633F00),
-    background = Color(0xFF101414),
-    surface = Color(0xFF101414),
-    error = Color(0xFFFFB4AB),
-)
-
-private val AppTypography = Typography().let { base ->
-    base.copy(
-        headlineSmall = base.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
-        titleLarge = base.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-        titleMedium = base.titleMedium.copy(fontWeight = FontWeight.Medium),
-        labelLarge = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.1.sp),
-    )
-}
-
+/**
+ * Flight Plan theme: calm ink on mineral paper. Material 3 components still do the heavy lifting
+ * (sheets, switches, text fields, pickers); the brand roles are mapped onto the color scheme so
+ * stock components inherit them, and the extended roles are available through [LocalAutopilot].
+ *
+ * Dynamic (wallpaper) color is intentionally not used: orange must always mean "time" and indigo
+ * must always mean "suggested", regardless of the wallpaper.
+ */
 @Composable
 fun LifeAdminTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
+    /** Kept for source compatibility with existing call sites; dynamic color is always off. */
+    @Suppress("UNUSED_PARAMETER") dynamicColor: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-        darkTheme -> DarkColors
-        else -> LightColors
+    val c = if (darkTheme) DarkAutopilot else LightAutopilot
+    val scheme = materialScheme(c)
+    CompositionLocalProvider(LocalAutopilot provides c) {
+        MaterialTheme(colorScheme = scheme, typography = AutopilotTypography, shapes = AutopilotShapes, content = content)
     }
-    MaterialTheme(colorScheme = colorScheme, typography = AppTypography, content = content)
+}
+
+/** Resolves the persisted appearance preference against the system setting. */
+@Composable
+fun resolveDarkTheme(appearance: Appearance): Boolean = when (appearance) {
+    Appearance.SYSTEM -> isSystemInDarkTheme()
+    Appearance.LIGHT -> false
+    Appearance.DARK -> true
+}
+
+private fun materialScheme(c: AutopilotColors): ColorScheme {
+    val base = if (c.isDark) darkColorScheme() else lightColorScheme()
+    return base.copy(
+        primary = c.inverse,
+        onPrimary = c.onInverse,
+        primaryContainer = c.sunken,
+        onPrimaryContainer = c.ink,
+        secondary = c.ink2,
+        onSecondary = c.paper,
+        secondaryContainer = c.sunken,
+        onSecondaryContainer = c.ink,
+        tertiary = c.signal,
+        onTertiary = c.onSignal,
+        tertiaryContainer = c.signalSoft,
+        onTertiaryContainer = c.onSignalSoft,
+        background = c.paper,
+        onBackground = c.ink,
+        surface = c.surface,
+        onSurface = c.ink,
+        surfaceVariant = c.sunken,
+        onSurfaceVariant = c.ink2,
+        surfaceContainerLowest = c.surface,
+        surfaceContainerLow = c.surface,
+        surfaceContainer = c.sunken,
+        surfaceContainerHigh = c.sunken,
+        surfaceContainerHighest = c.sunken,
+        surfaceDim = c.paper,
+        surfaceBright = c.surface,
+        inverseSurface = c.toast,
+        inverseOnSurface = c.onToast,
+        inversePrimary = c.toastAction,
+        outline = c.lineStrong,
+        outlineVariant = c.line,
+        error = c.danger,
+        onError = if (c.isDark) c.paper else c.surface,
+        errorContainer = c.dangerSoft,
+        onErrorContainer = c.onDangerSoft,
+        scrim = c.scrim,
+    )
+}
+
+/** Shorthand for the extended roles inside composables. */
+object AutopilotTheme {
+    val colors: AutopilotColors
+        @Composable @ReadOnlyComposable get() = LocalAutopilot.current
 }

@@ -71,3 +71,6 @@ enum class SnoozePreset { ONE_HOUR, THREE_HOURS, TOMORROW_MORNING }
 
 /** Presets only pre-populate an editable policy; the user owns the resulting schedule. */
 enum class ReminderPreset { GENTLE, DAILY, PERSISTENT }
+
+/** Theme preference. SYSTEM follows the phone's dark-mode setting (the default). */
+enum class Appearance { SYSTEM, LIGHT, DARK }

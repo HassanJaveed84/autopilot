@@ -31,6 +31,32 @@ object Format {
         }
     }
 
+    /** Lower-case variant for mid-sentence use: "today 18:00", "tomorrow 09:00", "Tue 20 Oct, 09:00". */
+    fun relativeLower(instant: Instant, now: Instant, zone: ZoneId): String {
+        val r = relative(instant, now, zone)
+        return when {
+            r.startsWith("Today") || r.startsWith("Tomorrow") || r.startsWith("Yesterday") -> r.replaceFirstChar { it.lowercase() }
+            else -> r
+        }
+    }
+
+    /** Lower-case date for mid-sentence use. */
+    fun dateLower(date: LocalDate, today: LocalDate): String {
+        val r = date(date, today)
+        return if (r == "Today" || r == "Tomorrow" || r == "Yesterday") r.lowercase() else r
+    }
+
+    /** "Monday 19 October" for screen headers. */
+    fun longDate(date: LocalDate): String = date.format(DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.getDefault()))
+
+    /** "in 4 days", "today", "2 days ago". */
+    fun daysUntil(date: LocalDate, today: LocalDate): String = when (val d = ChronoUnit.DAYS.between(today, date)) {
+        0L -> "today"
+        1L -> "tomorrow"
+        -1L -> "yesterday"
+        else -> if (d > 0) "in $d days" else "${-d} days ago"
+    }
+
     fun date(date: LocalDate, today: LocalDate): String = when (ChronoUnit.DAYS.between(today, date)) {
         0L -> "Today"
         1L -> "Tomorrow"

@@ -1,18 +1,13 @@
 package com.lifeadmin.autopilot.ui
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -22,11 +17,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -34,24 +32,25 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.lifeadmin.autopilot.di.AppContainer
-import androidx.lifecycle.createSavedStateHandle
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
-import androidx.navigation.NavHostController
 import com.lifeadmin.autopilot.ui.ai.AiSettingsScreen
 import com.lifeadmin.autopilot.ui.ai.AiSettingsViewModel
 import com.lifeadmin.autopilot.ui.capture.CaptureSheet
-import com.lifeadmin.autopilot.ui.plan.PlanScreen
-import com.lifeadmin.autopilot.ui.plan.PlanViewModel
 import com.lifeadmin.autopilot.ui.capture.CaptureViewModel
+import com.lifeadmin.autopilot.ui.components.AutopilotSnackbar
+import com.lifeadmin.autopilot.ui.components.CaptureBar
+import com.lifeadmin.autopilot.ui.components.FlightNavBar
+import com.lifeadmin.autopilot.ui.components.NavItem
+import com.lifeadmin.autopilot.ui.components.PaperBackground
 import com.lifeadmin.autopilot.ui.detail.TaskDetailScreen
 import com.lifeadmin.autopilot.ui.detail.TaskDetailViewModel
-import com.lifeadmin.autopilot.ui.health.HealthBanner
-import com.lifeadmin.autopilot.ui.health.HealthSummaryCard
 import com.lifeadmin.autopilot.ui.health.ReminderHealthScreen
 import com.lifeadmin.autopilot.ui.health.ReminderHealthViewModel
+import com.lifeadmin.autopilot.ui.health.rememberHealthIssue
 import com.lifeadmin.autopilot.ui.navigation.Routes
 import com.lifeadmin.autopilot.ui.navigation.TopLevelDestination
+import com.lifeadmin.autopilot.ui.plan.PlanScreen
+import com.lifeadmin.autopilot.ui.plan.PlanViewModel
+import com.lifeadmin.autopilot.ui.settings.LicensesScreen
 import com.lifeadmin.autopilot.ui.settings.SettingsScreen
 import com.lifeadmin.autopilot.ui.settings.SettingsViewModel
 import com.lifeadmin.autopilot.ui.tasks.InboxScreen
@@ -59,13 +58,16 @@ import com.lifeadmin.autopilot.ui.tasks.TaskListViewModel
 import com.lifeadmin.autopilot.ui.tasks.TasksScreen
 import com.lifeadmin.autopilot.ui.today.TodayScreen
 import com.lifeadmin.autopilot.ui.today.TodayViewModel
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
- * App shell: bottom navigation (Today / Inbox / Tasks / Settings), quick-capture FAB and task
- * detail destination. [openTaskRequests] carries validated task ids from notification taps.
+ * App shell: three doing tabs (Today / Inbox / Tasks) with the persistent capture bar above them,
+ * Settings as a header button, and the pushed destinations (task detail, plan, health, AI
+ * settings). [openTaskRequests] carries validated task ids from notification taps.
  */
 @Composable
 fun LifeAdminRoot(
@@ -85,7 +87,17 @@ fun LifeAdminRoot(
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var capturing by rememberSaveable { mutableStateOf(false) }
+    // Text handed to the capture sheet by an example prompt on the empty Today screen.
+    var capturePrefill by rememberSaveable { mutableStateOf<String?>(null) }
     val topLevel = TopLevelDestination.entries.firstOrNull { d -> currentDestination?.hierarchy?.any { it.route == d.route } == true }
+    val healthIssue = if (showHealth) rememberHealthIssue(container) else false
+    val inboxCount by remember(container) {
+        container.taskRepository.observeSummaries()
+            .map { list -> list.count { it.task.status == com.lifeadmin.autopilot.domain.model.TaskStatus.INBOX && it.task.archivedAt == null } }
+            // The badge must never take the shell down: the app itself never closes its database, but
+            // tests close theirs while the composition is still alive.
+            .catch { emit(0) }
+    }.collectAsStateWithLifecycle(0)
 
     val pendingTask by openTaskRequests.collectAsStateWithLifecycle()
     // Wait until NavHost has installed its graph (cold start from a notification tap).
@@ -110,112 +122,128 @@ fun LifeAdminRoot(
         launchSingleTop = true
         restoreState = true
     }
+    fun openSettings() = navController.navigate(Routes.SETTINGS) { launchSingleTop = true }
+    fun openHealth() = navController.navigate(Routes.HEALTH) { launchSingleTop = true }
+    fun openAiSettings() = navController.navigate(Routes.AI_SETTINGS) { launchSingleTop = true }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbar) },
-        floatingActionButton = {
-            if (topLevel != null && topLevel != TopLevelDestination.SETTINGS) {
-                ExtendedFloatingActionButton(
-                    onClick = { capturing = true },
-                    icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                    text = { Text("Capture") },
-                    modifier = Modifier.testTag("fab_capture"),
-                )
-            }
-        },
-        bottomBar = {
-            if (topLevel != null) {
-                NavigationBar {
-                    TopLevelDestination.entries.forEach { dest ->
-                        NavigationBarItem(
-                            selected = topLevel == dest,
-                            onClick = { goTo(dest.route) },
-                            icon = { Icon(dest.icon, contentDescription = null) },
-                            label = { Text(dest.label) },
-                            modifier = Modifier.testTag("nav_${dest.route}"),
+    PaperBackground {
+        Scaffold(
+            containerColor = androidx.compose.ui.graphics.Color.Transparent,
+            snackbarHost = { SnackbarHost(snackbar) { data -> AutopilotSnackbar(data) } },
+            bottomBar = {
+                if (topLevel != null) {
+                    Column(Modifier.navigationBarsPadding()) {
+                        CaptureBar(onClick = { capturing = true })
+                        FlightNavBar(
+                            items = TopLevelDestination.entries.map { NavItem(it.route, it.label, it.icon, badge = if (it == TopLevelDestination.INBOX) inboxCount else 0) },
+                            selected = topLevel.route,
+                            onSelect = ::goTo,
                         )
                     }
                 }
-            }
-        },
-    ) { padding ->
-        NavHost(navController, startDestination = Routes.TODAY, modifier = Modifier.padding(padding).consumeWindowInsets(padding)) {
-            composable(Routes.TODAY) {
-                val vm: TodayViewModel = viewModel(factory = factoryOf {
-                    TodayViewModel(container.taskRepository, container.settingsRepository, container.taskActions, container.clock, container.zoneProvider)
-                })
-                TodayScreen(vm, snackbar, onOpenTask = ::openTask, onOpenInbox = { goTo(Routes.INBOX) }, healthBanner = {
-                    if (showHealth) HealthBanner(container) { navController.navigate(Routes.HEALTH) { launchSingleTop = true } }
-                })
-            }
-            composable(Routes.INBOX) {
-                val vm: TaskListViewModel = viewModel(key = "inbox", factory = factoryOf {
-                    TaskListViewModel(container.taskRepository, container.clock, container.zoneProvider, inboxOnly = true)
-                })
-                InboxScreen(vm, snackbar, onOpenTask = ::openTask)
-            }
-            composable(Routes.TASKS) {
-                val vm: TaskListViewModel = viewModel(key = "tasks", factory = factoryOf {
-                    TaskListViewModel(container.taskRepository, container.clock, container.zoneProvider, inboxOnly = false)
-                })
-                TasksScreen(vm, snackbar, onOpenTask = ::openTask)
-            }
-            composable(Routes.SETTINGS) {
-                val vm: SettingsViewModel = viewModel(factory = factoryOf {
-                    SettingsViewModel(container.settingsRepository, container.backupRepository) { container.reconcileAll("settings") }
-                })
-                SettingsScreen(vm, snackbar, healthSection = {
-                    if (showHealth) HealthSummaryCard(container) { navController.navigate(Routes.HEALTH) { launchSingleTop = true } }
-                }, onOpenAiSettings = { navController.navigate(Routes.AI_SETTINGS) { launchSingleTop = true } })
-            }
-            composable(Routes.AI_SETTINGS) {
-                val vm: AiSettingsViewModel = viewModel(factory = factoryOf {
-                    AiSettingsViewModel(container.settingsRepository, container.apiKeyStore, container.aiPlanning, container.clock)
-                })
-                AiSettingsScreen(vm, onBack = { navController.popBackStack() })
-            }
-            composable(Routes.PLAN, arguments = listOf(navArgument("text") { type = NavType.StringType; defaultValue = "" })) { entry ->
-                val text = entry.arguments?.getString("text").orEmpty()
-                PlanDestination(container, navController, targetTaskId = null, initialText = text, onReminderEnabled = onReminderEnabled)
-            }
-            composable(Routes.PLAN_TASK, arguments = listOf(navArgument("taskId") { type = NavType.StringType })) { entry ->
-                val taskId = entry.arguments?.getString("taskId").orEmpty()
-                PlanDestination(container, navController, targetTaskId = taskId, initialText = "", onReminderEnabled = onReminderEnabled)
-            }
-            composable(Routes.HEALTH) {
-                val vm: ReminderHealthViewModel = viewModel(factory = factoryOf { ReminderHealthViewModel(container) })
-                ReminderHealthScreen(
-                    vm, zone = container.zoneProvider.current(), now = container.clock::now,
-                    onBack = { navController.popBackStack() }, requestPermission = requestNotificationPermission,
-                )
-            }
-            composable(Routes.TASK_DETAIL, arguments = listOf(navArgument("taskId") { type = NavType.StringType })) { entry ->
-                val taskId = entry.arguments?.getString("taskId").orEmpty()
-                val vm: TaskDetailViewModel = viewModel(key = "detail-$taskId", factory = factoryOf {
-                    TaskDetailViewModel(taskId, container.taskRepository, container.taskActions, container.settingsRepository, container.clock, container.zoneProvider, container.hintDismissals)
-                })
-                TaskDetailScreen(
-                    vm, onBack = { navController.popBackStack() }, onReminderEnabled = onReminderEnabled,
-                    onMoveForward = { navController.navigate(Routes.planTask(taskId)) { launchSingleTop = true } },
-                )
+            },
+        ) { padding ->
+            NavHost(navController, startDestination = Routes.TODAY, modifier = Modifier.padding(padding).consumeWindowInsets(padding)) {
+                composable(Routes.TODAY) {
+                    val vm: TodayViewModel = viewModel(factory = factoryOf {
+                        TodayViewModel(container.taskRepository, container.settingsRepository, container.taskActions, container.clock, container.zoneProvider)
+                    })
+                    TodayScreen(
+                        vm, snackbar, onOpenTask = ::openTask, onOpenInbox = { goTo(Routes.INBOX) },
+                        onOpenSettings = ::openSettings, healthIssue = healthIssue, showHealth = showHealth, container = container, onOpenHealth = ::openHealth,
+                        onCaptureWithText = { text -> capturePrefill = text; capturing = true },
+                    )
+                }
+                composable(Routes.INBOX) {
+                    val vm: TaskListViewModel = viewModel(key = "inbox", factory = factoryOf {
+                        TaskListViewModel(container.taskRepository, container.clock, container.zoneProvider, inboxOnly = true, settings = container.settingsRepository)
+                    })
+                    InboxScreen(vm, snackbar, onOpenTask = ::openTask, onOpenSettings = ::openSettings, healthIssue = healthIssue, onPlanTask = { id -> navController.navigate(Routes.planTask(id)) { launchSingleTop = true } })
+                }
+                composable(Routes.TASKS) {
+                    val vm: TaskListViewModel = viewModel(key = "tasks", factory = factoryOf {
+                        TaskListViewModel(container.taskRepository, container.clock, container.zoneProvider, inboxOnly = false)
+                    })
+                    TasksScreen(vm, snackbar, onOpenTask = ::openTask, onOpenSettings = ::openSettings, healthIssue = healthIssue)
+                }
+                composable(Routes.SETTINGS) {
+                    val vm: SettingsViewModel = viewModel(factory = factoryOf {
+                        SettingsViewModel(container.settingsRepository, container.backupRepository) { container.reconcileAll("settings") }
+                    })
+                    SettingsScreen(
+                        vm, snackbar, onBack = { navController.popBackStack() },
+                        showHealth = showHealth, container = container, onOpenHealth = ::openHealth,
+                        onOpenAiSettings = ::openAiSettings, onOpenLicenses = { navController.navigate(Routes.LICENSES) { launchSingleTop = true } },
+                    )
+                }
+                composable(Routes.LICENSES) { LicensesScreen(onBack = { navController.popBackStack() }) }
+                composable(Routes.AI_SETTINGS) {
+                    val vm: AiSettingsViewModel = viewModel(factory = factoryOf {
+                        AiSettingsViewModel(container.settingsRepository, container.apiKeyStore, container.aiPlanning, container.clock)
+                    })
+                    AiSettingsScreen(vm, onBack = { navController.popBackStack() })
+                }
+                composable(
+                    Routes.PLAN,
+                    arguments = listOf(
+                        navArgument("text") { type = NavType.StringType; defaultValue = "" },
+                        navArgument("auto") { type = NavType.BoolType; defaultValue = false },
+                    ),
+                ) { entry ->
+                    val text = entry.arguments?.getString("text").orEmpty()
+                    val auto = entry.arguments?.getBoolean("auto") ?: false
+                    PlanDestination(container, navController, targetTaskId = null, initialText = text, autoRequest = auto, onReminderEnabled = onReminderEnabled)
+                }
+                composable(Routes.PLAN_TASK, arguments = listOf(navArgument("taskId") { type = NavType.StringType })) { entry ->
+                    val taskId = entry.arguments?.getString("taskId").orEmpty()
+                    PlanDestination(container, navController, targetTaskId = taskId, initialText = "", autoRequest = false, onReminderEnabled = onReminderEnabled)
+                }
+                composable(Routes.HEALTH) {
+                    val vm: ReminderHealthViewModel = viewModel(factory = factoryOf { ReminderHealthViewModel(container) })
+                    ReminderHealthScreen(
+                        vm, zone = container.zoneProvider.current(), now = container.clock::now,
+                        onBack = { navController.popBackStack() }, requestPermission = requestNotificationPermission,
+                    )
+                }
+                composable(Routes.TASK_DETAIL, arguments = listOf(navArgument("taskId") { type = NavType.StringType })) { entry ->
+                    val taskId = entry.arguments?.getString("taskId").orEmpty()
+                    val vm: TaskDetailViewModel = viewModel(key = "detail-$taskId", factory = factoryOf {
+                        TaskDetailViewModel(taskId, container.taskRepository, container.taskActions, container.settingsRepository, container.clock, container.zoneProvider, container.hintDismissals)
+                    })
+                    TaskDetailScreen(
+                        vm, onBack = { navController.popBackStack() }, onReminderEnabled = onReminderEnabled,
+                        onMoveForward = { navController.navigate(Routes.planTask(taskId)) { launchSingleTop = true } },
+                        onOpenAiSettings = ::openAiSettings,
+                    )
+                }
             }
         }
     }
 
     if (capturing) {
-        val vm: CaptureViewModel = viewModel(factory = factoryOf { CaptureViewModel(container.taskActions, container.settingsRepository) })
+        val prefill = capturePrefill
+        val vm: CaptureViewModel = viewModel(factory = factoryOf {
+            CaptureViewModel(container.taskActions, container.taskRepository, container.settingsRepository, container.apiKeyStore, container.aiPlanning, container.clock, container.zoneProvider)
+        })
+        LaunchedEffect(prefill) { if (prefill != null) { vm.prefill(prefill); capturePrefill = null } }
         CaptureSheet(
             vm,
             onDismiss = { capturing = false },
             onPlanWithAi = { text ->
                 capturing = false
-                navController.navigate(Routes.plan(text)) { launchSingleTop = true }
+                navController.navigate(Routes.plan(text, auto = true)) { launchSingleTop = true }
             },
-            onSaved = { id, withReminder ->
+            onOpenAiSettings = { capturing = false; openAiSettings() },
+            onSaved = { id, withReminder, firstNudge ->
                 capturing = false
                 if (withReminder) onReminderEnabled()
                 scope.launch {
-                    val r = snackbar.showSnackbar(if (withReminder) "Saved with reminders" else "Saved to Inbox", actionLabel = "Open")
+                    val message = when {
+                        !withReminder -> "Saved to Inbox."
+                        firstNudge != null -> "Saved. First nudge $firstNudge."
+                        else -> "Saved."
+                    }
+                    val r = snackbar.showSnackbar(message, actionLabel = "Open")
                     if (r == SnackbarResult.ActionPerformed) openTask(id)
                 }
             },
@@ -229,6 +257,7 @@ private fun PlanDestination(
     navController: NavHostController,
     targetTaskId: String?,
     initialText: String,
+    autoRequest: Boolean,
     onReminderEnabled: () -> Unit,
 ) {
     val vm: PlanViewModel = viewModel(
@@ -237,7 +266,7 @@ private fun PlanDestination(
             initializer {
                 PlanViewModel(
                     createSavedStateHandle(), container.aiPlanning, container.taskRepository, container.taskActions,
-                    container.settingsRepository, container.clock, container.zoneProvider, targetTaskId, initialText,
+                    container.settingsRepository, container.clock, container.zoneProvider, targetTaskId, initialText, autoRequest,
                 )
             }
         },

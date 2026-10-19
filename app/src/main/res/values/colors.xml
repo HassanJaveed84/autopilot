@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="window_background">#FFF8FAF9</color>
-    <color name="ic_launcher_background">#FF0F5257</color>
-    <color name="ic_launcher_foreground">#FFFFFFFF</color>
-    <color name="ic_launcher_accent">#FFF2B84B</color>
-    <color name="notification_accent">#FF0F6E73</color>
+    <color name="window_background">#FFEEF1EF</color>
+    <color name="ic_launcher_background">#FF111916</color>
+    <color name="ic_launcher_foreground">#FFF3F6F4</color>
+    <color name="ic_launcher_accent">#FFB4460F</color>
+    <color name="notification_accent">#FFB4460F</color>
 </resources>

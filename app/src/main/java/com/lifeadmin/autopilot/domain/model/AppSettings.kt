@@ -38,6 +38,8 @@ data class AppSettings(
     val aiUsageCount: Int = 0,
     val lastReconcileAt: Instant? = null,
     val lastReconcileSummary: String? = null,
+    /** Light/dark preference for the UI; SYSTEM follows the phone. Presentation only. */
+    val appearance: Appearance = Appearance.SYSTEM,
 ) {
     companion object {
         val MORNING: LocalTime = LocalTime.of(9, 0)

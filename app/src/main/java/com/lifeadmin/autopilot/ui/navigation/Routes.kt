@@ -1,11 +1,7 @@
 package com.lifeadmin.autopilot.ui.navigation
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.MailOutline
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.lifeadmin.autopilot.ui.components.AutopilotIcons
 
 object Routes {
     const val TODAY = "today"
@@ -15,16 +11,17 @@ object Routes {
     const val TASK_DETAIL = "task/{taskId}"
     const val HEALTH = "health"
     const val AI_SETTINGS = "ai_settings"
-    const val PLAN = "plan?text={text}"
+    const val LICENSES = "licenses"
+    const val PLAN = "plan?text={text}&auto={auto}"
     const val PLAN_TASK = "plan/task/{taskId}"
     fun taskDetail(taskId: String) = "task/$taskId"
-    fun plan(text: String) = "plan?text=" + android.net.Uri.encode(text)
+    fun plan(text: String, auto: Boolean = false) = "plan?text=" + android.net.Uri.encode(text) + "&auto=" + auto
     fun planTask(taskId: String) = "plan/task/$taskId"
 }
 
+/** The three doing tabs. Settings is a header button, not a tab. */
 enum class TopLevelDestination(val route: String, val label: String, val icon: ImageVector) {
-    TODAY(Routes.TODAY, "Today", Icons.Filled.Home),
-    INBOX(Routes.INBOX, "Inbox", Icons.Filled.MailOutline),
-    TASKS(Routes.TASKS, "Tasks", @Suppress("DEPRECATION") Icons.Filled.List),
-    SETTINGS(Routes.SETTINGS, "Settings", Icons.Filled.Settings),
+    TODAY(Routes.TODAY, "Today", AutopilotIcons.Sun),
+    INBOX(Routes.INBOX, "Inbox", AutopilotIcons.Tray),
+    TASKS(Routes.TASKS, "Tasks", AutopilotIcons.List),
 }

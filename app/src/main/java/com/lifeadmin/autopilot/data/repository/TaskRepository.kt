@@ -57,6 +57,8 @@ data class TaskSummary(
     val stepsTotal: Int,
     val nextStepTitle: String?,
     val nextReminder: ReminderOccurrence?,
+    /** The task's reminder policy (read-only here; edited through [TaskRepository.savePolicy]). */
+    val policy: ReminderPolicy? = null,
 )
 
 data class TaskDetails(
@@ -96,9 +98,13 @@ class TaskRepository(
         taskDao.observeAll(),
         stepDao.observeAll(),
         occurrenceDao.observeWithStatus(ACTIVE),
-    ) { tasks, steps, occurrences ->
+        policyDao.observeAll(),
+        policyDao.observeAllSlots(),
+    ) { tasks, steps, occurrences, policies, slots ->
         val stepsByTask = steps.groupBy { it.taskId }
         val nextByTask = occurrences.groupBy { it.taskId }.mapValues { (_, v) -> v.minBy { it.plannedAt } }
+        val slotsByPolicy = slots.groupBy { it.policyId }
+        val policyByTask = policies.associateBy({ it.taskId }, { it.toDomain(slotsByPolicy[it.id].orEmpty()) })
         tasks.map { t ->
             val s = stepsByTask[t.id].orEmpty()
             TaskSummary(
@@ -107,6 +113,7 @@ class TaskRepository(
                 stepsTotal = s.size,
                 nextStepTitle = s.sortedBy { it.sortOrder }.firstOrNull { !it.isDone }?.title,
                 nextReminder = nextByTask[t.id]?.toDomain(),
+                policy = policyByTask[t.id],
             )
         }
     }
