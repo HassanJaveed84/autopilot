@@ -172,6 +172,15 @@ shot comes from run #11's 200% job; in run #12 the one-off alarm did not fire wi
 `PlanScreenUiTest.followThroughCountFollowsTheSelectedCards` covers the Apply count going from 3 to 2 when a
 card is deselected.
 
+Final run on `b01c397`: Android CI #47 green (https://github.com/HassanJaveed84/autopilot/actions/runs/39328302040)
+and Screenshots #13 green on all four variants (phone light, phone dark, phone 200%, small display;
+https://github.com/HassanJaveed84/autopilot/actions/runs/39328302023), 13 tour steps each. The
+`j4-move-forward-two-changes` shot now reads "Apply 2 changes" after a card is deselected. The notification
+shade shot was skipped in all four variants of run #13 (the one-off alarm did not post within the tour's
+two-minute wait on the CI emulator), so board 06's evidence remains run #11's capture plus the instrumented
+`AndroidIntegrationTest`, which asserts the actions "Done", "Snooze · tomorrow 09:00", "Open" on the real
+notification.
+
 Kept deliberately off the boards: "approximate timing" on the follow-up card and the "Once" preset wording
 (the spec forbids claiming exact delivery and hard-coded prototype times), and the extra privacy/billing links
 on the AI setup sheet.
