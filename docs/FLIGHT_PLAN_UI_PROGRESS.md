@@ -75,7 +75,8 @@ No pre-existing failures.
       lint clean, 309 unit tests green, debug + release + test APKs built; branch pushed; CI and the screenshot
       tour requested on GitHub Actions; `docs/FLIGHT_PLAN_UI_REPORT.md` written; draft PR #1 opened
       (https://github.com/HassanJaveed84/autopilot/pull/1). Screenshots run #7 failed in the tour's selectors
-      (merged card semantics, cards below the fold at 200% text); fixed and re-requested, see the report §5
+      (merged card semantics, cards below the fold at 200% text); fixed; run #8 green on all four variants and
+      Android CI #34 green incl. emulator tests; 200% shots led to the stacked Inbox triage + fixed-size badge fix
 
 ## Changed files
 

@@ -106,26 +106,28 @@ small display). See §5 for the run links.
 
 ## 5. Branch, CI and PR
 
-- Branch `ccr-0d6d408c-plqo7g`, commits "Flight Plan migration: Phase A …" through "Flight Plan polish …", then a
-  merge of the repository default branch (`ccr-016fbc2f-7v3dn7`) and the screenshot-tour fix below.
-- Draft PR: https://github.com/HassanJaveed84/autopilot/pull/1 (base: the default branch `ccr-016fbc2f-7v3dn7`).
-- Android CI (lint, unit tests, APKs, instrumented tests on an API 34 emulator): runs #29–#31 were cancelled by
-  the workflow's concurrency rule as commits landed; run #32 / #33 on the merge commit `05b6e0c` were in progress
-  when this report was written (`https://github.com/HassanJaveed84/autopilot/actions/runs/39235741403`). The PR
-  checks tab shows the outcome of the latest head.
-- Screenshots run #7 on commit `8f5b297` (`https://github.com/HassanJaveed84/autopilot/actions/runs/39234413486`)
-  **failed**. The app ran on the emulator and 37 screens per variant were captured and uploaded for the phone
-  light/dark variants (`screenshots-phone-light-font1.0`, `screenshots-phone-dark-font1.0`); the failures were in
-  the tour's own selectors, not the app:
-  - `openTask` looked for a clickable node with a text *descendant*. The Flight Plan task card merges its text into
-    the clickable column (one TalkBack announcement), so the title is on the clickable node itself and no node
-    matched (`c_taskDetail`, `d_otherDetails` on every variant).
-  - `launch()` waited for the "Book train ride" card. At 200% text and on the 320dp display the card sits below
-    the fold of the lazy rail, so it is not composed and the wait timed out (6 tests on the small and 2.0 variants).
-  - `g_planCapture` waited for the review title card, which is below the fold at 200% text.
-  The fix (wait for the day's headline, match text on the clickable node or a descendant, scroll the review list
-  to the title) is in the follow-up commit, which also re-requests the four variants. Its result is run #8 on the
-  Screenshots workflow; if it is green the four `screenshots-*` artifacts are the visual evidence for this report.
+- Branch `ccr-0d6d408c-plqo7g`; draft PR #1: https://github.com/HassanJaveed84/autopilot/pull/1 (base: the
+  repository default branch `ccr-016fbc2f-7v3dn7`; no `main` exists). Commits "Flight Plan migration: Phase A …"
+  through "Flight Plan polish …", a merge of the default branch, then the three follow-ups below.
+- **Android CI run #34 on `e1a9011` — green**: lint, 309 unit/Robolectric tests, debug/release/test APKs, and the
+  emulator instrumented tests (API 34). https://github.com/HassanJaveed84/autopilot/actions/runs/39236307210
+  Run #35 (the pull_request-event twin of #34 on the same commit) failed one instrumented test,
+  `InstrumentedUiTest.captureThenMarkWaitingWithTypedReason`, with "Expected exactly 1 node but found 2": during
+  the tab crossfade the new task's title is on Today's inbox prompt as well as on the Inbox card. Test-side race;
+  the click is now scoped to the Inbox list. Runs #29–#33 were cancelled by the concurrency rule as commits landed.
+- **Screenshots run #8 on `e1a9011` — green on all four variants** (phone light, phone dark, phone at 200% text,
+  320dp small display): https://github.com/HassanJaveed84/autopilot/actions/runs/39236307168, artifacts
+  `screenshots-phone-light-font1.0`, `screenshots-phone-dark-font1.0`, `screenshots-phone-light-font2.0`,
+  `screenshots-small-light-font1.0` (≈50 screens each, 30-day retention). The screens were downloaded and compared
+  with boards 1 and 3 of `design/Claude_Design_Redesign.html`: Today rail, Capture, AI setup, Review plan, task
+  detail, Tasks, Settings, Reminder health and the dark theme match the boards. Two large-text problems were
+  visible in the 200% set and fixed in `42cee13`: Inbox triage labels truncated to "Nudge…" (buttons now stack in
+  one column from font scale 1.3) and the Inbox badge grew over its icon (fixed dp size).
+  Run #7 on `8f5b297` had failed in the tour's own selectors after the card redesign (title merged into the
+  clickable node; cards below the fold at 200% / 320dp); fixed in `e1a9011`.
+- The latest push (`42cee13` + the instrumented-test fix) re-runs Android CI and the four screenshot variants; the
+  PR's Checks tab shows their outcome. The two soft-skipped detail shots (edit dialog, overflow menu) are also
+  addressed there: the header is the detail list's first item and had scrolled out of composition.
 
 ## 6. Known limitations and risks
 
