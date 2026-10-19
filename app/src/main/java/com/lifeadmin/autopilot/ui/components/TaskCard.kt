@@ -27,6 +27,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -154,10 +156,11 @@ fun CheckCircle(checked: Boolean, label: String, onToggle: () -> Unit, modifier:
     val c = AutopilotTheme.colors
     val bg by animateColorAsState(if (checked) c.done else Color.Transparent, tween(Motion.CHECK_MS), label = "checkFill")
     val bd by animateColorAsState(if (checked) c.done else c.lineStrong, tween(Motion.CHECK_MS), label = "checkBorder")
+    val haptics = LocalHapticFeedback.current
     Box(
         modifier
             .size(48.dp)
-            .toggleable(value = checked, role = Role.Checkbox, onValueChange = { onToggle() })
+            .toggleable(value = checked, role = Role.Checkbox, onValueChange = { haptics.performHapticFeedback(HapticFeedbackType.LongPress); onToggle() })
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {

@@ -89,6 +89,9 @@ fun LifeAdminRoot(
     var capturing by rememberSaveable { mutableStateOf(false) }
     // Text handed to the capture sheet by an example prompt on the empty Today screen.
     var capturePrefill by rememberSaveable { mutableStateOf<String?>(null) }
+    // The card of a task just saved from Capture wears a green ring for a moment (Today only).
+    var justSaved by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(justSaved) { if (justSaved != null) { kotlinx.coroutines.delay(2_800); justSaved = null } }
     val topLevel = TopLevelDestination.entries.firstOrNull { d -> currentDestination?.hierarchy?.any { it.route == d.route } == true }
     val healthIssue = if (showHealth) rememberHealthIssue(container) else false
     val inboxCount by remember(container) {
@@ -152,6 +155,7 @@ fun LifeAdminRoot(
                         vm, snackbar, onOpenTask = ::openTask, onOpenInbox = { goTo(Routes.INBOX) },
                         onOpenSettings = ::openSettings, healthIssue = healthIssue, showHealth = showHealth, container = container, onOpenHealth = ::openHealth,
                         onCaptureWithText = { text -> capturePrefill = text; capturing = true },
+                        highlightTaskId = justSaved,
                     )
                 }
                 composable(Routes.INBOX) {
@@ -236,6 +240,7 @@ fun LifeAdminRoot(
             onOpenAiSettings = { capturing = false; openAiSettings() },
             onSaved = { id, withReminder, firstNudge ->
                 capturing = false
+                justSaved = id
                 if (withReminder) onReminderEnabled()
                 scope.launch {
                     val message = when {

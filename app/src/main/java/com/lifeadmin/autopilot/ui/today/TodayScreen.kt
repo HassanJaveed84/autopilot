@@ -88,6 +88,8 @@ fun TodayScreen(
     container: AppContainer? = null,
     onOpenHealth: () -> Unit = {},
     onCaptureWithText: (String) -> Unit = {},
+    /** Task that was just saved from the capture sheet: its card gets the green "just saved" ring. */
+    highlightTaskId: String? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val c = AutopilotTheme.colors
@@ -138,10 +140,10 @@ fun TodayScreen(
                 when (entry) {
                     is RailEntry.Now -> NowRow(entry.time, last)
                     is RailEntry.Attention -> RailCardRow(label = entry.label, labelTone = c.signal, last = last) {
-                        TaskCard(entry.summary, state.now, state.zone, onOpen = { onOpenTask(entry.summary.task.id) }, context = CardContext.LIST, onToggleDone = { done(entry.summary) })
+                        TaskCard(entry.summary, state.now, state.zone, onOpen = { onOpenTask(entry.summary.task.id) }, context = CardContext.LIST, onToggleDone = { done(entry.summary) }, ring = entry.summary.task.id == highlightTaskId)
                     }
                     is RailEntry.Card -> RailCardRow(label = entry.time, labelTone = c.ink, last = last, mono = true) {
-                        TaskCard(entry.summary, state.now, state.zone, onOpen = { onOpenTask(entry.summary.task.id) }, context = CardContext.RAIL, onToggleDone = { done(entry.summary) })
+                        TaskCard(entry.summary, state.now, state.zone, onOpen = { onOpenTask(entry.summary.task.id) }, context = CardContext.RAIL, onToggleDone = { done(entry.summary) }, ring = entry.summary.task.id == highlightTaskId)
                     }
                     is RailEntry.Ghost -> GhostRow(entry.time, entry.summary.task.title, "again, if it's still open", AutopilotIcons.Bell, last) { onOpenTask(entry.summary.task.id) }
                     is RailEntry.CheckIn -> GhostRow(entry.time, entry.summary.task.title, "check in", AutopilotIcons.Hourglass, last) { onOpenTask(entry.summary.task.id) }
@@ -210,12 +212,22 @@ private fun NowRow(time: String, last: Boolean) {
 @Composable
 private fun RailCardRow(label: String, labelTone: Color, last: Boolean, mono: Boolean = false, card: @Composable () -> Unit) {
     val c = AutopilotTheme.colors
-    Row(Modifier.fillMaxWidth().padding(top = 10.dp).railLine(c.line, last = last), verticalAlignment = Alignment.Top) {
-        Box(Modifier.width(RAIL_COLUMN).padding(top = 20.dp), contentAlignment = Alignment.TopCenter) {
-            if (mono) TimeText(label, size = 13, color = labelTone, modifier = Modifier.background(c.paper).padding(vertical = 3.dp))
-            else Text(label, style = MaterialTheme.typography.labelSmall, color = labelTone, modifier = Modifier.background(c.paper).padding(vertical = 3.dp, horizontal = 2.dp), maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+    val largeText = LocalDensity.current.fontScale >= 1.3f
+    val labelContent: @Composable () -> Unit = {
+        if (mono) TimeText(label, size = 13, color = labelTone, modifier = Modifier.background(c.paper).padding(vertical = 3.dp, horizontal = 4.dp))
+        else Text(label, style = MaterialTheme.typography.labelSmall, color = labelTone, modifier = Modifier.background(c.paper).padding(vertical = 3.dp, horizontal = 4.dp), maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+    }
+    if (largeText) {
+        // At ≥ 130% text size the time moves above the card so titles don't squeeze beside the rail.
+        Column(Modifier.fillMaxWidth().padding(top = 10.dp).railLine(c.line, last = last)) {
+            Row(Modifier.padding(start = 14.dp), verticalAlignment = Alignment.CenterVertically) { labelContent() }
+            Box(Modifier.padding(start = RAIL_COLUMN - 16.dp, top = 4.dp)) { card() }
         }
-        Box(Modifier.weight(1f)) { card() }
+    } else {
+        Row(Modifier.fillMaxWidth().padding(top = 10.dp).railLine(c.line, last = last), verticalAlignment = Alignment.Top) {
+            Box(Modifier.width(RAIL_COLUMN).padding(top = 20.dp), contentAlignment = Alignment.TopCenter) { labelContent() }
+            Box(Modifier.weight(1f)) { card() }
+        }
     }
 }
 
