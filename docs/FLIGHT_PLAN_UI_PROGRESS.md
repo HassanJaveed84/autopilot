@@ -73,7 +73,9 @@ No pre-existing failures.
       health (hero, test a nudge, What Android reports with Fix deep links, timing, battery, switches, log), AI planning screen
 - [x] Phase F — final run `lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest`:
       lint clean, 309 unit tests green, debug + release + test APKs built; branch pushed; CI and the screenshot
-      tour requested on GitHub Actions; `docs/FLIGHT_PLAN_UI_REPORT.md` written; draft PR opened
+      tour requested on GitHub Actions; `docs/FLIGHT_PLAN_UI_REPORT.md` written; draft PR #1 opened
+      (https://github.com/HassanJaveed84/autopilot/pull/1). Screenshots run #7 failed in the tour's selectors
+      (merged card semantics, cards below the fold at 200% text); fixed and re-requested, see the report §5
 
 ## Changed files
 

@@ -136,6 +136,13 @@ private fun ComposeTestRule.waitForText(text: String) =
 private fun ComposeTestRule.scrollTo(list: String, child: String) = onNodeWithTag(list).performScrollToNode(hasTestTag(child))
 
 /**
+ * A task card merges its text into the clickable column (one TalkBack announcement), so the title
+ * is on the clickable node itself; compact rows keep the text in a descendant. Match either.
+ */
+private fun clickableWithText(text: String) =
+    hasClickAction() and (hasText(text, substring = true) or hasAnyDescendant(hasText(text, substring = true)))
+
+/**
  * Clicks through the semantics tree instead of injecting a touch, so a target hidden behind the
  * keyboard or the Capture button (or scrolled just off screen) still gets the click.
  */
@@ -197,15 +204,16 @@ class ScreenshotTour {
 
     private fun launch() {
         scenario = ActivityScenario.launch(MainActivity::class.java)
-        compose.waitForText(TRAIN)
+        // Wait for the day's headline rather than a card: at 200% text or on a small display the
+        // train card can sit below the fold of the lazy rail, where it is not composed yet.
+        compose.waitForTag("today_headline")
     }
 
     private fun openTask(title: String) {
         compose.onNodeWithTag("nav_tasks").tap()
         compose.waitForTag("tasks_list")
         compose.onNodeWithTag("tasks_list").performScrollToNode(hasText(title, substring = true))
-        // The row's text is its own merged node; the click lives on the enclosing row.
-        compose.onAllNodes(hasClickAction() and hasAnyDescendant(hasText(title, substring = true))).onFirst().tap()
+        compose.onAllNodes(clickableWithText(title)).onFirst().tap()
         compose.waitForTag("detail_title")
     }
 
@@ -313,7 +321,7 @@ class ScreenshotTour {
             compose.onNodeWithTag("tasks_list").performScrollToIndex(0)
             compose.onNodeWithTag("filter_completed").tap()
             compose.waitForText("Pay the council tax")
-            compose.onAllNodes(hasClickAction() and hasAnyDescendant(hasText("Pay the council tax"))).onFirst().tap()
+            compose.onAllNodes(clickableWithText("Pay the council tax")).onFirst().tap()
             compose.waitForTag("detail_title")
             screenshot("d4-detail-done")
         }
@@ -433,7 +441,8 @@ class ScreenshotTourAiReview {
         compose.waitForTag("plan_working")
         screenshot("g2-plan-working")
         provider.hold!!.complete(Unit)
-        compose.waitForTag("review_title")
+        compose.waitForTag("plan_approve") // the review bottom bar is always on screen
+        compose.scrollTo("plan_list", "review_title") // the title card can be below the fold at 200% text
         screenshot("g3-review-top")
         compose.scrollTo("plan_list", "review_reminders")
         screenshot("g4-review-reminders")

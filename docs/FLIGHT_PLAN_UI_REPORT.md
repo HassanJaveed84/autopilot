@@ -106,12 +106,26 @@ small display). See §5 for the run links.
 
 ## 5. Branch, CI and PR
 
-- Branch `ccr-0d6d408c-plqo7g`, commits "Flight Plan migration: Phase A …" through "Flight Plan polish …".
-- GitHub Actions on the branch: Android CI run #30 (`https://github.com/HassanJaveed84/autopilot/actions/runs/39234413910`)
-  and Screenshots run #7 (`https://github.com/HassanJaveed84/autopilot/actions/runs/39234413486`). Their artifacts
-  (`apks`, `reports`, `instrumented-reports`, `screenshots-*`) are the device-level evidence; status at the time of
-  writing is recorded in the PR description.
-- Draft PR: PR_LINK
+- Branch `ccr-0d6d408c-plqo7g`, commits "Flight Plan migration: Phase A …" through "Flight Plan polish …", then a
+  merge of the repository default branch (`ccr-016fbc2f-7v3dn7`) and the screenshot-tour fix below.
+- Draft PR: https://github.com/HassanJaveed84/autopilot/pull/1 (base: the default branch `ccr-016fbc2f-7v3dn7`).
+- Android CI (lint, unit tests, APKs, instrumented tests on an API 34 emulator): runs #29–#31 were cancelled by
+  the workflow's concurrency rule as commits landed; run #32 / #33 on the merge commit `05b6e0c` were in progress
+  when this report was written (`https://github.com/HassanJaveed84/autopilot/actions/runs/39235741403`). The PR
+  checks tab shows the outcome of the latest head.
+- Screenshots run #7 on commit `8f5b297` (`https://github.com/HassanJaveed84/autopilot/actions/runs/39234413486`)
+  **failed**. The app ran on the emulator and 37 screens per variant were captured and uploaded for the phone
+  light/dark variants (`screenshots-phone-light-font1.0`, `screenshots-phone-dark-font1.0`); the failures were in
+  the tour's own selectors, not the app:
+  - `openTask` looked for a clickable node with a text *descendant*. The Flight Plan task card merges its text into
+    the clickable column (one TalkBack announcement), so the title is on the clickable node itself and no node
+    matched (`c_taskDetail`, `d_otherDetails` on every variant).
+  - `launch()` waited for the "Book train ride" card. At 200% text and on the 320dp display the card sits below
+    the fold of the lazy rail, so it is not composed and the wait timed out (6 tests on the small and 2.0 variants).
+  - `g_planCapture` waited for the review title card, which is below the fold at 200% text.
+  The fix (wait for the day's headline, match text on the clickable node or a descendant, scroll the review list
+  to the title) is in the follow-up commit, which also re-requests the four variants. Its result is run #8 on the
+  Screenshots workflow; if it is green the four `screenshots-*` artifacts are the visual evidence for this report.
 
 ## 6. Known limitations and risks
 
