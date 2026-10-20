@@ -134,8 +134,7 @@ class AnthropicResearchProvider(
         val searchCount: Int get() = maxOf(reportedSearches.toInt(), searches.size)
 
         fun add(message: Message) {
-            // Continuations repeat the paused turn's text? No: each response carries only new blocks,
-            // but a paused turn rarely has final text, so appending in order is correct either way.
+            // Each response carries only its own blocks; a continuation's blocks are appended in order.
             for (block in message.content()) {
                 block.serverToolUse().orElse(null)?.let { use ->
                     if (use.name().toString() == ResearchConfig.TOOL_NAME) pendingQueries[use.id()] = queryOf(use._input())

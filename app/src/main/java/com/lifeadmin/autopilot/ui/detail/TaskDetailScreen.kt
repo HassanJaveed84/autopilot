@@ -301,7 +301,7 @@ private fun DetailContent(
         if (stallHint != null) item { StallHintCard(stallHint, vm, openDialog) }
         item { StepsCard(d, vm) }
         item { DeadlineAndPriorityCard(d, now, zone, vm, openDialog) }
-        if (onMoveForward != null && !task.status.isTerminal) item { AiCard(aiEnabled, onMoveForward, onOpenAiSettings, research = research?.takeIf { true }, researching = state.researching) }
+        if (onMoveForward != null && !task.status.isTerminal) item { AiCard(aiEnabled, onMoveForward, onOpenAiSettings, research = research, researching = state.researching) }
         if (research != null && (state.briefs.isNotEmpty() || state.researching)) item { ResearchCard(state, now, zone, research) }
         item {
             LinkButton(if (showHistory) "Hide history" else "History · ${d.events.size} entries", onClick = { showHistory = !showHistory }, modifier = Modifier.padding(top = 12.dp).testTag("detail_history_toggle"))

@@ -135,8 +135,7 @@ class ResearchPreflightViewModel(
 // ------------------------------------------------------------------ run
 
 /** Observes one run; never resumes after process death (then the run id is unknown → Interrupted). */
-class ResearchRunViewModel(val runId: String, val taskId: String, val question: String, private val service: ResearchService, clock: AppClock) : ViewModel() {
-    val startedAt: Instant = clock.now()
+class ResearchRunViewModel(val runId: String, val taskId: String, val question: String, private val service: ResearchService, @Suppress("unused") clock: AppClock) : ViewModel() {
     val state: StateFlow<ResearchRunState> = service.state
 
     fun matches(s: ResearchRunState): Boolean = when (s) {

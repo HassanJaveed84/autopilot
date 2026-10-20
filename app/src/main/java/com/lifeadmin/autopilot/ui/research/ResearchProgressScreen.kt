@@ -90,10 +90,12 @@ fun ResearchProgressScreen(
         }
     }
 
+    // Elapsed time counts from the run's own start, so returning to this screen keeps the clock honest.
     var elapsedMs by remember { mutableLongStateOf(0L) }
     LaunchedEffect(running?.runId) {
-        while (running != null) {
-            elapsedMs = Duration.between(viewModel.startedAt, now()).toMillis().coerceAtLeast(0)
+        val startedAt = running?.startedAt ?: return@LaunchedEffect
+        while (true) {
+            elapsedMs = Duration.between(startedAt, now()).toMillis().coerceAtLeast(0)
             delay(1_000)
         }
     }
