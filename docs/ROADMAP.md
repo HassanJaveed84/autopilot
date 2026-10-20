@@ -18,13 +18,13 @@ Autopilot is an Android-native, local-first follow-through assistant. Tasks and 
 | M2 | Opt-in AI-assisted capture, review-before-write planning and per-task suggestions | Implemented | Live provider and phone validation separate from mock CI |
 | Flight Plan UI | Native redesign and stabilization | Merged | Field usability/upgrade checks |
 | **M3A** | **Action Brief: selected-task web research, real source attribution, saved research briefs, reviewed task updates** | **Merged into `main`** | [PR #4](../pull/4) (squash `4477ee6`); final automated CI green; user reports installing/testing latest APK; exact upgrade and paid live-API validation evidence tracked separately |
-| **M3A.2** | **Deep Research & Actionable Results: flexible investigation depth, model selection, evidence coverage, exact requested deliverables, cost intelligence** | **Proposed — next product priority** | Design and benchmark supplement-category steps and US perfume gift shortlist; add visible per-request cost estimates and controllable budgets |
+| **M3A.2** | **Deep Research & Actionable Results: flexible investigation depth, model selection, evidence coverage, exact requested deliverables, cost intelligence** | **Implemented on branch `m3a2-deep-research` — draft PR open, not merged** | Code, Robolectric and MockWebServer tests, CI and screenshots on the branch (`docs/M3A2_IMPLEMENTATION_REPORT.md`); live paid-API runs and phone install not performed by the agent |
 | **M3B** | **Autopilot Review: automatically review open tasks and detect overlooked obligations** | **Proposed — next major milestone after M3A.2** | Focused design, privacy specification, phased implementation |
 | M3C | Scoped calendar/email/service integrations and user-approved external actions | Proposed | Design permissions, OAuth, provider integrations and auditability |
 | M3D | Multi-step agent workflows with per-action approval and verified outcomes | Proposed | Reliable execution, scope, idempotency and recovery |
 | M4 | Optional household collaboration and sync | Deferred | Explicit approval and identity/sharing architecture |
 
-**Coordination:** M3A landed in `main` as PR #4. The user reports installing and testing the latest APK. This documentation-only PR has no app behavior changes. M3A.2 and M3B remain proposed; no implementation is authorized by this document.
+**Coordination:** M3A landed in `main` as PR #4. M3A.2 was implemented at the user's explicit request on `m3a2-deep-research` (draft PR against `main`, not merged). M3B remains proposed; no implementation is authorized by this document.
 
 ## M3A — Action Brief: consented task research (merged)
 
@@ -113,11 +113,12 @@ Optional sharing, identity, task ownership, member permissions, cross-device con
 
 | Topic | Status |
 | --- | --- |
-| Deep research with actionable outputs and usage/cost ledger | **Captured 2026-10-20; prioritized as M3A.2** |
+| Deep research with actionable outputs and usage/cost ledger | **Implemented 2026-10-20 as M3A.2 (draft PR); awaiting review, live-API and device verification** |
 | Automatic pending-task review | **Captured 2026-10-20; prioritized as M3B after M3A.2** |
 | Focused M3B design | Planned after M3A UX exists |
 | Real-device installation and reminder/keyboard checks | Verification outstanding |
-| Live Anthropic planning/research tests | Verification outstanding |
+| Live Anthropic planning/research tests (incl. M3A.2 multi-stage runs, cache usage, real price reconciliation against the Console) | Verification outstanding |
+| Calibrate the 11k-tokens-per-search estimate from the local usage ledger after real runs | Open (M3A.2) |
 | Light-mode outline contrast polish | Small deferred UI issue |
 | Widgets, richer capture, recurring task regeneration | Idea bank, not scheduled |
 | Paid background research and financial transactions | Not approved |
@@ -134,4 +135,4 @@ Optional sharing, identity, task ownership, member permissions, cross-device con
 
 ## Next checkpoint
 
-Review recorded M3A field-testing outcomes and any remaining live-provider/upgrade verification. Next, design M3A.2 research depth, structured deliverables and cost intelligence using real supplement and fragrance tasks as acceptance scenarios. Then prepare M3B's focused design/engineering brief; start no new feature without explicit approval.
+Review the M3A.2 draft PR: install the CI APK, run the supplement and fragrance benchmarks against the real API with a personal key, compare the local usage estimates with the Anthropic Console, and record findings in `docs/M3A2_IMPLEMENTATION_REPORT.md`. Then prepare M3B's focused design/engineering brief; start no new feature without explicit approval.

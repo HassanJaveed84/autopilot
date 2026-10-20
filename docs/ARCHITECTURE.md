@@ -92,6 +92,33 @@ ReconcileWorker (WorkManager, 1 h) ── engine.reconcileAll + ledger prune
   text is data (injection-looking lines never become moves); links go through `Sources.safeExternalUrl`
   and `ACTION_VIEW`, never a WebView; reminders/status/deadlines are never written by research.
 
+## M3A.2: deep research with actionable results and a cost ledger (implemented)
+
+- `ai/research2`: `Research2Models` (deliverable templates A–E, requirements with stable ids,
+  coverage statuses, candidates/attributes/prices with provenance tags, proposals, `SessionContent`
+  with per-run records and honest `SessionOutcome`), `RequirementExtractor` (deterministic, offline),
+  `Research2Prompt` (line-based `## REQ / ## CAND / ## ATTR / ## PICK / ## CLAIM / ## PROPOSE` contract),
+  `ContractParser` + `SourceRegistry2` (provenance only from provider citations; `src=sN` tokens
+  resolve only to sources the app already holds; source numbers stable across runs), `SessionAssembler`
+  (merge, coverage assessment in code, outcome rules: budget exhausted is never Complete),
+  `ProposalBuilder` (one reviewable proposal per requested item), `DeepResearchService` (planned
+  stages GATHER → FILL_GAPS → CROSS_CHECK → SYNTHESIZE, budget check before each HTTP call, soft dollar
+  limit, `pause_turn` as a separate billed call, Stop keep/discard, continuation on a saved session),
+  `Research2Actions` (edited proposals → one transactional, idempotent `TaskEditCommand`; Undo).
+- `ai/usage`: `PricingCatalog` (versioned, from the official pricing page), `CostCalculator` (pure),
+  `UsageRecord`/`UsageLedger` (one row per API call, inserted in flight and finalised; unknown usage
+  is never priced as $0; provider message ids de-duplicate). Planning (M2) calls record here too.
+- `ai/anthropic/AnthropicResearchCalls`: generic Messages call for the orchestrator (5-minute prompt
+  caching when a run has several stages, cache tokens and message id in usage). Still the only SDK importer.
+- Persistence: Room v5 `research_sessions` (FK cascade, 30 per task, payload cap) and `usage_records`
+  (no FK; outlives tasks); `MIGRATION_4_5`; backups carry sessions and the append-only ledger; legacy
+  `research_briefs` untouched and still readable.
+- UI: `ui/research2` (preflight with editable requirements, template chips, mode cards and Adjust;
+  investigation with real stage events and the Stop sheet; result screen with the five templates,
+  coverage rows, callouts, continue card/sheet, source sheet; editable proposals with Add anyway and
+  Undo; AI usage dashboard with run breakdown and spending preferences). `task/{id}/research/new` now
+  opens the M3A.2 preflight; M3A brief routes remain for saved briefs.
+
 ## Extension points for later milestones (not implemented)
 
 - M3 agents (research, email/calendar) would reuse the proposal → review → command pattern with

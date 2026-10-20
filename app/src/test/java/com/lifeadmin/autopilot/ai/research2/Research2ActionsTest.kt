@@ -63,11 +63,11 @@ class Research2ActionsTest {
         val proposals = session.content.proposals
         assertEquals(4, proposals.size)
         val plan = actions.plan(session, details(), edits(*proposals.toTypedArray()), CHICAGO)
-        assertEquals(2, plan.steps.size)
+        assertEquals("multivitamin, vitamin D and the unticked-by-default 'research glucosamine' step", 3, plan.steps.size)
+        assertEquals("Research glucosamine further", plan.steps.last().title)
         val skipped = plan.skipped
-        assertEquals(2, skipped.size)
+        assertEquals(1, skipped.size)
         assertTrue(skipped.any { it.duplicate && it.proposal.requirementId == "r-i2" })
-        assertTrue(skipped.any { it.proposal.kind == ProposalKind.RESEARCH && it.reason.contains("Continue researching") })
         assertTrue(plan.notesAfter!!.startsWith("Monthly order\n\nFrom web research:"))
         assertTrue(plan.notesAfter!!, plan.notesAfter!!.contains("Buy multivitamin: Thorne Basic Nutrients 2/Day — Two capsules daily; contains vitamin D. (source 1; checked 20 Oct 2026)"))
         assertTrue(plan.proposalId.startsWith("research2:s1:"))

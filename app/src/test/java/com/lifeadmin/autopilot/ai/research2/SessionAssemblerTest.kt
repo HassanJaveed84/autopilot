@@ -59,6 +59,9 @@ class SessionAssemblerTest {
         assertEquals(RequirementStatus.YOUR_CALL, s2.coverageOf("r-c2").status)
         val proposals = ProposalBuilder.complete(s2, now)
         assertEquals("model proposals kept; a DECIDE already exists so none is generated", 2, proposals.size)
+        val buy = proposals.first { it.kind == ProposalKind.STEP }
+        assertTrue("a shortlist step inherits the named candidate's evidence", buy.refs.isNotEmpty())
+        assertTrue(buy.selectedByDefault)
         assertTrue(s2.body.candidates.map { it.style }.distinct().size >= 3)
     }
 

@@ -42,6 +42,8 @@ class AiSettingsViewModel(
     private val clock: AppClock,
     private val research: com.lifeadmin.autopilot.ai.research.ResearchService? = null,
     private val briefs: com.lifeadmin.autopilot.data.repository.ResearchRepository? = null,
+    private val deep: com.lifeadmin.autopilot.ai.research2.DeepResearchService? = null,
+    private val sessions: com.lifeadmin.autopilot.ai.research2.ResearchSessionStore? = null,
 ) : ViewModel() {
     private val _state = MutableStateFlow(AiSettingsState())
     val state: StateFlow<AiSettingsState> = _state.asStateFlow()
@@ -56,7 +58,7 @@ class AiSettingsViewModel(
                 loading = false, enabled = s.aiEnabled, consentAt = s.aiConsentAt, hasKey = has, keyHint = hint,
                 model = AiConfig.modelOrDefault(s.aiModel), requestsToday = service.requestsToday(),
                 researchToday = research?.requestsToday(s) ?: 0,
-                briefCount = briefs?.getAll()?.size ?: 0,
+                briefCount = (briefs?.getAll()?.size ?: 0) + (sessions?.getAll()?.size ?: 0),
                 researchExplainerAccepted = s.researchExplainerVersion >= com.lifeadmin.autopilot.ai.research.ResearchConfig.EXPLAINER_VERSION,
             )
         }
@@ -65,7 +67,8 @@ class AiSettingsViewModel(
     /** "Delete all research": every saved brief plus the one-time note acceptance. Tasks are untouched. */
     fun deleteAllResearch() = viewModelScope.launch {
         research?.deleteAllResearch()
-        _state.update { it.copy(message = "All research briefs were deleted. Your tasks are unchanged.") }
+        deep?.deleteAll()
+        _state.update { it.copy(message = "All research results were deleted. Your tasks are unchanged.") }
         refresh()
     }
 

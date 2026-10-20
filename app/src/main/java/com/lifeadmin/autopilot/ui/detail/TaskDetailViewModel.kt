@@ -51,6 +51,12 @@ data class TaskDetailUiState(
     val researching: Boolean = false,
     val researchRunId: String? = null,
     val researchQuestion: String? = null,
+    /** Saved M3A.2 research sessions for this task, newest first. */
+    val sessions: List<com.lifeadmin.autopilot.ai.research2.ResearchSession> = emptyList(),
+    /** M3A.2 run in flight for this task (the running row opens the investigation screen). */
+    val deepRunId: String? = null,
+    val deepSessionId: String? = null,
+    val deepTitle: String? = null,
 )
 
 sealed interface DetailEvent {
@@ -69,23 +75,29 @@ class TaskDetailViewModel(
     private val hintDismissals: HintDismissals = InMemoryHintDismissals(),
     researchBriefs: Flow<List<ResearchBrief>> = flowOf(emptyList()),
     researchRun: Flow<ResearchRunState> = flowOf(ResearchRunState.Idle),
+    researchSessions: Flow<List<com.lifeadmin.autopilot.ai.research2.ResearchSession>> = flowOf(emptyList()),
+    deepRun: Flow<com.lifeadmin.autopilot.ai.research2.DeepRunState> = flowOf(com.lifeadmin.autopilot.ai.research2.DeepRunState.Idle),
 ) : ViewModel() {
     private val dismissedTick = kotlinx.coroutines.flow.MutableStateFlow(0)
 
     private val events = Channel<DetailEvent>(Channel.BUFFERED)
     val eventFlow: Flow<DetailEvent> = events.receiveAsFlow()
 
-    private val research = combine(researchBriefs.catch { emit(emptyList()) }, researchRun) { b, r -> b to r }
+    private data class ResearchBits(val briefs: List<ResearchBrief>, val run: ResearchRunState, val sessions: List<com.lifeadmin.autopilot.ai.research2.ResearchSession>, val deep: com.lifeadmin.autopilot.ai.research2.DeepRunState)
+    private val research = combine(researchBriefs.catch { emit(emptyList()) }, researchRun, researchSessions.catch { emit(emptyList()) }, deepRun) { b, r, s2, d -> ResearchBits(b, r, s2, d) }
 
     val state: StateFlow<TaskDetailUiState> = combine(
         repository.observeDetails(taskId), settings.settings, tickerFlow(clock), dismissedTick, research,
-    ) { d, s, now, _, (briefs, run) ->
+    ) { d, s, now, _, bits ->
+        val (briefs, run, sessions, deep) = bits
         val zone = zoneProvider.current()
         val hint = d?.let { StallDetector.detect(it, now, zone) }?.takeUnless { hintDismissals.isDismissed(taskId, it.signature) }
         val running = (run as? ResearchRunState.Running)?.takeIf { it.taskId == taskId }
+        val deepRunning = (deep as? com.lifeadmin.autopilot.ai.research2.DeepRunState.Running)?.takeIf { it.taskId == taskId }
         TaskDetailUiState(
             loading = false, missing = d == null, details = d, settings = s, now = now, zone = zone, stallHint = hint,
-            briefs = briefs, researching = running != null, researchRunId = running?.runId, researchQuestion = running?.question,
+            briefs = briefs, researching = running != null || deepRunning != null, researchRunId = running?.runId, researchQuestion = running?.question,
+            sessions = sessions, deepRunId = deepRunning?.runId, deepSessionId = deepRunning?.sessionId, deepTitle = deepRunning?.title,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TaskDetailUiState())
 

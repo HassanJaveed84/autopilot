@@ -141,3 +141,27 @@ All provider tests use fakes or a local MockWebServer. **No test calls the live 
 | Whole flow at 200% text under Robolectric; return to a scrolled task after a long detour | `ResearchFlowLargeTextUiTest`, `ResearchFlowUiTest.returningToTheTaskAfterALongDetourStillShowsIt` | ✅ |
 | Live BYOK research against the real API | — | ⏳ pending (not run by the agent; see report) |
 
+
+## M3A.2 — deep research, actionable results, cost ledger (2026-10-20)
+
+| Requirement | Tests | Status |
+|---|---|---|
+| Deterministic requirement extraction: supplements → 4 items + brand + "one step per item"; fragrance → shortlist + budget/region/gift; how-to/checklist/quick answer; exclusions; unsure flag; user ids never collide | `RequirementExtractorTest` | ✅ |
+| Contract parser: every REQ id kept (unknown status → Not found), picks/label facts/for-you lines, candidates/variants/prices, excluded, conflicts, callouts, proposals, unresolved; uncited Fact → Unknown; `src=` only for known sources; prose URLs stripped; injection dropped; free-form answer keeps citations; stable source numbers across runs | `ContractParserTest` | ✅ |
+| Price policy: confirmed only when the line is cited (with retrieval time); symbols/codes/sizes/retailers parsed | `ContractParserTest.priceParsingHandlesSymbolsCodesAndSizes`, `fragranceFixtureParses…` | ✅ |
+| Completeness rules: Complete only when every Item/Output is covered and the run ended normally; budget exhausted never Complete; pending → Not found; coverage line | `SessionAssemblerTest` | ✅ |
+| Proposal coverage: four requested categories → four reviewable proposals (research-later for the missing one); how-to steps → step proposals; evidence inherited from picks | `SessionAssemblerTest.supplementsBenchmark…`, `howToSteps…`, `Research2ActionsTest` | ✅ |
+| Orchestrator: Thorough = gather + gap-fill with known sources and no repeated queries; Quick = one call; gap-fill skipped when covered; exhausted searches → Incomplete·budget; soft spend limit stops or trims the next call; failure after partial → Partial; refusal/empty → Failed, nothing saved; truncated → Partial; `pause_turn` continued once as a separate billed call; stop keep/discard; continuation keeps source ids and adds a run; busy/ delete-while-running; interrupted ledger rows settled on start | `DeepResearchServiceTest` (17) | ✅ |
+| Pricing catalog and calculator: list prices for Haiku/Sonnet/Opus 5.5 and Fable 5.1 incl. cache write/read and the Haiku >100k tier; web search $0.01; unknown counts → partial/floor; unknown model → no price; pre-run estimate formula and range | `CostCalculatorTest` | ✅ |
+| Ledger honesty: COMPLETE / NOT_BILLED ($0.00) / UNKNOWN (no $0) / PARTIAL (searches as floor); totals mark partial; provider message id de-duplicates; in-flight → interrupted; retention delete | `CostCalculatorTest` (ledger tests), `ResearchSessionRepositoryTest.roomLedger…` | ✅ |
+| Planning (M2) calls recorded with cache usage and honest outcomes | `PlanningUsageLedgerTest` | ✅ |
+| Adapter: cache_control on the system prompt, `max_uses`, no `user_location`, no tool when 0 searches, prior turn resent after `pause_turn`, usage incl. cache tokens and message id, stop reasons, error classes, no invented usage | `AnthropicResearchCallsHttpTest` (MockWebServer) | ✅ |
+| Room v5 migration keeps tasks and legacy briefs; sessions cascade, ledger does not | `MigrationTest.migrateV4ToV5…` | ✅ |
+| Session repository: round trip, applied bookkeeping, prune to 30, payload trimming keeps cited sources, unreadable rows hidden | `ResearchSessionRepositoryTest` | ✅ |
+| Backup: sessions + usage round trip; append-only ledger on re-import; in-flight → interrupted; orphan session rejects the import | `BackupRepositoryTest.sessionsAndUsageRoundTrip…` | ✅ |
+| Editable proposals → one transactional edit: edits, Add anyway, duplicates, evidence + check date in notes, idempotent key per task version, conflict on changed task, undo only while safe; never touches reminders/status/deadline | `Research2ActionsTest` | ✅ |
+| UI end to end (Robolectric): tile → preflight (requirements edit, template, modes, Adjust, estimate) → explainer → investigation → result C/B (coverage, item cards, callouts, hero, re-rank, compare, excluded, conflict) → proposals (edit, Add anyway, apply, undo) → usage dashboard; stop sheet; provider failure; offline + AI-off reading; continuation | `Research2FlowUiTest` | see report |
+| Whole M3A.2 flow at 200% text | `ResearchFlowLargeTextUiTest` | see report |
+| Legacy M3A briefs still readable/applicable | `ResearchFlowUiTest` (2 tests) | see report |
+| Screens in light/dark at 1.0/1.3/2.0 | `ScreenshotTourResearch2` (emulator, CI screenshot workflow) | see report |
+| Live BYOK research against the real API | — | ⏳ pending (not run by the agent) |

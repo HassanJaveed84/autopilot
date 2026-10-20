@@ -302,7 +302,7 @@ private fun DetailContent(
         item { StepsCard(d, vm) }
         item { DeadlineAndPriorityCard(d, now, zone, vm, openDialog) }
         if (onMoveForward != null && !task.status.isTerminal) item { AiCard(aiEnabled, onMoveForward, onOpenAiSettings, research = research, researching = state.researching) }
-        if (research != null && (state.briefs.isNotEmpty() || state.researching)) item { ResearchCard(state, now, zone, research) }
+        if (research != null && (state.briefs.isNotEmpty() || state.sessions.isNotEmpty() || state.researching)) item { ResearchCard(state, now, zone, research) }
         item {
             LinkButton(if (showHistory) "Hide history" else "History · ${d.events.size} entries", onClick = { showHistory = !showHistory }, modifier = Modifier.padding(top = 12.dp).testTag("detail_history_toggle"))
         }
@@ -528,6 +528,9 @@ data class ResearchNav(
     val onOpenBrief: (briefId: String) -> Unit,
     val onOpenHistory: () -> Unit,
     val onOpenRun: (runId: String, question: String) -> Unit,
+    /** M3A.2 sessions and runs. */
+    val onOpenSession: (sessionId: String) -> Unit = {},
+    val onOpenDeepRun: (sessionId: String, runId: String) -> Unit = { _, _ -> },
 )
 
 /** "Move this forward": two ways Claude can help. Nothing changes until the user approves. */
@@ -593,13 +596,45 @@ private fun HelpTile(icon: ImageVector, title: String, body: String, modifier: M
 @Composable
 private fun ResearchCard(state: TaskDetailUiState, now: Instant, zone: ZoneId, nav: ResearchNav) {
     val c = AutopilotTheme.colors
-    val latest = state.briefs.firstOrNull()
+    val latestBrief = state.briefs.firstOrNull()
+    val latestSession = state.sessions.firstOrNull()
+    // Show whichever is newer: an M3A.2 session or a legacy brief.
+    val latest = if (latestSession != null && (latestBrief == null || latestSession.updatedAt >= latestBrief.createdAt)) null else latestBrief
+    val total = state.briefs.size + state.sessions.size
     SurfaceCard(radius = 20.dp, contentPadding = PaddingValues(0.dp), modifier = Modifier.padding(top = 12.dp).testTag("detail_research_card")) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Research", style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp), color = c.ink, modifier = Modifier.weight(1f).semantics { heading() })
-            LinkButton(if (state.briefs.size > 1) "All ${state.briefs.size}" else "History", onClick = nav.onOpenHistory, modifier = Modifier.padding(end = 8.dp).testTag("detail_research_history"))
+            LinkButton(if (total > 1) "All $total" else "History", onClick = nav.onOpenHistory, modifier = Modifier.padding(end = 8.dp).testTag("detail_research_history"))
         }
-        if (state.researching && state.researchRunId != null) {
+        if (state.deepRunId != null && state.deepSessionId != null) {
+            GroupDivider()
+            Row(
+                Modifier.fillMaxWidth().clickable(role = Role.Button) { nav.onOpenDeepRun(state.deepSessionId, state.deepRunId) }.padding(16.dp).testTag("detail_research_running"),
+                horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconCircle(AutopilotIcons.Research, tint = c.route, background = c.routeSoft, size = 36.dp)
+                Column(Modifier.weight(1f)) {
+                    Text("Researching now…", style = MaterialTheme.typography.bodyLarge, color = c.ink)
+                    state.deepTitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = c.ink2, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
+                }
+                Icon(AutopilotIcons.ChevronRight, contentDescription = null, tint = c.ink3)
+            }
+        }
+        if (latestSession != null && latest == null) {
+            GroupDivider()
+            val content = latestSession.content
+            Column(Modifier.fillMaxWidth().clickable(role = Role.Button) { nav.onOpenSession(latestSession.id) }.padding(16.dp).testTag("detail_research_latest"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    ("Researched " + Format.relative(latestSession.updatedAt, now, zone) + " · ${content.searchesTotal} ${if (content.searchesTotal == 1) "search" else "searches"} · ${content.sources.size} ${if (content.sources.size == 1) "source" else "sources"}" +
+                        (if (latestSession.isStale(now)) " · may be out of date" else "")).uppercase(),
+                    style = com.lifeadmin.autopilot.ui.theme.TimeTextStyle.copy(fontSize = 12.sp, lineHeight = 16.sp), color = c.ink2,
+                )
+                Text(content.title, style = MaterialTheme.typography.bodyLarge, color = c.ink, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                Text(content.outcome.label + " · " + com.lifeadmin.autopilot.ai.research2.SessionAssembler.coverageLine(content).ifBlank { "${content.proposals.size} proposals" }, style = MaterialTheme.typography.bodySmall, color = if (content.outcome.success) c.ink2 else c.onSignalSoft, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                if (latestSession.applied.isNotEmpty()) Text("${latestSession.applied.size} applied to this task", style = MaterialTheme.typography.labelSmall, color = c.onDoneSoft)
+            }
+        }
+        if (state.researching && state.researchRunId != null && state.deepRunId == null) {
             GroupDivider()
             Row(
                 Modifier.fillMaxWidth().clickable(role = Role.Button) { nav.onOpenRun(state.researchRunId, state.researchQuestion.orEmpty()) }.padding(16.dp).testTag("detail_research_running"),

@@ -41,6 +41,14 @@ data class AppSettings(
     /** Local-day research request counter, separate from planning ([com.lifeadmin.autopilot.ai.research.ResearchConfig.MAX_REQUESTS_PER_DAY]). */
     val researchUsageDay: String = "",
     val researchUsageCount: Int = 0,
+    /** M3A.2: last chosen soft spending limit per research, in cents; 0 = no limit (the default). */
+    val researchSpendLimitCents: Int = 0,
+    /** M3A.2: optional monthly AI budget in cents for the usage dashboard; 0 = none. Soft: a note at 80 %, a confirmation at 100 %. */
+    val aiMonthlyBudgetCents: Int = 0,
+    /** M3A.2: model overrides per depth mode; blank = the mode's preset. */
+    val researchQuickModel: String = "",
+    val researchThoroughModel: String = "",
+    val researchDeepModel: String = "",
     val lastReconcileAt: Instant? = null,
     val lastReconcileSummary: String? = null,
     /** Light/dark preference for the UI; SYSTEM follows the phone. Presentation only. */

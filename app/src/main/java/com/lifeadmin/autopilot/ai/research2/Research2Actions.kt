@@ -83,7 +83,6 @@ class Research2Actions(
             if (title == null) { rows += ProposalRow.Skip(p, edit, "The title is empty or too long"); continue }
             val note = edit.note?.trim()?.ifBlank { null }
             when (p.kind) {
-                ProposalKind.RESEARCH -> rows += ProposalRow.Skip(p, edit, "Use Continue researching instead")
                 ProposalKind.NOTE -> {
                     val line = noteLine(title, note, p, session, zone)
                     if (notesBefore?.contains(line) == true) { rows += ProposalRow.Skip(p, edit, "Already in your notes"); continue }
@@ -95,6 +94,7 @@ class Research2Actions(
                     val stepTitle = when (p.kind) {
                         ProposalKind.CHECK -> if (CHECK_VERBS.containsMatchIn(title)) title else "Check: $title"
                         ProposalKind.DECIDE -> if (title.startsWith("Decide", true) || title.startsWith("Choose", true)) title else "Decide: $title"
+                        ProposalKind.RESEARCH -> if (title.startsWith("Research", true) || title.startsWith("Look", true) || title.startsWith("Find", true)) title else "Research: $title"
                         else -> title
                     }.take(TaskRepository.MAX_STEP)
                     val key = normalize(stepTitle)

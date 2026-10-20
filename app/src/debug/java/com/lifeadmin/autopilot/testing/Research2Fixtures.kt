@@ -1,5 +1,8 @@
 package com.lifeadmin.autopilot.testing
 
+// Debug-only sample fixtures shared by unit tests, Robolectric UI tests and the emulator screenshot tour.
+// Fictional brands, retailers and prices; never part of a release build.
+
 import com.lifeadmin.autopilot.ai.research.RawCitation
 import com.lifeadmin.autopilot.ai.research.RawSearch
 import com.lifeadmin.autopilot.ai.research.RawSearchResult

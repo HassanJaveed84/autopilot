@@ -258,15 +258,39 @@ class ApplyResearchViewModel(
 
 // ------------------------------------------------------------------ history
 
-data class HistoryUi(val loading: Boolean = true, val taskTitle: String = "", val briefs: List<ResearchBrief> = emptyList(), val now: Instant = Instant.EPOCH, val running: Boolean = false)
+data class HistoryUi(
+    val loading: Boolean = true,
+    val taskTitle: String = "",
+    val briefs: List<ResearchBrief> = emptyList(),
+    val sessions: List<com.lifeadmin.autopilot.ai.research2.ResearchSession> = emptyList(),
+    val now: Instant = Instant.EPOCH,
+    val running: Boolean = false,
+) {
+    val total: Int get() = briefs.size + sessions.size
+}
 
-class ResearchHistoryViewModel(val taskId: String, private val briefs: ResearchRepository, tasks: TaskRepository, private val service: ResearchService, clock: AppClock) : ViewModel() {
-    val state: StateFlow<HistoryUi> = combine(briefs.observeForTask(taskId), tasks.observeDetails(taskId), service.state) { b, d, run ->
-        HistoryUi(false, d?.task?.title.orEmpty(), b, clock.now(), running = run is ResearchRunState.Running && run.taskId == taskId)
+class ResearchHistoryViewModel(
+    val taskId: String,
+    private val briefs: ResearchRepository,
+    tasks: TaskRepository,
+    private val service: ResearchService,
+    clock: AppClock,
+    private val sessions: com.lifeadmin.autopilot.ai.research2.ResearchSessionStore? = null,
+    private val deep: com.lifeadmin.autopilot.ai.research2.DeepResearchService? = null,
+) : ViewModel() {
+    val state: StateFlow<HistoryUi> = combine(
+        briefs.observeForTask(taskId), tasks.observeDetails(taskId), service.state,
+        sessions?.observeForTask(taskId) ?: kotlinx.coroutines.flow.flowOf(emptyList()),
+        deep?.state ?: kotlinx.coroutines.flow.flowOf(com.lifeadmin.autopilot.ai.research2.DeepRunState.Idle),
+    ) { b, d, run, s2, dr ->
+        HistoryUi(
+            false, d?.task?.title.orEmpty(), b, s2, clock.now(),
+            running = (run is ResearchRunState.Running && run.taskId == taskId) || (dr is com.lifeadmin.autopilot.ai.research2.DeepRunState.Running && dr.taskId == taskId),
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HistoryUi())
 
     fun delete(briefId: String) = viewModelScope.launch { briefs.delete(briefId) }
 
     /** Stops a request running for this task first, so nothing re-appears after the delete. */
-    fun deleteAll() = viewModelScope.launch { service.deleteResearchForTask(taskId) }
+    fun deleteAll() = viewModelScope.launch { service.deleteResearchForTask(taskId); deep?.deleteForTask(taskId) }
 }

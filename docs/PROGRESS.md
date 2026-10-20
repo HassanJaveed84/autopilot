@@ -253,3 +253,25 @@ Not done / blockers:
 - Live Anthropic API test: needs your key on the phone (report § device steps 2–3).
 - Physical-device verification.
 - Draft PR: the remote still has no `main` branch to target.
+
+## M3A.2 — Deep research, actionable results, cost ledger (2026-10-20) — branch `m3a2-deep-research`
+
+Implemented at the user's explicit request (approved implementation session). Details and validation
+in `docs/M3A2_IMPLEMENTATION_REPORT.md`; plan in `docs/M3A2_PLAN.md`.
+
+- **Stage 1 — domain and orchestration.** `ai/research2`: templates A–E, requirements with stable
+  ids, coverage statuses, provenance tags, candidates/prices, proposals, session content with per-run
+  records; deterministic `RequirementExtractor`; line-based request contract and `ContractParser`
+  (provider citations only, `src=` tokens only for known sources, stable source numbers across runs);
+  `SessionAssembler` (coverage in code, honest outcomes); `DeepResearchService` (planned stages,
+  budget check before every HTTP call, soft spend limit, `pause_turn` as a separate billed call,
+  Stop keep/discard, continuation). `ai/usage`: versioned pricing catalog, cost calculator, ledger seam.
+  `AnthropicResearchCalls`: generic call with prompt caching and cache usage.
+- **Stage 2 — persistence.** Room v5 (`research_sessions`, `usage_records`), `MIGRATION_4_5`,
+  `ResearchSessionRepository`, `RoomUsageLedger`, backup DTOs, planning usage recorded, `Research2Actions`.
+- **Stage 3/4 — UI.** `ui/research2`: preflight, investigation, result (five templates), proposals,
+  usage dashboard; task detail/history/AI settings wiring. `task/{id}/research/new` opens the new flow.
+- **Stage 5 — hardening.** Robolectric flow tests (1.0 and 2.0), legacy brief tests kept, emulator
+  screenshot tour `ScreenshotTourResearch2`, docs.
+
+Validation: see the report (exact commands and results).

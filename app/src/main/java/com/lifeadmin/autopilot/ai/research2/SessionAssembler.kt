@@ -117,11 +117,17 @@ object ProposalBuilder {
     fun complete(session: SessionContent, nowEpochMs: Long): List<Proposal> {
         // A model proposal without its own citations inherits the evidence of the requirement it serves.
         val out = session.proposals.map { p ->
-            if (p.refs.isNotEmpty() || p.requirementId == null) p
-            else {
-                val pick = session.body.picks.firstOrNull { it.requirementId == p.requirementId }
-                val refs = ((pick?.refs ?: emptyList()) + (pick?.labelFacts?.flatMap { it.refs } ?: emptyList()) + session.coverageOf(p.requirementId).refs).distinct()
-                p.copy(refs = refs)
+            when {
+                p.refs.isNotEmpty() -> p
+                p.requirementId != null -> {
+                    val pick = session.body.picks.firstOrNull { it.requirementId == p.requirementId }
+                    p.copy(refs = ((pick?.refs ?: emptyList()) + (pick?.labelFacts?.flatMap { it.refs } ?: emptyList()) + session.coverageOf(p.requirementId).refs).distinct())
+                }
+                else -> {
+                    // A shortlist proposal names a candidate: it rests on that candidate's cited evidence.
+                    val cand = session.body.candidates.firstOrNull { it.name.length >= 3 && p.title.contains(it.name, ignoreCase = true) }
+                    if (cand == null) p else p.copy(refs = (cand.refs + (cand.price?.refs ?: emptyList()) + cand.attrs.flatMap { it.refs }).distinct())
+                }
             }
         }.toMutableList()
         val items = session.requirements.filter { it.type == RequirementType.ITEM || it.type == RequirementType.USER_ADDED }
