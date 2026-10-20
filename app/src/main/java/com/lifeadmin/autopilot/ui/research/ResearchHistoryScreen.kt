@@ -109,7 +109,12 @@ fun ResearchHistoryScreen(
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
             title = { Text("Delete research for this task?") },
-            text = { Text("Removes ${s.briefs.size} saved ${if (s.briefs.size == 1) "brief" else "briefs"} from this phone. Steps and notes you already added stay on the task; they just lose their link to the sources.") },
+            text = {
+                Text(
+                    "Removes ${s.briefs.size} saved ${if (s.briefs.size == 1) "brief" else "briefs"} from this phone. Steps and notes you already added stay on the task; they just lose their link to the sources." +
+                        if (s.running) " The research running for this task is stopped and not saved; searches that already ran may still be billed." else "",
+                )
+            },
             confirmButton = { TextButton(onClick = { confirmDelete = false; viewModel.deleteAll() }, modifier = Modifier.testTag("history_delete_confirm")) { Text("Delete") } },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Keep") } },
         )

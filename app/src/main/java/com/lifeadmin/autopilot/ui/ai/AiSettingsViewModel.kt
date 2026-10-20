@@ -100,6 +100,7 @@ class AiSettingsViewModel(
 
     fun deleteKey() = viewModelScope.launch {
         withContext(Dispatchers.IO) { keyStore.delete() }
+        research?.forgetCredentials()
         _state.update { it.copy(testResult = null, message = "API key deleted from this device") }
         refresh()
     }
@@ -117,6 +118,7 @@ class AiSettingsViewModel(
 
     fun deleteAllAiData() = viewModelScope.launch {
         service.deleteAllAiData()
+        research?.forgetCredentials()
         _state.update { it.copy(testResult = null, message = "AI settings and the API key were deleted. Your tasks are unchanged.") }
         refresh()
     }

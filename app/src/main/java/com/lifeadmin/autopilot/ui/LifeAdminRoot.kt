@@ -277,7 +277,7 @@ fun LifeAdminRoot(
                     val taskId = entry.arguments?.getString("taskId").orEmpty()
                     val runId = entry.arguments?.getString("runId").orEmpty()
                     val q = entry.arguments?.getString("q").orEmpty()
-                    val vm: ResearchRunViewModel = viewModel(key = "research-run-$runId", factory = factoryOf { ResearchRunViewModel(runId, taskId, q, container.research, container.clock) })
+                    val vm: ResearchRunViewModel = viewModel(key = "research-run-$runId", factory = factoryOf { ResearchRunViewModel(runId, taskId, q, container.research) })
                     ResearchProgressScreen(
                         vm, now = container.clock::now,
                         onBack = { navController.popBackStack() },

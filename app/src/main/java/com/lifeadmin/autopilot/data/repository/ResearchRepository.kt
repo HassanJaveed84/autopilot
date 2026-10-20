@@ -36,7 +36,7 @@ enum class BriefStatus { VERIFIED, UNVERIFIED, TRUNCATED }
  * Local store for research briefs. Only the parsed brief is kept — never the raw transcript,
  * the request, or anything about the key. Oldest briefs beyond the per-task cap are pruned.
  */
-class ResearchRepository(
+open class ResearchRepository(
     private val db: AppDatabase,
     private val clock: AppClock,
     private val ids: IdGenerator,
@@ -57,7 +57,7 @@ class ResearchRepository(
     suspend fun getAll(): List<ResearchBrief> = dao.getAll().mapNotNull(::decode)
 
     /** Saves a new brief and returns its id. Trims the payload if it is unreasonably large. */
-    suspend fun save(taskId: String, question: String, content: BriefContent): String {
+    open suspend fun save(taskId: String, question: String, content: BriefContent): String {
         val id = ids.newId()
         val trimmed = fit(content)
         val status = when {
@@ -88,13 +88,14 @@ class ResearchRepository(
         )
     }
 
-    suspend fun recordApplied(briefId: String, applied: List<AppliedMove>) {
+    /** Call inside the task edit's transaction (see [TaskRepository.applyTaskEdit]) so both commit or neither does. */
+    open suspend fun recordApplied(briefId: String, applied: List<AppliedMove>) {
         val existing = get(briefId) ?: return
         val merged = (existing.applied + applied).distinctBy { it.moveId }
         dao.updateApplied(briefId, json.encodeToString(ListSerializer(AppliedMove.serializer()), merged))
     }
 
-    suspend fun clearApplied(briefId: String, moveIds: Set<String>) {
+    open suspend fun clearApplied(briefId: String, moveIds: Set<String>) {
         val existing = get(briefId) ?: return
         dao.updateApplied(briefId, json.encodeToString(ListSerializer(AppliedMove.serializer()), existing.applied.filterNot { it.moveId in moveIds }))
     }

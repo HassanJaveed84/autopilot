@@ -30,6 +30,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -247,5 +248,77 @@ class ResearchServiceTest {
         start(); awaitFinished()
         runBlocking { repo.delete(taskId) }
         assertTrue(runBlocking { briefs.getAll() }.isEmpty())
+    }
+
+    // ---------------------------------------------------------------- finding D: delete vs running request
+
+    private fun startAndWaitUntilSearching(): StartResult.Started {
+        provider.gate = CompletableDeferred()
+        provider.progress = listOf(ResearchProgress.Searching(1))
+        provider.next = { goodResponse }
+        val started = start() as StartResult.Started
+        runBlocking { withTimeout(5_000) { service.state.first { it is ResearchRunState.Running && it.searchesSeen == 1 } } }
+        return started
+    }
+
+    @Test fun deleteAllWhileSearchingStopsTheRunAndNothingComesBack() {
+        startAndWaitUntilSearching()
+        runBlocking { service.deleteAllResearch() }
+        val finished = awaitFinished()
+        assertEquals(ResearchOutcome.Failed(ResearchError.Stopped(1)), finished.outcome)
+        assertTrue(runBlocking { briefs.getAll() }.isEmpty())
+        assertEquals(ResearchError.NoResearchConsent, runBlocking { service.gate().blocker })
+        // The provider finishing late must not repopulate the deleted history.
+        provider.gate!!.complete(Unit)
+        Thread.sleep(200)
+        assertTrue(runBlocking { briefs.getAll() }.isEmpty())
+        assertEquals("the attempt still counts; searches may have been billed", 1, runBlocking { service.requestsToday() })
+        assertEquals(1, provider.requests.size)
+    }
+
+    @Test fun deleteForAnotherTaskLeavesTheRunAlone() {
+        val other = runBlocking { repo.createTask(NewTask("Other task")) }
+        startAndWaitUntilSearching()
+        runBlocking { service.deleteResearchForTask(other) }
+        assertTrue(service.state.value is ResearchRunState.Running)
+        provider.gate!!.complete(Unit)
+        assertTrue(awaitFinished().outcome is ResearchOutcome.Saved)
+        assertEquals(1, runBlocking { briefs.getForTask(taskId) }.size)
+    }
+
+    @Test fun deleteForThisTaskWhileRunningCancelsAndSavesNothing() {
+        startAndWaitUntilSearching()
+        runBlocking { service.deleteResearchForTask(taskId) }
+        assertTrue(awaitFinished().outcome is ResearchOutcome.Failed)
+        provider.gate!!.complete(Unit)
+        Thread.sleep(200)
+        assertTrue(runBlocking { briefs.getForTask(taskId) }.isEmpty())
+        assertTrue("explainer acceptance is kept for a per-task delete", runBlocking { service.gate().blocker } == null)
+    }
+
+    @Test fun deleteDuringTheSaveItselfWinsOverTheLateResult() {
+        // A repository whose save blocks lets the test delete while the answer is being written.
+        val saveGate = CompletableDeferred<Unit>()
+        val saving = CompletableDeferred<Unit>()
+        val slow = object : ResearchRepository(db, clock, SequentialIds("s")) {
+            override suspend fun save(taskId: String, question: String, content: BriefContent): String {
+                saving.complete(Unit)
+                saveGate.await()
+                return super.save(taskId, question, content)
+            }
+        }
+        val slowService = ResearchService(settings, keys, AiPlanningService(settings, keys, FakePlanningProvider(), repo, clock, zone, SequentialIds("p")) { online }, provider, repo, slow, clock, zone, SequentialIds("q"), scope, { online }, { Locale.UK })
+        provider.next = { goodResponse }
+        runBlocking { slowService.start(taskId, "q", emptySet(), emptyMap(), ResearchScope()) as StartResult.Started }
+        runBlocking { withTimeout(5_000) { saving.await() } }
+        // Delete while the save is in progress: the cancellable part of the save is aborted (or, for a
+        // write already inside Room, awaited) and the delete runs after it — either way nothing survives.
+        val deletion = scope.launch { slowService.deleteAllResearch() }
+        runBlocking { withTimeout(5_000) { deletion.join() } }
+        saveGate.complete(Unit)
+        Thread.sleep(200)
+        assertTrue("nothing from the late save survives", runBlocking { slow.getAll() }.isEmpty())
+        val st = runBlocking { withTimeout(5_000) { slowService.state.filterIsInstance<ResearchRunState.Finished>().first() } }
+        assertTrue(st.outcome.toString(), st.outcome is ResearchOutcome.Failed)
     }
 }

@@ -103,9 +103,15 @@ class ResearchActions(
         )
     }
 
+    /**
+     * Applies the plan in ONE database transaction: the task edit (steps, notes, history event) and
+     * the brief's applied-moves record commit together or not at all. A retry after a crash, a
+     * double tap or a stale plan hits the proposal-id / updatedAt guards and changes nothing.
+     */
     suspend fun apply(plan: ApplyPlan): ApplyOutcome {
         if (plan.isEmpty) return ApplyOutcome.Rejected("Nothing selected to apply")
-        val before = tasks.getSteps(plan.taskId).map { it.id }.toSet()
+        val now = clock.now().toEpochMilli()
+        var applied: List<AppliedMove> = emptyList()
         try {
             tasks.applyTaskEdit(
                 TaskEditCommand(
@@ -116,7 +122,12 @@ class ResearchActions(
                     addSteps = plan.steps.map { it.title },
                     source = SOURCE,
                 ),
-            )
+            ) { addedStepIds ->
+                // Steps are inserted in plan order, so ids line up with the plan's step rows.
+                applied = plan.steps.mapIndexed { i, row -> AppliedMove(row.move.id, now, row.title, addedStepIds.getOrNull(i)) } +
+                    plan.notes.map { AppliedMove(it.move.id, now) }
+                briefs.recordApplied(plan.briefId, applied)
+            }
         } catch (e: ValidationException) {
             return if (e.message?.contains("changed") == true || e.message?.contains("already been applied") == true) {
                 ApplyOutcome.Conflict(e.message ?: "The task changed")
@@ -125,17 +136,12 @@ class ResearchActions(
             }
         } catch (e: NoSuchElementException) {
             return ApplyOutcome.Rejected("This task no longer exists")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // The transaction rolled back: the task is unchanged and nothing was recorded.
+            return ApplyOutcome.Rejected("Couldn't save the changes (${e.javaClass.simpleName}). Your task is unchanged.")
         }
-        val after = tasks.getSteps(plan.taskId)
-        val created = after.filter { it.id !in before }
-        val now = clock.now().toEpochMilli()
-        val applied = ArrayList<AppliedMove>()
-        for (row in plan.steps) {
-            val step = created.firstOrNull { it.title == row.title }
-            applied += AppliedMove(row.move.id, now, row.title, step?.id)
-        }
-        for (row in plan.notes) applied += AppliedMove(row.move.id, now)
-        briefs.recordApplied(plan.briefId, applied)
         val task = tasks.getTask(plan.taskId)
         val undo = task?.let {
             UndoToken(
@@ -151,11 +157,18 @@ class ResearchActions(
     fun canUndo(token: UndoToken, details: TaskDetails?): Boolean =
         details != null && details.task.updatedAt == token.updatedAtAfterApply && !details.task.status.isTerminal
 
-    /** Reverts the apply if still safe; returns false (and changes nothing) otherwise. */
-    suspend fun undo(token: UndoToken): Boolean {
-        val ok = tasks.undoAppliedEdit(token.taskId, token.proposalId, token.updatedAtAfterApply, token.stepIds, token.notesAfter, token.notesBefore)
-        if (ok) briefs.clearApplied(token.briefId, token.moveIds)
-        return ok
+    /**
+     * Reverts exactly this apply, in one transaction with the brief's bookkeeping, and only while the
+     * task is still as the apply left it; returns false (and changes nothing) otherwise.
+     */
+    suspend fun undo(token: UndoToken): Boolean = try {
+        tasks.undoAppliedEdit(token.taskId, token.proposalId, token.updatedAtAfterApply, token.stepIds, token.notesAfter, token.notesBefore) {
+            briefs.clearApplied(token.briefId, token.moveIds)
+        }
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        false // rolled back; the task keeps the applied changes and the record stays consistent with it
     }
 
     private fun stepTitle(move: NextMove): String {

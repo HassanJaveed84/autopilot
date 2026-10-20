@@ -257,7 +257,7 @@ fun AiSettingsScreen(viewModel: AiSettingsViewModel, onBack: () -> Unit) {
         AlertDialog(
             onDismissRequest = { confirmDeleteResearch = false },
             title = { Text("Delete all research?") },
-            text = { Text("Removes every saved research brief from this phone and shows the one-time research note again next time. Steps and notes already added to tasks stay.") },
+            text = { Text("Removes every saved research brief from this phone and shows the one-time research note again next time. Steps and notes already added to tasks stay. A research request that is still running is stopped and not saved; searches that already ran may still be billed.") },
             confirmButton = { TextButton(onClick = { confirmDeleteResearch = false; viewModel.deleteAllResearch() }, modifier = Modifier.testTag("ai_research_delete_confirm")) { Text("Delete") } },
             dismissButton = { TextButton(onClick = { confirmDeleteResearch = false }) { Text("Keep") } },
         )

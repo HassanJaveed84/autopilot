@@ -135,7 +135,7 @@ class ResearchPreflightViewModel(
 // ------------------------------------------------------------------ run
 
 /** Observes one run; never resumes after process death (then the run id is unknown → Interrupted). */
-class ResearchRunViewModel(val runId: String, val taskId: String, val question: String, private val service: ResearchService, @Suppress("unused") clock: AppClock) : ViewModel() {
+class ResearchRunViewModel(val runId: String, val taskId: String, val question: String, private val service: ResearchService) : ViewModel() {
     val state: StateFlow<ResearchRunState> = service.state
 
     fun matches(s: ResearchRunState): Boolean = when (s) {
@@ -233,14 +233,19 @@ class ApplyResearchViewModel(
         }
     }
 
+    private var applying = false
+
     fun apply() = viewModelScope.launch {
         val plan = planned ?: return@launch
+        if (applying || _state.value !is ApplyUi.Review) return@launch // a second tap never applies twice
+        applying = true
         observing = false
         when (val outcome = actions.apply(plan)) {
             is ApplyOutcome.Applied -> _state.value = ApplyUi.Applied(outcome.applied.size, outcome.undo, undone = false, undoRefused = false)
             is ApplyOutcome.Conflict -> { observing = true; _state.update { s -> (s as? ApplyUi.Review)?.copy(conflict = outcome.message) ?: s } }
             is ApplyOutcome.Rejected -> _state.value = ApplyUi.Failed(outcome.message)
         }
+        applying = false
     }
 
     fun undo() = viewModelScope.launch {
@@ -255,11 +260,13 @@ class ApplyResearchViewModel(
 
 data class HistoryUi(val loading: Boolean = true, val taskTitle: String = "", val briefs: List<ResearchBrief> = emptyList(), val now: Instant = Instant.EPOCH, val running: Boolean = false)
 
-class ResearchHistoryViewModel(val taskId: String, private val briefs: ResearchRepository, tasks: TaskRepository, service: ResearchService, clock: AppClock) : ViewModel() {
+class ResearchHistoryViewModel(val taskId: String, private val briefs: ResearchRepository, tasks: TaskRepository, private val service: ResearchService, clock: AppClock) : ViewModel() {
     val state: StateFlow<HistoryUi> = combine(briefs.observeForTask(taskId), tasks.observeDetails(taskId), service.state) { b, d, run ->
         HistoryUi(false, d?.task?.title.orEmpty(), b, clock.now(), running = run is ResearchRunState.Running && run.taskId == taskId)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HistoryUi())
 
     fun delete(briefId: String) = viewModelScope.launch { briefs.delete(briefId) }
-    fun deleteAll() = viewModelScope.launch { briefs.deleteForTask(taskId) }
+
+    /** Stops a request running for this task first, so nothing re-appears after the delete. */
+    fun deleteAll() = viewModelScope.launch { service.deleteResearchForTask(taskId) }
 }

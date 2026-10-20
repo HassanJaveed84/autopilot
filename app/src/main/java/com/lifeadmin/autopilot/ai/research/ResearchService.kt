@@ -16,6 +16,7 @@ import com.lifeadmin.autopilot.domain.model.AppSettings
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -179,8 +180,9 @@ class ResearchService(
                 when (response) {
                     is ResearchResponse.Failure -> ResearchOutcome.Failed(response.error)
                     is ResearchResponse.Success -> {
+                        ensureActive() // cancelled while the answer was in hand: save nothing
                         val content = BriefParser.parse(
-                            response.segments, response.searches, request.details, response.usage, response.truncated, request.sharedSummary(), ids::newId,
+                            response.segments, response.searches, response.usage, response.truncated, request.sharedSummary(), ids::newId,
                         )
                         ResearchOutcome.Saved(briefs.save(taskId, clean, content))
                     }
@@ -203,18 +205,46 @@ class ResearchService(
         job?.cancel(CancellationException("stopped by user"))
     }
 
+    /**
+     * Cancels any run that is in flight (optionally only one task's) and waits until its job has
+     * finished — including a save that may already be under way — so a delete that follows cannot
+     * be undone by a late result. Searches already run may still be billed; the run ends as Stopped.
+     */
+    private suspend fun cancelActive(taskId: String? = null, reason: String) {
+        val running = _state.value as? ResearchRunState.Running ?: return
+        if (taskId != null && running.taskId != taskId) return
+        val j = job ?: return
+        j.cancel(CancellationException(reason))
+        j.join()
+    }
+
+    /** Deletes one task's research; a request running for that task is stopped first and never saves. */
+    suspend fun deleteResearchForTask(taskId: String) {
+        cancelActive(taskId, "research deleted")
+        briefs.deleteForTask(taskId)
+    }
+
     /** Clears a finished result once a screen has shown it. */
     fun dismiss(runId: String) {
         _state.update { s -> if (s is ResearchRunState.Finished && s.runId == runId) ResearchRunState.Idle else s }
     }
 
-    /** Settings → "Delete all research": briefs and the explainer acceptance. Tasks are untouched. */
+    /**
+     * Settings → "Delete all research": stops a running request, then removes every brief and the
+     * explainer acceptance. Tasks are untouched; a late result from the stopped request is dropped.
+     */
     suspend fun deleteAllResearch() {
+        cancelActive(reason = "research deleted")
         briefs.deleteAll()
         settings.update { it.copy(researchExplainerVersion = 0) }
     }
 
     fun modelLabel(model: String): String = AiConfig.label(model)
+
+    /** After the API key is deleted or replaced: drop the cached HTTP client that still holds the old key. */
+    fun forgetCredentials() {
+        (provider as? com.lifeadmin.autopilot.ai.anthropic.AnthropicResearchProvider)?.reset()
+    }
 
     // ------------------------------------------------------------------ internals
 

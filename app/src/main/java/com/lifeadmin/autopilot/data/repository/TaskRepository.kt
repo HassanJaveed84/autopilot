@@ -292,7 +292,7 @@ class TaskRepository(
      * edit is rejected instead of overwriting newer data — which also makes a repeated apply a
      * no-op error rather than a duplicate.
      */
-    suspend fun applyTaskEdit(cmd: TaskEditCommand) {
+    suspend fun applyTaskEdit(cmd: TaskEditCommand, inTransaction: (suspend (addedStepIds: List<String>) -> Unit)? = null) {
         if (cmd.isEmpty) throw ValidationException("Select at least one change to apply")
         val title = cmd.title?.let(::validateTitle)
         val notes = cmd.notes?.let { validateNotes(it) ?: "" }
@@ -330,9 +330,14 @@ class TaskRepository(
                     changed += "status"
                 }
                 taskDao.update(updated.copy(updatedAt = now))
+                val addedStepIds = ArrayList<String>()
                 if (steps.isNotEmpty()) {
                     var order = stepDao.maxSortOrder(cmd.taskId)
-                    steps.forEach { step -> stepDao.upsert(TaskStepEntity(ids.newId(), cmd.taskId, ++order, step, false, null)) }
+                    steps.forEach { step ->
+                        val id = ids.newId()
+                        stepDao.upsert(TaskStepEntity(id, cmd.taskId, ++order, step, false, null))
+                        addedStepIds += id
+                    }
                     changed += "steps"
                 }
                 cmd.policy?.let { spec ->
@@ -355,6 +360,8 @@ class TaskRepository(
                     cmd.taskId, now, EventType.EDITED, "Applied reviewed AI suggestion: ${changed.joinToString()}",
                     mapOf("fields" to changed.joinToString(","), "source" to cmd.source, PROPOSAL_KEY to cmd.proposalId),
                 )
+                // Caller bookkeeping (e.g. which research moves were applied) commits or rolls back with the edit.
+                inTransaction?.invoke(addedStepIds)
             }
         }
     }
@@ -612,6 +619,7 @@ class TaskRepository(
         stepIds: List<String>,
         notesAfterApply: String?,
         notesBeforeApply: String?,
+        inTransaction: (suspend () -> Unit)? = null,
     ): Boolean = db.withTransaction {
         val t = taskDao.get(taskId) ?: return@withTransaction false
         if (t.updatedAt != expectedUpdatedAt || t.status.isTerminal) return@withTransaction false
@@ -623,6 +631,7 @@ class TaskRepository(
         val notes = if (notesAfterApply != null) validateNotes(notesBeforeApply) else t.notes
         taskDao.update(t.copy(notes = notes, updatedAt = now))
         log(taskId, now, EventType.EDITED, "Undid applied research changes", mapOf("source" to "ai_research_undo", PROPOSAL_KEY to "$proposalId:undo"))
+        inTransaction?.invoke()
         true
     }
 

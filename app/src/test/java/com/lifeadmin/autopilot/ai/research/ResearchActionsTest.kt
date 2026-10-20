@@ -152,4 +152,67 @@ class ResearchActionsTest {
         assertEquals(listOf("Already in your notes"), actions.plan(secondBrief, details(), setOf("n1")).skipped.map { it.reason }) // stale brief object
         assertEquals(listOf("Already applied"), third.skipped.map { it.reason })
     }
+
+    /** Bookkeeping that fails inside the transaction must take the task edit down with it (finding C). */
+    private class FailingBriefs(db: com.lifeadmin.autopilot.data.local.AppDatabase, clock: FakeClock, var failRecord: Boolean = false, var failClear: Boolean = false) :
+        ResearchRepository(db, clock, SequentialIds("f")) {
+        override suspend fun recordApplied(briefId: String, applied: List<AppliedMove>) {
+            if (failRecord) throw IllegalStateException("disk full")
+            super.recordApplied(briefId, applied)
+        }
+        override suspend fun clearApplied(briefId: String, moveIds: Set<String>) {
+            if (failClear) throw IllegalStateException("disk full")
+            super.clearApplied(briefId, moveIds)
+        }
+    }
+
+    @Test fun bookkeepingFailureRollsBackTheTaskEditAndARetrySucceedsOnce() = runTest {
+        val failing = FailingBriefs(db, clock, failRecord = true)
+        val flaky = ResearchActions(tasks, failing, clock)
+        val plan = flaky.plan(brief, details(), setOf("m1", "m3"))
+        val outcome = flaky.apply(plan)
+        assertTrue(outcome.toString(), outcome is ApplyOutcome.Rejected)
+        val d = details()
+        assertEquals("steps rolled back", listOf("Find dates"), d.steps.map { it.title })
+        assertEquals("notes rolled back", "Window seat", d.task.notes)
+        assertTrue("no history event either", d.events.none { it.metadata["proposalId"] == plan.proposalId })
+        assertTrue(briefs.get(brief.id)!!.applied.isEmpty())
+        // The task is untouched, so the same plan applies cleanly on retry — exactly once.
+        failing.failRecord = false
+        val retry = flaky.apply(flaky.plan(briefs.get(brief.id)!!, details(), setOf("m1", "m3")))
+        assertTrue(retry.toString(), retry is ApplyOutcome.Applied)
+        assertEquals(listOf("Find dates", "Check the 12-week release date"), details().steps.map { it.title })
+        assertEquals(listOf("m1", "m3"), briefs.get(brief.id)!!.applied.map { it.moveId })
+        assertTrue(flaky.apply(plan) is ApplyOutcome.Conflict) // and never twice
+        assertEquals(2, details().steps.size)
+    }
+
+    @Test fun undoBookkeepingFailureRollsBackTheUndo() = runTest {
+        val failing = FailingBriefs(db, clock, failClear = true)
+        val flaky = ResearchActions(tasks, failing, clock)
+        val applied = flaky.apply(flaky.plan(brief, details(), setOf("m1", "m3"))) as ApplyOutcome.Applied
+        clock.instant = clock.instant.plus(Duration.ofSeconds(5))
+        assertFalse(flaky.undo(applied.undo!!))
+        val d = details()
+        assertEquals("steps kept", 2, d.steps.size)
+        assertTrue("notes kept", d.task.notes!!.contains("From web research:"))
+        assertEquals("record kept, consistent with the task", listOf("m1", "m3"), briefs.get(brief.id)!!.applied.map { it.moveId })
+        // Once bookkeeping works again the undo goes through, once.
+        failing.failClear = false
+        assertTrue(flaky.undo(applied.undo!!))
+        assertEquals(listOf("Find dates"), details().steps.map { it.title })
+        assertTrue(briefs.get(brief.id)!!.applied.isEmpty())
+        assertFalse(flaky.undo(applied.undo!!))
+    }
+
+    @Test fun undoNeverOverwritesALaterUserEdit() = runTest {
+        val applied = actions.apply(actions.plan(brief, details(), setOf("m1", "m3"))) as ApplyOutcome.Applied
+        clock.instant = clock.instant.plus(Duration.ofSeconds(5))
+        tasks.updateDetails(taskId, "Book train ride", details().task.notes + "\nMy own line", Priority.NORMAL)
+        assertFalse(actions.canUndo(applied.undo!!, details()))
+        assertFalse(actions.undo(applied.undo!!))
+        val d = details()
+        assertTrue(d.task.notes!!.endsWith("My own line"))
+        assertEquals(2, d.steps.size)
+    }
 }
