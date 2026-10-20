@@ -13,8 +13,9 @@ This repository contains a native Android, local-first follow-through app. This 
 ## Milestone coordination as of 2026-10-20
 
 - M0–M1C offline MVP and M2 optional AI planning are implemented; Flight Plan UI redesign and stabilization have been merged. Automated and physical-device verification are separate gates.
-- **M3A (Action Brief / consented selected-task web research) is being developed in a separate Claude Code session.** This roadmap-documentation branch must not interfere with it. Check GitHub and code for its latest status before making future claims.
-- **M3B (Autopilot Review)** is a **proposed next priority**, not code already built and not permission to start implementation. The product vision is automatic local review of all pending tasks with optional, *separately consented*, multi-task AI analysis. See `docs/ROADMAP.md`.
+- **M3A (Action Brief / consented selected-task web research) is merged into `main` as PR #4.** User reports installing and testing the latest APK; keep live-provider and migration evidence distinct from code/CI status. Read the merged report and current code before making future claims.
+- **M3A.2 (Deep Research & Actionable Results)** is the proposed next priority: quality-oriented research, structured task-specific deliverables, flexible model/search budgets and usage-based cost estimates. It is not yet approved for implementation.
+- **M3B (Autopilot Review)** is a **proposed major milestone after M3A.2**, not code already built and not permission to start implementation. The product vision is automatic local review of all pending tasks with optional, *separately consented*, multi-task AI analysis. See `docs/ROADMAP.md`.
 - M3C (controlled external integrations), M3D (agent workflows), M4 (household sync) are later proposed/deferred work.
 - Do not repeat legacy M0/M1 build instructions in this file; those milestones are historical. Their implementation details and test results live in `docs/PROGRESS.md`.
 
