@@ -139,7 +139,10 @@ fun WaitingSheet(task: Task, now: Instant, zone: ZoneId, onDismiss: () -> Unit, 
     var reason by remember { mutableStateOf(task.waitingReason.orEmpty()) }
     var checkIn by remember { mutableStateOf(task.waitingCheckInAt?.takeIf { it > now } ?: options[1].second) }
     var custom by remember { mutableStateOf(false) }
-    AutopilotSheet(title = "Waiting on someone", onDismiss = onDismiss) {
+    AutopilotSheet(
+        title = "Waiting on someone", onDismiss = onDismiss,
+        footer = { PrimaryButton("Start waiting", onClick = { onSave(reason.ifBlank { null }, checkIn) }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp).testTag("waiting_save")) },
+    ) {
         Text("Nudges pause. You'll get one check-in, so it can't quietly stall.", style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = c.ink2)
         Text("Who or what are you waiting on?", style = MaterialTheme.typography.labelLarge, color = c.ink, modifier = Modifier.padding(top = 14.dp, bottom = 8.dp))
         OutlinedTextField(
@@ -154,8 +157,7 @@ fun WaitingSheet(task: Task, now: Instant, zone: ZoneId, onDismiss: () -> Unit, 
             val isCustom = checkIn != null && options.none { it.second == checkIn }
             ChoiceChip(if (isCustom) "Custom: ${Format.relative(checkIn!!, now, zone)}" else "Pick date & time…", selected = isCustom, onClick = { custom = true })
         }
-        Spacer(Modifier.height(18.dp))
-        PrimaryButton("Start waiting", onClick = { onSave(reason.ifBlank { null }, checkIn) }, modifier = Modifier.fillMaxWidth().testTag("waiting_save"))
+        Spacer(Modifier.height(8.dp))
     }
     if (custom) {
         DateTimeSelectDialog(today.plusDays(1), LocalTime.of(9, 0), onDismiss = { custom = false }, onConfirm = { d, t ->

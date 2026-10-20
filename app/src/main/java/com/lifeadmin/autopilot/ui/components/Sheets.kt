@@ -28,6 +28,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import com.lifeadmin.autopilot.ui.theme.AutopilotShapes
 import com.lifeadmin.autopilot.ui.theme.AutopilotTheme
@@ -39,6 +41,29 @@ import com.lifeadmin.autopilot.ui.theme.AutopilotTheme
  * [footer] (the sheet's primary actions) is pinned below the scrolling [content] and above the
  * keyboard, so Save stays reachable however tall the content or the keyboard is.
  */
+/**
+ * [body] above [footer], wrapping their combined height: the footer is measured first and the
+ * body gets whatever height is left, so a scrolling body shrinks before the footer ever moves off
+ * screen. (A weighted column would instead stretch the sheet to the full available height.)
+ */
+@Composable
+private fun BodyWithFooter(modifier: Modifier, body: @Composable () -> Unit, footer: @Composable () -> Unit) {
+    Layout(contents = listOf(body, footer), modifier = modifier) { (bodyMeasurables, footerMeasurables), constraints ->
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val footers = footerMeasurables.map { it.measure(loose) }
+        val footerHeight = footers.sumOf { it.height }
+        val bodyMax = if (constraints.hasBoundedHeight) (constraints.maxHeight - footerHeight).coerceAtLeast(0) else Constraints.Infinity
+        val bodies = bodyMeasurables.map { it.measure(loose.copy(maxHeight = bodyMax)) }
+        val bodyHeight = bodies.sumOf { it.height }
+        val width = (bodies + footers).maxOfOrNull { it.width }?.coerceIn(constraints.minWidth, constraints.maxWidth) ?: constraints.minWidth
+        layout(width, (bodyHeight + footerHeight).coerceIn(constraints.minHeight, constraints.maxHeight)) {
+            var y = 0
+            bodies.forEach { it.placeRelative(0, y); y += it.height }
+            footers.forEach { it.placeRelative(0, y); y += it.height }
+        }
+    }
+}
+
 @Composable
 fun AutopilotSheet(
     title: String?,
@@ -62,17 +87,10 @@ fun AutopilotSheet(
         scrimColor = c.scrim,
         dragHandle = { Box(Modifier.padding(top = 10.dp, bottom = 2.dp).width(36.dp).height(4.dp).clip(CircleShape).background(c.lineStrong)) },
     ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .imePadding()
-                .padding(bottom = 22.dp),
-        ) {
+        val body: @Composable () -> Unit = {
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .weight(1f, fill = false)
                     .let { if (scrollable) it.verticalScroll(rememberScrollState()) else it }
                     .padding(horizontal = 20.dp),
             ) {
@@ -84,7 +102,16 @@ fun AutopilotSheet(
                 }
                 content()
             }
-            if (footer != null) Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).testTag("sheet_footer")) { footer() }
+        }
+        val insets = Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(bottom = 22.dp)
+        if (footer == null) {
+            Box(insets) { body() }
+        } else {
+            BodyWithFooter(
+                modifier = insets,
+                body = body,
+                footer = { Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).testTag("sheet_footer")) { footer() } },
+            )
         }
     }
 }
