@@ -93,9 +93,11 @@ class CompletionPolicyTest {
 
     @Test fun budgetWithinLimitIsVerifiedByCodeNotByTheModel() {
         val lying = Research2Fixtures.fragranceGather().let { fx -> fx.copy(segments = fx.segments.map { seg -> seg.copy(text = seg.text.replace("## REQ r-c0 · status=answered\nAll included picks are at or under \$150 at the cited retailers.", "## REQ r-c0 · status=not_found\nCould not check the budget.")) }) }
-        val s = merged(Research2Fixtures.FRAGRANCE_REQUEST, lying)
-        assertEquals("every priced pick is at or under $150, whatever the model wrote", RequirementStatus.ANSWERED, s.coverageOf("r-c0").status)
-        assertTrue(s.coverageOf("r-c0").summary.contains("at or under $150"))
+        val s = merged(Research2Fixtures.FRAGRANCE_REQUEST, lying, Research2Fixtures.fragranceFillGaps())
+        assertEquals("every pick has a confirmed price at or under $150, whatever the model wrote", RequirementStatus.ANSWERED, s.coverageOf("r-c0").status)
+        assertTrue(s.coverageOf("r-c0").summary.contains("confirmed prices at or under $150"))
+        // After the first pass alone Vanilla Smoke's price is unconfirmed: the budget needs a check.
+        assertEquals(RequirementStatus.NEEDS_CHECK, merged(Research2Fixtures.FRAGRANCE_REQUEST, lying).coverageOf("r-c0").status)
     }
 
     @Test fun budgetCannotBeConfirmedWhileAPickHasNoPrice() {
@@ -112,7 +114,7 @@ class CompletionPolicyTest {
         val r = RequirementExtractor.extract(request)
         val budget = r.requirements.first { it.type == RequirementType.CONSTRAINT && it.label.startsWith("Budget") }
         assertTrue("'around' makes the budget a soft bound", budget.soft)
-        val s = merged(request, fragranceWith("210 USD · 50 ml · Brand House"))
+        val s = merged(request, fragranceWith("210 USD · 50 ml · Brand House"), Research2Fixtures.fragranceFillGaps())
         val c0 = s.coverageOf(budget.id)
         assertEquals(RequirementStatus.YOUR_CALL, c0.status)
         assertTrue(c0.summary, c0.summary.contains("exception") && c0.summary.contains("Oud Noir"))
@@ -197,7 +199,7 @@ class CompletionPolicyTest {
         assertEquals(RequirementStatus.NEEDS_CHECK, uncited.coverageOf("r-c2").status)
         assertEquals(RequirementStatus.NEEDS_CHECK, uncited.coverageOf("r-i0").status)
         assertTrue(uncited.body.candidates.all { it.price?.status != PriceStatus.CONFIRMED })
-        assertEquals("every price unconfirmed → the budget needs a check? No: amounts are seen and within limit; an unconfirmed price under budget is still a price seen", RequirementStatus.ANSWERED, uncited.coverageOf("r-c0").status)
+        assertEquals("every price unconfirmed → the budget cannot be confirmed", RequirementStatus.NEEDS_CHECK, uncited.coverageOf("r-c0").status)
         assertFalse(SessionAssembler.covered(uncited))
         assertEquals(SessionOutcome.PARTIAL, SessionAssembler.outcome(uncited, SessionAssembler.Ending.NORMAL))
     }
@@ -233,7 +235,7 @@ class CompletionPolicyTest {
             assertEquals("every open row is a gap the banner names", s.requirements.filter { s.coverageOf(it.id).status.open }.map { it.id }, gaps.map { it.id })
             assertTrue(s.coverage.size == s.requirements.size)
         }
-        assertEquals(listOf(SessionOutcome.INCOMPLETE_EVIDENCE, SessionOutcome.PARTIAL, SessionOutcome.COMPLETE, SessionOutcome.COMPLETE, SessionOutcome.PARTIAL, SessionOutcome.COMPLETE), sessions.map { SessionAssembler.outcome(it, SessionAssembler.Ending.NORMAL) })
+        assertEquals(listOf(SessionOutcome.INCOMPLETE_EVIDENCE, SessionOutcome.PARTIAL, SessionOutcome.COMPLETE, SessionOutcome.PARTIAL, SessionOutcome.PARTIAL, SessionOutcome.COMPLETE), sessions.map { SessionAssembler.outcome(it, SessionAssembler.Ending.NORMAL) })
     }
 
     @Test fun extractorMarksPreferencesSoftAndBoundsStrict() {

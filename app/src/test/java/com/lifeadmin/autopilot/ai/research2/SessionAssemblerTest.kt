@@ -45,7 +45,8 @@ class SessionAssemblerTest {
     @Test fun fragranceBenchmarkMergesSecondPassAndBecomesComplete() {
         val s1 = merged(Research2Fixtures.FRAGRANCE_REQUEST, Research2Fixtures.fragranceGather())
         assertEquals(listOf("c3"), SessionAssembler.priceGaps(s1).map { it.id })
-        assertTrue(SessionAssembler.covered(s1))
+        assertFalse("c3's price is unconfirmed, so the $150 budget is not yet verified", SessionAssembler.covered(s1))
+        assertEquals(RequirementStatus.NEEDS_CHECK, s1.coverageOf("r-c0").status)
         assertEquals(listOf("price", "lasts", "gift"), s1.body.compareKeys)
         val s2 = merged(Research2Fixtures.FRAGRANCE_REQUEST, Research2Fixtures.fragranceGather(), Research2Fixtures.fragranceFillGaps())
         assertEquals(3, s2.body.candidates.size)
@@ -73,7 +74,7 @@ class SessionAssemblerTest {
         assertEquals(SessionOutcome.PARTIAL, SessionAssembler.outcome(s, SessionAssembler.Ending.TRUNCATED))
         assertEquals(SessionOutcome.FAILED, SessionAssembler.outcome(s, SessionAssembler.Ending.FAILED))
         assertEquals(SessionOutcome.INCOMPLETE_BUDGET, SessionAssembler.outcome(s, SessionAssembler.Ending.BUDGET_SPEND))
-        val complete = merged(Research2Fixtures.FRAGRANCE_REQUEST, Research2Fixtures.fragranceGather())
+        val complete = merged(Research2Fixtures.FRAGRANCE_REQUEST, Research2Fixtures.fragranceGather(), Research2Fixtures.fragranceFillGaps())
         assertEquals("covered + budget stop is still Complete", SessionOutcome.COMPLETE, SessionAssembler.outcome(complete, SessionAssembler.Ending.BUDGET_SEARCHES))
     }
 

@@ -129,7 +129,8 @@ object CompletionPolicy {
 
     // ------------------------------------------------------------------ constraints
 
-    private data class Named(val label: String, val name: String, val price: Price?, val haystack: String)
+    /** [identity] is the product's own name and variant; explanatory text never counts toward brand or exclusion checks. */
+    private data class Named(val label: String, val name: String, val price: Price?, val identity: String)
 
     private fun validateConstraint(s: SessionContent, r: Requirement, cov: Coverage, evidenceAnywhere: Boolean): Pair<Coverage, Callout?> {
         val label = r.label.trim()
@@ -146,10 +147,10 @@ object CompletionPolicy {
 
     /** What the research actually recommends: included shortlist candidates and per-item picks. */
     private fun recommended(s: SessionContent): List<Named> = buildList {
-        s.body.candidates.filter { it.included }.forEach { add(Named(it.name, it.name + (it.variant?.let { v -> " ($v)" } ?: ""), it.price, listOf(it.name, it.variant.orEmpty(), it.reason).joinToString(" "))) }
+        s.body.candidates.filter { it.included }.forEach { add(Named(it.name, it.name + (it.variant?.let { v -> " ($v)" } ?: ""), it.price, listOf(it.name, it.variant.orEmpty()).joinToString(" "))) }
         s.body.picks.filter { it.pick != null }.forEach { p ->
             val item = s.requirements.firstOrNull { it.id == p.requirementId }?.label ?: p.requirementId
-            add(Named(item, p.pick!!, p.price, listOf(p.pick, p.variant.orEmpty(), p.labelFacts.joinToString(" ") { it.value }).joinToString(" ")))
+            add(Named(item, p.pick!!, p.price, listOf(p.pick, p.variant.orEmpty()).joinToString(" ")))
         }
     }
 
@@ -160,14 +161,25 @@ object CompletionPolicy {
         val currency = when (symbol) { "$" -> "USD"; "£" -> "GBP"; "€" -> "EUR"; else -> symbol.uppercase(Locale.ROOT) }
         val limitText = Price(limit, currency, status = PriceStatus.CONFIRMED).display()
         if (picks.isEmpty()) return capAnswered(cov, "Nothing to check against the $limitText limit yet") to null
-        val over = picks.filter { it.price != null && it.price.currency.equals(currency, true) && it.price.amount > limit + 1e-9 }
-        val unpriced = picks.filter { it.price == null || !it.price.currency.equals(currency, true) }
+        fun same(p: Price) = p.currency.equals(currency, true)
+        fun confirmed(p: Price) = p.status == PriceStatus.CONFIRMED || p.status == PriceStatus.CONFLICT_RESOLVED
+        // A violation seen is flagged whatever its status; compliance needs a confirmed, same-currency price.
+        val over = picks.filter { it.price != null && same(it.price) && it.price.amount > limit + 1e-9 }
+        val unpriced = picks.filter { it.price == null }
+        val otherCurrency = picks.filter { it.price != null && !same(it.price) }
+        val unconfirmed = picks.filter { it.price != null && same(it.price) && !confirmed(it.price) && it.price.amount <= limit + 1e-9 }
         val overText = over.joinToString(", ") { "${it.name} (${it.price!!.display()})" }
+        val unverified = buildList {
+            if (unpriced.isNotEmpty()) add("no price seen for ${unpriced.joinToString(", ") { it.name }}")
+            if (otherCurrency.isNotEmpty()) add("price not in $currency for ${otherCurrency.joinToString(", ") { "${it.name} (${it.price!!.display()})" }}")
+            if (unconfirmed.isNotEmpty()) add("price not confirmed by a cited page for ${unconfirmed.joinToString(", ") { "${it.name} (${it.price!!.display()})" }}")
+        }
         return when {
             over.isNotEmpty() && !soft -> cov.copy(status = RequirementStatus.PARTLY, summary = "Over the $limitText limit: $overText".take(300)) to Callout(CalloutKind.BUDGET, "Over budget: $overText is above the $limitText limit you set.".take(400))
+            unverified.isNotEmpty() -> cov.copy(status = RequirementStatus.NEEDS_CHECK, summary = (unverified.joinToString("; ").replaceFirstChar { it.uppercase() } + (if (over.isNotEmpty()) "; over the limit (allowed as an exception): $overText" else "") + ", so the $limitText limit can't be confirmed").take(300)) to
+                (if (over.isNotEmpty()) Callout(CalloutKind.BUDGET, "Exception: $overText is above $limitText; you allowed going over.".take(400)) else null)
             over.isNotEmpty() -> cov.copy(status = RequirementStatus.YOUR_CALL, summary = "Over the $limitText limit (allowed as an exception): $overText".take(300)) to Callout(CalloutKind.BUDGET, "Exception: $overText is above $limitText; you allowed going over.".take(400))
-            unpriced.isNotEmpty() -> cov.copy(status = RequirementStatus.NEEDS_CHECK, summary = "No ${currency} price seen for ${unpriced.joinToString(", ") { it.name }}, so the $limitText limit can't be confirmed".take(300)) to null
-            else -> cov.copy(status = RequirementStatus.ANSWERED, summary = "All ${picks.size} priced picks are at or under $limitText".take(300)) to null
+            else -> cov.copy(status = RequirementStatus.ANSWERED, summary = "All ${picks.size} picks have confirmed prices at or under $limitText".take(300)) to null
         }
     }
 
@@ -176,7 +188,8 @@ object CompletionPolicy {
         val brands = raw.replaceFirst(Regex("""(?i)^\s*(?:only|just|strictly)\s+"""), "").split(BRAND_SPLIT).map { it.trim().trim('.', ':') }.filter { it.length >= 2 }
         if (brands.isEmpty()) return cov
         if (picks.isEmpty()) return capAnswered(cov, "Nothing to check against the preferred brands yet")
-        val off = picks.filter { p -> brands.none { b -> p.haystack.contains(b, ignoreCase = true) } }
+        // Judged on the product's own name and variant: "not from Thorne" in a label or reason is not a Thorne product.
+        val off = picks.filter { p -> brands.none { b -> p.identity.contains(b, ignoreCase = true) } }
         val offText = off.joinToString(", ") { "${it.label} (${it.name})" }
         return when {
             off.isEmpty() -> cov.copy(status = RequirementStatus.ANSWERED, summary = "Every pick is from ${brands.joinToString(" or ")}".take(300))
@@ -191,7 +204,7 @@ object CompletionPolicy {
         if (picks.isEmpty()) return capAnswered(cov, "Nothing to check against the exclusion yet")
         // "testers" matches "tester" and vice versa.
         val stem = Regex.escape(what.removeSuffix("es").removeSuffix("s"))
-        val hit = picks.filter { Regex("""\b${stem}(?:e?s)?\b""", RegexOption.IGNORE_CASE).containsMatchIn(it.haystack) }
+        val hit = picks.filter { Regex("""\b${stem}(?:e?s)?\b""", RegexOption.IGNORE_CASE).containsMatchIn(it.identity) }
         return when {
             hit.isEmpty() -> cov.copy(status = RequirementStatus.ANSWERED, summary = "No pick mentions '$what'".take(300))
             soft -> cov.copy(status = RequirementStatus.YOUR_CALL, summary = "Mentions '$what' (allowed as an exception): ${hit.joinToString(", ") { it.name }}".take(300))

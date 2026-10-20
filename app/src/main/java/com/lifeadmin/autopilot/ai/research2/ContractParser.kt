@@ -330,10 +330,16 @@ object ContractParser {
         return Refs((provider + validated).distinct(), pointers.filter { it !in validated })
     }
 
-    /** The same statement, allowing for trimming and small rewording; never a different fact. */
+    /**
+     * The same statement, allowing for trimming and small rewording; never a different fact. Every
+     * value in the line (numbers with their unit, currency, percentage; number words count as numbers;
+     * dates and dosages are numbers with units) must match the evidence exactly — a changed amount,
+     * size, dose, date or currency is a different claim and inherits nothing.
+     */
     internal fun restates(line: String, evidence: String): Boolean {
-        val a = norm(line); val b = norm(evidence)
+        val a = canon(line); val b = canon(evidence)
         if (a.isEmpty() || b.isEmpty()) return false
+        if (values(a) != values(b)) return false
         if (a == b) return true
         if (a.length >= 12 && b.length >= 12 && (a.contains(b) || b.contains(a))) return true
         val wa = a.split(' ').filter { it.length > 2 }.toSet(); val wb = b.split(' ').filter { it.length > 2 }.toSet()
@@ -342,7 +348,30 @@ object ContractParser {
         return inter >= 4 && inter.toDouble() / wa.union(wb).size >= 0.6
     }
 
-    private fun norm(s: String): String = clean(s).lowercase(Locale.ROOT).replace(Regex("""[^\p{L}\p{N}.]+"""), " ").replace(Regex("""\.(?=\s|$)"""), "").trim().replace(Regex("\\s+"), " ")
+    private val NUMBER_WORDS = mapOf(
+        "zero" to 0, "one" to 1, "two" to 2, "three" to 3, "four" to 4, "five" to 5, "six" to 6, "seven" to 7, "eight" to 8, "nine" to 9, "ten" to 10,
+        "eleven" to 11, "twelve" to 12, "thirteen" to 13, "fourteen" to 14, "fifteen" to 15, "sixteen" to 16, "seventeen" to 17, "eighteen" to 18, "nineteen" to 19,
+        "twenty" to 20, "thirty" to 30, "forty" to 40, "fifty" to 50, "sixty" to 60, "seventy" to 70, "eighty" to 80, "ninety" to 90, "hundred" to 100, "thousand" to 1000, "dozen" to 12,
+    )
+    private val VALUE = Regex("""([$£€])\s?(\d[\d,]*(?:\.\d+)?)|(\d[\d,]*(?:\.\d+)?)\s?(%|[a-z]+)?""")
+    private val CURRENCY_WORDS = mapOf("usd" to "usd", "dollar" to "usd", "dollars" to "usd", "gbp" to "gbp", "pound" to "gbp", "pounds" to "gbp", "eur" to "eur", "euro" to "eur", "euros" to "eur", "cad" to "cad", "aud" to "aud")
+
+    /** Lower-cased, number words as digits, each value folded to "<amount><unit>" so "$98" and "98.00 USD" agree and "98" and "89" never do. */
+    private fun canon(s: String): String {
+        var t = clean(s).lowercase(Locale.ROOT)
+        t = t.replace(Regex("""\b([a-z]+)\b""")) { m -> NUMBER_WORDS[m.value]?.toString() ?: m.value }
+        t = VALUE.replace(t) { m ->
+            val (amount, unit) = if (m.groupValues[1].isNotEmpty()) m.groupValues[2] to when (m.groupValues[1]) { "$" -> "usd"; "£" -> "gbp"; else -> "eur" }
+            else m.groupValues[3] to (m.groupValues[4].let { CURRENCY_WORDS[it] ?: it })
+            " " + amountKey(amount) + unit + " "
+        }
+        return t.replace(Regex("""[^\p{L}\p{N}]+"""), " ").trim().replace(Regex("\\s+"), " ")
+    }
+
+    private fun amountKey(raw: String): String = raw.replace(",", "").toBigDecimalOrNull()?.stripTrailingZeros()?.toPlainString() ?: raw
+
+    /** The values a canonical line carries, in order of appearance. */
+    private fun values(canonical: String): List<String> = Regex("""\b\d[\d.]*[a-z%]*""").findAll(canonical).map { it.value }.toList()
 
     private fun cited(spans: List<Span>, full: String, start: Int, end: Int, registry: SourceRegistry2, known: List<EvidenceLine>): List<CitedSegment> {
         val out = ArrayList<CitedSegment>()

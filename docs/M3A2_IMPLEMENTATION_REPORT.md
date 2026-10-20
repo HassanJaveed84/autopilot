@@ -245,6 +245,41 @@ Not changed, documented for a later pass: the Deep mode write-up stage still can
 (by design); sessions saved before this pass keep their stored outcomes; pointers in answer text are
 not shown as chips.
 
+### Second review: evidence-integrity edge cases
+
+Two edge cases and one targeted regression, each reproduced with a failing test first
+(`EvidenceIntegrityTest`, 5 tests: all 5 failed on the unfixed code).
+
+- **Budget on unconfirmed prices.** `CompletionPolicy.budget()` marked a strict budget Answered when
+  every seen price was under the limit, even a model-typed price with no citation. Now compliance needs
+  a confirmed (or conflict-resolved), same-currency price for every pick: missing, unconfirmed and
+  other-currency prices keep the constraint at Needs a check with the reason named ("price not confirmed
+  by a cited page for Vanilla Smoke ($79)"); a price seen *above* the limit is still flagged whatever
+  its status (strict → Partly; soft → Your call only once everything else is confirmed, otherwise Needs
+  a check with both notes). Consequence for benchmark B: after the first pass alone the run is now
+  "Partially complete" (the $79 is unconfirmed); the fill-gaps pass that cites it makes it Complete.
+  Tests that explicitly expected an unconfirmed price to satisfy the budget were corrected
+  (`CompletionPolicyTest`, `SessionAssemblerTest`).
+- **Restatements with changed values.** `ContractParser.restates()` compared words, so "89.00 USD ·
+  100 ml · Big Retailer" could inherit the citation of "98.00 USD · 100 ml · Big Retailer" by
+  similarity. Matching now canonicalises both lines (number words → digits; every value folded to
+  amount+unit, with `$98`, `98.00 USD` and `98 dollars` agreeing) and requires the ordered list of
+  values to be identical before any similarity is considered: a changed amount, size, dose, unit,
+  currency, date, percentage, duration, or a value added or dropped, is a different claim and inherits
+  nothing (the line becomes Restated / the price stays unconfirmed). Legitimate restatements with the
+  same values still match.
+- **Brand judged on identity.** A pick whose label or reason said "not from Thorne" was classified as
+  Thorne because the brand check scanned explanatory text. Brand and exclusion checks now use only the
+  product's own name and variant (`Named.identity`); label facts and reasons never count.
+
+Limitations: units are compared literally ("hrs" vs "hours" is treated as a change, i.e. downgraded,
+the conservative side); number words are recognised up to common ones (one…twenty, tens, hundred,
+thousand, dozen); currencies other than USD/GBP/EUR/CAD/AUD compare as plain words.
+
+Local validation of this head: `./gradlew --offline lintDebug testDebugUnitTest assembleDebug assembleRelease
+assembleDebugAndroidTest` → BUILD SUCCESSFUL (7 m 14 s), lint "No issues found", **514 tests, 0 failures**,
+debug 29.9 MB / release 4.3 MB / androidTest 1.2 MB. CI for this head: see the table below once complete.
+
 ### Validation (hardening)
 
 Local, this container (no device, no live API, no personal key), final hardening head:
