@@ -43,4 +43,96 @@ Legacy `…/research/{briefId}` and `…/apply` remain for saved M3A briefs.
 
 ## Validation
 
-_Filled in below from the actual runs._
+### Local (this container; no device, no live API, no personal key)
+
+Command:
+
+```
+./gradlew --offline lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest
+```
+
+Result (2026-10-20, branch head after stage 3–4): **BUILD SUCCESSFUL in 7m 44s**.
+
+| Check | Result |
+|---|---|
+| `lintDebug` | 0 issues (0 errors, 0 warnings) |
+| `testDebugUnitTest` | **474 tests, 0 failures, 0 skipped** (415 on `main` before M3A.2 → 59 new/rewritten; the M3A flow test shrank to its two legacy-brief scenarios) |
+| `assembleDebug` | `app-debug.apk` 29.8 MB |
+| `assembleRelease` | `app-release.apk` 4.3 MB (minified; signed with the personal key when CI restores it, else the debug key) |
+| `assembleDebugAndroidTest` | `app-debug-androidTest.apk` 1.2 MB (instrumented + screenshot tours) |
+
+New or rewritten automated tests (all with fakes / MockWebServer; no paid call, no key):
+
+| Suite | Count | Covers |
+|---|---|---|
+| `RequirementExtractorTest` | 5 | benchmarks A and B extraction, how-to/checklist/quick answer, exclusions, unsure flag, id stability |
+| `ContractParserTest` | 8 | contract blocks, provenance downgrade, `src=` resolution, prices, injection, free-form, stable registry numbers |
+| `SessionAssemblerTest` | 5 | merge, coverage, outcome rules, four-proposal guarantee, how-to proposals, candidate evidence inheritance |
+| `DeepResearchServiceTest` | 16 | stage planning, gap-fill, budget stops, soft spend limit (stop and trim), partial/failed/refused/truncated, pause_turn, stop keep/discard, continuation, busy/delete, interrupted settlement |
+| `AnthropicResearchCallsHttpTest` | 4 | request shape incl. cache_control, usage incl. cache tokens and message id, pause_turn resend, stop reasons and errors |
+| `CostCalculatorTest` | 6 | list prices, Haiku long-context tier, unknown counts/models, estimate formula, record statuses, in-memory ledger de-dup/settle/retention |
+| `PlanningUsageLedgerTest` | 1 | M2 planning calls recorded with cache fields; not-billed vs unknown |
+| `Research2ActionsTest` | 4 | edits, duplicates/Add anyway, notes with evidence and check date, idempotency per task version, undo |
+| `ResearchSessionRepositoryTest` | 6 | round trip, applied, prune, fit, unreadable rows, Room ledger |
+| `MigrationTest.migrateV4ToV5…` | 1 | v4 → v5 keeps tasks and legacy briefs; cascade vs. no-FK ledger |
+| `BackupRepositoryTest.sessionsAndUsageRoundTrip…` | 1 | sessions + usage export/import, append-only ledger, in-flight → interrupted, orphan rejection |
+| `Research2FlowUiTest` (Robolectric, 411 dp) | 6 | supplements end to end (preflight → explainer → investigation → result C → proposals edit/Add anyway/apply/undo → usage dashboard + breakdown), fragrance shortlist (hero, re-rank, compare, excluded, conflict), stop sheet discard, provider failure, offline + AI-off saved session, continuation |
+| `ResearchFlowLargeTextUiTest` (fontScale 2.0) | 1 | whole M3A.2 flow at 200% text incl. Adjust, Stop sheet, source sheet, apply |
+| `ResearchFlowUiTest` (legacy) | 2 | saved M3A briefs still open offline/AI off and apply; long detour |
+
+A real defect found by the 2.0 test and fixed before CI: the preflight footer's estimate row squeezed the
+"This month" link to one character per line, growing the bottom bar to the full screen (the list had
+0 px height). The row now wraps; three other squeeze-prone rows were made robust the same way.
+
+### CI
+
+_Filled in from the GitHub Actions runs on the draft PR (see "Delivery")._
+
+## Delivery
+
+_Branch, commits, PR and CI links are listed here once pushed._
+
+## Cost rules, assumptions and limitations
+
+- Estimates use Anthropic's **reported** `usage` (input, output, cache creation 5m/1h, cache read,
+  `server_tool_use.web_search_requests`) × the price table built into this version
+  (`PricingCatalog.VERSION = 2026-10`). Anthropic's Console is the bill; the app never reads it.
+- Pre-run estimates use the design formula (6k + 11k tokens per search; mode output budget) as a
+  **×0.7–×1.3 range**. The 11k figure is a calibration guess to be re-fitted from the local ledger after
+  real runs (roadmap follow-up).
+- A dollar limit is **soft**: checked before each call, trims `max_uses`, never aborts a call in flight.
+  The UI says "stops when it gets close" and shows the overshoot rule; it never says "cap".
+- Unknown usage (stopped, timed out, interrupted) is shown as "≥" with searches seen as a floor and never
+  as $0; "$0.00 · not billed" only for requests rejected before processing (400/401/403/429).
+- Prompt caching: the ~2k-token system prompt is marked for 5-minute caching only on multi-stage runs
+  (Thorough/Deep); write/read tokens are recorded and priced. No call is made only to warm a cache.
+  Benefit is unverified without live runs.
+- Daily cap: 25 sessions per local day (settings counter shared with M3A), shown on the preflight.
+- Never stored in the ledger or sessions: prompts, queries in the ledger, task text, keys. Sessions keep
+  the request text and parsed findings (as M3A briefs did).
+
+## Remaining steps that need a phone or a live key
+
+1. Install the CI debug APK over the previous build (same personal signing key); confirm tasks,
+   reminders, saved M3A briefs and settings survive the Room 4 → 5 migration.
+2. Run benchmark A (supplements) in Thorough and Deep with a personal key; check: four requirements
+   with a status each, four reviewable proposals, label-vs-review-vs-judgment tags, no dose chosen,
+   overlap callout, nothing written before Apply.
+3. Run benchmark B (fragrance gift, up to $150, US): distinct candidates with variants/sizes, confirmed
+   prices with retailer and time, excluded listings, hero for an unknown taste, re-rank chips.
+4. Compare the AI usage dashboard totals with the Anthropic Console for the same day; note deltas and
+   re-fit the per-search token estimate.
+5. Exercise Stop keep/discard, a soft spending limit, a continuation and process death mid-run on a
+   phone; confirm no re-sent request and an Interrupted ledger row.
+6. Dark mode and 1.3/2.0 font scales on the device (emulator screenshots cover them in CI).
+
+## Risks
+
+- Contract drift: a model that ignores the block headings yields a free-form answer with citations and
+  "Not found" for every requirement — honest but thin; the prompt and parser are lenient, and the
+  benchmarks are fixtures, not live transcripts.
+- Multi-stage cost without visible benefit: stages are skipped when nothing is open; every skipped or run
+  stage is listed under "How this was researched".
+- Deep mode's write-up stage may rephrase evidence; it can only cite existing source ids, and any
+  uncited "Fact" is downgraded.
+- Robolectric cannot stream; progress is per call. The emulator tour covers the layouts, not timing.

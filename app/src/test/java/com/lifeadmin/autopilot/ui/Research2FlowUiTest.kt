@@ -191,6 +191,7 @@ class Research2FlowUiTest {
         // Proposals: one per requested item (+ the user's own), sourced steps ticked, research-later unticked, duplicate flagged with Add anyway.
         compose.onNodeWithTag("brief_review").assertIsEnabled().performClick()
         waitFor("apply_list")
+        waitFor("apply_confirm")
         // Rows below the fold aren't composed yet: take the proposal list from the saved session and visit each row.
         val saved = runBlocking { container.sessionRepository.getForTask(taskId) }.single()
         val proposals = saved.content.proposals

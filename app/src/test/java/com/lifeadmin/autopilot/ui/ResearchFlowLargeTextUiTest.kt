@@ -97,6 +97,7 @@ class ResearchFlowLargeTextUiTest {
         compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("source_sheet")).fetchSemanticsNodes().isEmpty() }
         compose.onNodeWithTag("brief_review").assertIsEnabled().performClick()
         waitFor("apply_list")
+        waitFor("apply_confirm")
         compose.onNodeWithTag("apply_confirm").assertIsEnabled().performClick()
         waitFor("apply_result")
         compose.onNodeWithTag("apply_done").performClick()
