@@ -14,7 +14,9 @@ import com.lifeadmin.autopilot.LifeAdminApp
 import com.lifeadmin.autopilot.data.repository.NewTask
 import com.lifeadmin.autopilot.di.AppContainer
 import com.lifeadmin.autopilot.domain.model.ReminderKind
+import com.lifeadmin.autopilot.domain.model.SnoozePreset
 import com.lifeadmin.autopilot.domain.model.TaskStatus
+import com.lifeadmin.autopilot.domain.scheduling.SnoozeCalculator
 import com.lifeadmin.autopilot.notifications.AndroidNotificationPublisher
 import com.lifeadmin.autopilot.receivers.NotificationActionReceiver
 import com.lifeadmin.autopilot.receivers.ReminderAlarmReceiver
@@ -30,6 +32,7 @@ import org.junit.runner.RunWith
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.shadows.ShadowAlarmManager
 import java.time.Duration
+import java.time.format.DateTimeFormatter
 
 /**
  * End-to-end through the real Android adapters (Robolectric shadows): AlarmManager scheduling,
@@ -75,6 +78,20 @@ class AndroidIntegrationTest {
 
     private fun scheduledAlarms(): List<ShadowAlarmManager.ScheduledAlarm> = shadowOf(alarmManager).scheduledAlarms
 
+    /**
+     * Mirrors ReminderEngine.snoozeLabel for the default preset on the real clock: before 05:00
+     * "tomorrow morning" is today's 09:00 and the label drops the "tomorrow" (CI run #50 failed at
+     * 00:04 UTC on the literal "tomorrow 09:00").
+     */
+    private fun expectedSnoozeTitle(): String {
+        val now = container.clock.now()
+        val zone = container.zoneProvider.current()
+        val target = SnoozeCalculator.target(SnoozePreset.TOMORROW_MORNING, now, zone).atZone(zone)
+        val time = target.toLocalTime().format(DateTimeFormatter.ofPattern("HH:mm"))
+        val label = if (target.toLocalDate() == now.atZone(zone).toLocalDate()) time else "tomorrow $time"
+        return "Snooze · $label"
+    }
+
     /** Task with a one-time reminder 20 s from now, so firing "now" is on time for the engine. */
     private fun taskDueNow(title: String): String = runBlocking {
         val id = container.taskRepository.createTask(NewTask(title, status = TaskStatus.ACTIONABLE))
@@ -103,7 +120,7 @@ class AndroidIntegrationTest {
         val n = shadowOf(notificationManager).allNotifications.single()
         assertEquals(AndroidNotificationPublisher.CHANNEL_REMINDERS, n.channelId)
         // The Snooze action names where it lands (the default preset is "tomorrow morning").
-        assertEquals(listOf("Done", "Snooze · tomorrow 09:00", "Open"), n.actions.map { it.title.toString() })
+        assertEquals(listOf("Done", expectedSnoozeTitle(), "Open"), n.actions.map { it.title.toString() })
         assertNotNull(n.contentIntent)
         assertTrue("one-time reminder consumed", scheduledAlarms().isEmpty())
 
