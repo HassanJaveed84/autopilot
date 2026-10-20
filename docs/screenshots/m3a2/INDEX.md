@@ -1,6 +1,6 @@
 # M3A.2 deep research screens
 
-Captured by `ScreenshotTourResearch2` on the CI emulator (API 34, 411 dp phone, run 39499637962 on head `bb0da9b`) with a
+Captured by `ScreenshotTourResearch2` on the CI emulator (API 34, 411 dp phone, run 39510057310 on head `00059c3`) with a
 scripted call provider: no network, no API key, all sources are fictional `.example` pages and every figure is a
 fixture. Light and dark at font 1.0 are committed here; the font 1.3 and 2.0 sets are CI artifacts of the same run
 (see `docs/M3A2_IMPLEMENTATION_REPORT.md`).

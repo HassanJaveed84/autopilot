@@ -278,7 +278,17 @@ thousand, dozen); currencies other than USD/GBP/EUR/CAD/AUD compare as plain wor
 
 Local validation of this head: `./gradlew --offline lintDebug testDebugUnitTest assembleDebug assembleRelease
 assembleDebugAndroidTest` → BUILD SUCCESSFUL (7 m 14 s), lint "No issues found", **514 tests, 0 failures**,
-debug 29.9 MB / release 4.3 MB / androidTest 1.2 MB. CI for this head: see the table below once complete.
+debug 29.9 MB / release 4.3 MB / androidTest 1.2 MB.
+
+CI, head `00059c3`:
+
+| Workflow / job | Run | Result |
+|---|---|---|
+| Android CI · Lint, unit/Robolectric tests, APKs (push) | [39510062243](https://github.com/HassanJaveed84/autopilot/actions/runs/39510062243) | ✅ lint "No issues found"; **514 tests, 0 failures, 0 ignored**; `apks` artifact 32.9 MB |
+| Android CI · Instrumented tests (emulator API 34) (push) | 39510062243 | ✅ **17 tests on emulator-5554, BUILD SUCCESSFUL** |
+| Android CI · Lint, unit/Robolectric tests, APKs (pull_request) | [39510057311](https://github.com/HassanJaveed84/autopilot/actions/runs/39510057311) | ✅ same totals |
+| Android CI · Instrumented tests (pull_request) | 39510057311 | ❌ **infrastructure, again**: `sdkmanager` "Error on ZipFile unknown archive" for the API 34 system image; the emulator never started and no test ran (same signature as run 39486127724 on `8876815`). The same job passed on the same commit in the push run. A re-run was attempted and refused by GitHub for the session's token ("Resource not accessible by integration"). |
+| Screenshots · from request file (run 6) | [39510057310](https://github.com/HassanJaveed84/autopilot/actions/runs/39510057310) | ✅ 4/4 variants, 32 screens each; light/dark 1.0 committed under `docs/screenshots/m3a2/` |
 
 ### Validation (hardening)
 
