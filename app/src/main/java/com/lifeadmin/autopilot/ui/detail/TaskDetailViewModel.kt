@@ -21,7 +21,11 @@ import com.lifeadmin.autopilot.domain.usecase.TaskActions
 import com.lifeadmin.autopilot.ui.tickerFlow
 import com.lifeadmin.autopilot.ui.userMessage
 import kotlinx.coroutines.channels.Channel
+import com.lifeadmin.autopilot.ai.research.ResearchRunState
+import com.lifeadmin.autopilot.data.repository.ResearchBrief
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -41,6 +45,12 @@ data class TaskDetailUiState(
     val zone: ZoneId = ZoneId.systemDefault(),
     /** Deterministic "this seems stuck" hint (never AI, never a background call). */
     val stallHint: StallHint? = null,
+    /** Saved research briefs for this task, newest first (M3). */
+    val briefs: List<ResearchBrief> = emptyList(),
+    /** True while a research run for this task is in flight. */
+    val researching: Boolean = false,
+    val researchRunId: String? = null,
+    val researchQuestion: String? = null,
 )
 
 sealed interface DetailEvent {
@@ -57,18 +67,26 @@ class TaskDetailViewModel(
     private val clock: AppClock,
     private val zoneProvider: ZoneProvider,
     private val hintDismissals: HintDismissals = InMemoryHintDismissals(),
+    researchBriefs: Flow<List<ResearchBrief>> = flowOf(emptyList()),
+    researchRun: Flow<ResearchRunState> = flowOf(ResearchRunState.Idle),
 ) : ViewModel() {
     private val dismissedTick = kotlinx.coroutines.flow.MutableStateFlow(0)
 
     private val events = Channel<DetailEvent>(Channel.BUFFERED)
     val eventFlow: Flow<DetailEvent> = events.receiveAsFlow()
 
+    private val research = combine(researchBriefs.catch { emit(emptyList()) }, researchRun) { b, r -> b to r }
+
     val state: StateFlow<TaskDetailUiState> = combine(
-        repository.observeDetails(taskId), settings.settings, tickerFlow(clock), dismissedTick,
-    ) { d, s, now, _ ->
+        repository.observeDetails(taskId), settings.settings, tickerFlow(clock), dismissedTick, research,
+    ) { d, s, now, _, (briefs, run) ->
         val zone = zoneProvider.current()
         val hint = d?.let { StallDetector.detect(it, now, zone) }?.takeUnless { hintDismissals.isDismissed(taskId, it.signature) }
-        TaskDetailUiState(loading = false, missing = d == null, details = d, settings = s, now = now, zone = zone, stallHint = hint)
+        val running = (run as? ResearchRunState.Running)?.takeIf { it.taskId == taskId }
+        TaskDetailUiState(
+            loading = false, missing = d == null, details = d, settings = s, now = now, zone = zone, stallHint = hint,
+            briefs = briefs, researching = running != null, researchRunId = running?.runId, researchQuestion = running?.question,
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TaskDetailUiState())
 
     fun dismissHint(hint: StallHint) {

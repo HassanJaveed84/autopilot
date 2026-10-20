@@ -1,10 +1,14 @@
 package com.lifeadmin.autopilot.data.repository
 
 import androidx.room.withTransaction
+import com.lifeadmin.autopilot.ai.research.AppliedMove
+import com.lifeadmin.autopilot.ai.research.BriefContent
+import com.lifeadmin.autopilot.ai.research.ResearchConfig
 import com.lifeadmin.autopilot.core.AppClock
 import com.lifeadmin.autopilot.core.IdGenerator
 import com.lifeadmin.autopilot.data.local.AppDatabase
 import com.lifeadmin.autopilot.data.local.ReminderPolicyEntity
+import com.lifeadmin.autopilot.data.local.ResearchBriefEntity
 import com.lifeadmin.autopilot.data.local.ReminderTimeSlotEntity
 import com.lifeadmin.autopilot.data.local.TaskEntity
 import com.lifeadmin.autopilot.data.local.TaskEventEntity
@@ -35,6 +39,8 @@ data class BackupFile(
     val steps: List<StepDto> = emptyList(),
     val policies: List<PolicyDto> = emptyList(),
     val events: List<EventDto> = emptyList(),
+    /** Saved research briefs (M3). Older app versions ignore this field. */
+    val research: List<ResearchBriefDto> = emptyList(),
 ) {
     companion object {
         const val FORMAT = "life-admin-autopilot-backup"
@@ -65,6 +71,13 @@ data class PolicyDto(
 @Serializable
 data class EventDto(val id: String, val taskId: String, val at: String, val type: String, val summary: String, val metadata: Map<String, String> = emptyMap())
 
+/** A research brief as exported: the parsed brief only — never the transcript, request or key. */
+@Serializable
+data class ResearchBriefDto(
+    val id: String, val taskId: String, val createdAt: String, val question: String, val model: String, val status: String,
+    val searchCount: Int, val sourceCount: Int, val content: BriefContent, val applied: List<AppliedMove> = emptyList(),
+)
+
 data class ImportResult(val created: Int, val updated: Int, val skipped: Int)
 
 class ImportException(message: String) : Exception(message)
@@ -81,7 +94,8 @@ class BackupRepository(
     /** Hook for the database→alarms reconciliation after a successful import. */
     private val afterImport: suspend () -> Unit = {},
 ) {
-    private val json = Json { prettyPrint = true; ignoreUnknownKeys = true; encodeDefaults = true }
+    private val json = Json { prettyPrint = true; ignoreUnknownKeys = true; encodeDefaults = true; classDiscriminator = "kind" }
+    private val briefJson = Json { ignoreUnknownKeys = true; encodeDefaults = true; classDiscriminator = "kind" }
 
     suspend fun exportJson(): String {
         val file = db.withTransaction {
@@ -95,6 +109,7 @@ class BackupRepository(
                 events = db.eventDao().getAll().map {
                     EventDto(it.id, it.taskId, it.at.toString(), it.eventType.name, it.summary, com.lifeadmin.autopilot.data.local.decodeMetadata(it.structuredMetadata))
                 },
+                research = db.researchDao().getAll().mapNotNull { it.toDto() },
             )
         }
         return json.encodeToString(BackupFile.serializer(), file)
@@ -134,12 +149,13 @@ class BackupRepository(
         val steps: List<TaskStepEntity>,
         val policies: List<Pair<ReminderPolicyEntity, List<LocalTime>>>,
         val events: List<TaskEventEntity>,
+        val research: List<ResearchBriefEntity>,
     )
 
     private fun validate(f: BackupFile): Validated {
         if (f.format != BackupFile.FORMAT) throw ImportException("Unrecognized file format")
         if (f.schemaVersion !in 1..BackupFile.SCHEMA_VERSION) throw ImportException("Backup was made by a newer app version (schema ${f.schemaVersion})")
-        if (f.tasks.size > MAX_TASKS || f.steps.size > MAX_STEPS || f.events.size > MAX_EVENTS || f.policies.size > MAX_TASKS) {
+        if (f.tasks.size > MAX_TASKS || f.steps.size > MAX_STEPS || f.events.size > MAX_EVENTS || f.policies.size > MAX_TASKS || f.research.size > MAX_BRIEFS) {
             throw ImportException("Backup has too many records")
         }
         fun id(v: String, what: String): String {
@@ -152,6 +168,7 @@ class BackupRepository(
         fun unique(list: List<String>, what: String) { if (list.size != list.toSet().size) throw ImportException("Duplicate $what ids") }
 
         unique(f.tasks.map { it.id }, "task"); unique(f.steps.map { it.id }, "step"); unique(f.policies.map { it.id }, "policy"); unique(f.events.map { it.id }, "event")
+        unique(f.research.map { it.id }, "research brief")
         val taskIds = f.tasks.map { id(it.id, "task") }.toSet()
         if (f.policies.map { it.taskId }.toSet().size != f.policies.size) throw ImportException("More than one reminder policy for a task")
 
@@ -210,7 +227,19 @@ class BackupRepository(
                 e.summary.take(TaskRepository.MAX_SUMMARY), encodeMetadata(e.metadata.entries.take(20).associate { it.key.take(40) to it.value.take(200) }),
             )
         }
-        return Validated(tasks, steps, policies, events)
+        val research = f.research.map { b ->
+            id(b.id, "research brief")
+            if (b.taskId !in taskIds) throw ImportException("Research brief refers to a missing task")
+            if (b.status !in BRIEF_STATUSES) throw ImportException("Invalid research brief status")
+            val payload = briefJson.encodeToString(BriefContent.serializer(), b.content)
+            if (payload.length > ResearchConfig.MAX_PAYLOAD_BYTES * 2) throw ImportException("Research brief too large")
+            ResearchBriefEntity(
+                id = b.id, taskId = b.taskId, createdAt = reqInstant(b.createdAt, "research"), question = b.question.take(ResearchConfig.MAX_QUESTION_CHARS),
+                model = b.model.take(80), status = b.status, searchCount = b.searchCount.coerceIn(0, 1000), sourceCount = b.sourceCount.coerceIn(0, 1000),
+                payload = payload, applied = briefJson.encodeToString(kotlinx.serialization.builtins.ListSerializer(AppliedMove.serializer()), b.applied.take(50)),
+            )
+        }
+        return Validated(tasks, steps, policies, events, research)
     }
 
     private suspend fun write(v: Validated): ImportResult {
@@ -245,6 +274,9 @@ class BackupRepository(
         for (taskId in accepted) {
             db.eventDao().insert(TaskEventEntity(ids.newId(), taskId, now, EventType.IMPORTED, "Imported from backup", null))
         }
+        // Briefs are append-only records: restore every one whose task exists locally (idempotent by id).
+        val present = db.taskDao().getAll().map { it.id }.toSet()
+        for (brief in v.research) if (brief.taskId in present) db.researchDao().upsert(brief)
         return ImportResult(created, updated, skipped)
     }
 
@@ -253,6 +285,14 @@ class BackupRepository(
         deadlineType.name, deadlineLocalDate?.toString(), deadlineInstant?.toString(), deadlineZoneId, snoozedUntil?.toString(), snoozeRemindAtEnd,
         waitingReason, waitingCheckInAt?.toString(),
     )
+
+    private fun ResearchBriefEntity.toDto(): ResearchBriefDto? = runCatching {
+        ResearchBriefDto(
+            id, taskId, createdAt.toString(), question, model, status, searchCount, sourceCount,
+            briefJson.decodeFromString(BriefContent.serializer(), payload),
+            runCatching { briefJson.decodeFromString(kotlinx.serialization.builtins.ListSerializer(AppliedMove.serializer()), applied) }.getOrDefault(emptyList()),
+        )
+    }.getOrNull()
 
     private fun ReminderPolicyEntity.toDto(slots: List<ReminderTimeSlotEntity>) = PolicyDto(
         id, taskId, enabled, kind.name, startLocalDate?.toString(), zoneMode.name, zoneId, dayInterval, quietHoursBehavior?.name,
@@ -264,6 +304,8 @@ class BackupRepository(
         const val MAX_TASKS = 5_000
         const val MAX_STEPS = 50_000
         const val MAX_EVENTS = 200_000
+        const val MAX_BRIEFS = 20_000
+        private val BRIEF_STATUSES = setOf("VERIFIED", "UNVERIFIED", "TRUNCATED")
         private val ID_PATTERN = Regex("^[A-Za-z0-9_-]{1,64}$")
     }
 }

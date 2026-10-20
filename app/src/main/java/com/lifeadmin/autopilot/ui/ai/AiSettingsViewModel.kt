@@ -29,6 +29,10 @@ data class AiSettingsState(
     val testResult: String? = null,
     val testOk: Boolean = false,
     val message: String? = null,
+    /** Web research (M3): today's count, saved briefs, whether the one-time note was accepted. */
+    val researchToday: Int = 0,
+    val briefCount: Int = 0,
+    val researchExplainerAccepted: Boolean = false,
 )
 
 class AiSettingsViewModel(
@@ -36,6 +40,8 @@ class AiSettingsViewModel(
     private val keyStore: ApiKeyStore,
     private val service: AiPlanningService,
     private val clock: AppClock,
+    private val research: com.lifeadmin.autopilot.ai.research.ResearchService? = null,
+    private val briefs: com.lifeadmin.autopilot.data.repository.ResearchRepository? = null,
 ) : ViewModel() {
     private val _state = MutableStateFlow(AiSettingsState())
     val state: StateFlow<AiSettingsState> = _state.asStateFlow()
@@ -49,8 +55,18 @@ class AiSettingsViewModel(
             it.copy(
                 loading = false, enabled = s.aiEnabled, consentAt = s.aiConsentAt, hasKey = has, keyHint = hint,
                 model = AiConfig.modelOrDefault(s.aiModel), requestsToday = service.requestsToday(),
+                researchToday = research?.requestsToday(s) ?: 0,
+                briefCount = briefs?.getAll()?.size ?: 0,
+                researchExplainerAccepted = s.researchExplainerVersion >= com.lifeadmin.autopilot.ai.research.ResearchConfig.EXPLAINER_VERSION,
             )
         }
+    }
+
+    /** "Delete all research": every saved brief plus the one-time note acceptance. Tasks are untouched. */
+    fun deleteAllResearch() = viewModelScope.launch {
+        research?.deleteAllResearch()
+        _state.update { it.copy(message = "All research briefs were deleted. Your tasks are unchanged.") }
+        refresh()
     }
 
     /** Turning on requires the privacy disclosure to have been accepted (handled by the screen). */
@@ -84,6 +100,7 @@ class AiSettingsViewModel(
 
     fun deleteKey() = viewModelScope.launch {
         withContext(Dispatchers.IO) { keyStore.delete() }
+        research?.forgetCredentials()
         _state.update { it.copy(testResult = null, message = "API key deleted from this device") }
         refresh()
     }
@@ -101,6 +118,7 @@ class AiSettingsViewModel(
 
     fun deleteAllAiData() = viewModelScope.launch {
         service.deleteAllAiData()
+        research?.forgetCredentials()
         _state.update { it.copy(testResult = null, message = "AI settings and the API key were deleted. Your tasks are unchanged.") }
         refresh()
     }

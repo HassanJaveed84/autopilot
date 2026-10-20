@@ -8,6 +8,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.lifeadmin.autopilot.data.local.AppDatabase
 import com.lifeadmin.autopilot.data.local.Migrations
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -116,6 +117,36 @@ class MigrationTest {
         assertEquals(0, room.diagnosticDao().count())
         room.diagnosticDao().insert(com.lifeadmin.autopilot.data.local.ReminderDiagnosticEntity("d1", java.time.Instant.EPOCH, "SCHEDULED", "o1", "t1", null, null, "test", false, null, null, null))
         assertEquals(1, room.diagnosticDao().count())
+        room.close()
+        context.deleteDatabase(name)
+    }
+
+    @Test fun migrateV3ToV4AddsResearchBriefsAndKeepsData() = runTest {
+        context.deleteDatabase(name)
+        val file = context.getDatabasePath(name).also { it.parentFile?.mkdirs() }
+        SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+            schemaStatements(3).forEach(db::execSQL)
+            db.execSQL(
+                "INSERT INTO tasks (id,title,notes,status,priority,createdAt,updatedAt,completedAt,archivedAt,deadlineType,deadlineLocalDate,deadlineInstant,deadlineZoneId,snoozedUntil,snoozeRemindAtEnd,waitingReason,waitingCheckInAt) " +
+                    "VALUES ('t1','Book train ride',NULL,'ACTIONABLE','NORMAL',1,1,NULL,NULL,'NONE',NULL,NULL,NULL,NULL,1,NULL,NULL)",
+            )
+            db.execSQL("INSERT INTO task_steps (id,taskId,sortOrder,title,isDone,completedAt) VALUES ('s1','t1',0,'Find dates',0,NULL)")
+            db.version = 3
+        }
+        val room = Room.databaseBuilder(context, AppDatabase::class.java, name)
+            .addMigrations(*Migrations.ALL)
+            .setQueryCoroutineContext(Dispatchers.IO)
+            .build()
+        assertEquals("Book train ride", room.taskDao().get("t1")!!.title)
+        assertEquals(listOf("Find dates"), room.stepDao().getForTask("t1").map { it.title })
+        assertEquals(0, room.researchDao().observeCount().first())
+        room.researchDao().upsert(
+            com.lifeadmin.autopilot.data.local.ResearchBriefEntity("b1", "t1", java.time.Instant.EPOCH, "q", "claude-haiku-5-5", "VERIFIED", 1, 1, "{}", "[]"),
+        )
+        assertEquals(1, room.researchDao().getForTask("t1").size)
+        // Cascade from the new foreign key.
+        room.taskDao().delete("t1")
+        assertEquals(0, room.researchDao().observeCount().first())
         room.close()
         context.deleteDatabase(name)
     }

@@ -74,6 +74,24 @@ ReconcileWorker (WorkManager, 1 h) ── engine.reconcileAll + ledger prune
   personal experiments): a public release would need an authenticated server-side proxy.
 - See `docs/M2_AI_CAPTURE_REPORT.md` for details, tests and device steps.
 
+## M3: consented web research (implemented)
+
+- `ai/research`: `ResearchConfig` (caps), `ResearchRequest`/`ResearchScope` (exactly what leaves the
+  device), `ResearchProvider` (seam), `BriefParser` (provenance from structured citations only),
+  `ResearchService` (gating, daily cap reserved before sending, one app-scoped run, Stop) and
+  `ResearchActions` (selected moves → one `TaskEditCommand`, applied through the same transactional,
+  idempotent path as AI planning; Undo only while the task is exactly as the apply left it).
+- `ai/anthropic/AnthropicResearchProvider`: the only place that knows the SDK's web-search types.
+  Requests `web_search_20250305` with `max_uses`, no `user_location`; continues `pause_turn` once
+  within the same budget; reads `server_tool_use` / `web_search_tool_result` / cited text blocks.
+- Persistence: Room v4 `research_briefs` (parsed brief as JSON, applied moves, status), cascade on
+  task delete, pruned to 20 per task, payload size cap; included in backups as typed content.
+- UI: `ui/research` (preflight + explainer, progress, brief + source sheet, apply, history); task
+  detail gains two "Move this forward" tiles and a Research card. No SDK type reaches Compose.
+- Guardrails: research is user-triggered only (no WorkManager, no receiver, no startup call); web
+  text is data (injection-looking lines never become moves); links go through `Sources.safeExternalUrl`
+  and `ACTION_VIEW`, never a WebView; reminders/status/deadlines are never written by research.
+
 ## Extension points for later milestones (not implemented)
 
 - M3 agents (research, email/calendar) would reuse the proposal → review → command pattern with

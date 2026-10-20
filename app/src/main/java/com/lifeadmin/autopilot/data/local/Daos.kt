@@ -217,3 +217,39 @@ interface DiagnosticDao {
     @Query("DELETE FROM reminder_diagnostics WHERE id NOT IN (SELECT id FROM reminder_diagnostics ORDER BY at DESC, id DESC LIMIT :keep)")
     suspend fun trimTo(keep: Int): Int
 }
+
+@Dao
+interface ResearchBriefDao {
+    @Query("SELECT * FROM research_briefs WHERE taskId = :taskId ORDER BY createdAt DESC")
+    fun observeForTask(taskId: String): Flow<List<ResearchBriefEntity>>
+
+    @Query("SELECT * FROM research_briefs WHERE taskId = :taskId ORDER BY createdAt DESC")
+    suspend fun getForTask(taskId: String): List<ResearchBriefEntity>
+
+    @Query("SELECT * FROM research_briefs WHERE id = :id")
+    suspend fun get(id: String): ResearchBriefEntity?
+
+    @Query("SELECT * FROM research_briefs WHERE id = :id")
+    fun observe(id: String): Flow<ResearchBriefEntity?>
+
+    @Query("SELECT * FROM research_briefs ORDER BY createdAt DESC")
+    suspend fun getAll(): List<ResearchBriefEntity>
+
+    @Query("SELECT COUNT(*) FROM research_briefs")
+    fun observeCount(): Flow<Int>
+
+    @Upsert
+    suspend fun upsert(brief: ResearchBriefEntity)
+
+    @Query("UPDATE research_briefs SET applied = :applied WHERE id = :id")
+    suspend fun updateApplied(id: String, applied: String)
+
+    @Query("DELETE FROM research_briefs WHERE id = :id")
+    suspend fun delete(id: String)
+
+    @Query("DELETE FROM research_briefs WHERE taskId = :taskId")
+    suspend fun deleteForTask(taskId: String)
+
+    @Query("DELETE FROM research_briefs")
+    suspend fun deleteAll()
+}

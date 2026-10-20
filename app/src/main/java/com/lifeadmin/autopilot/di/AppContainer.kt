@@ -7,7 +7,11 @@ import com.lifeadmin.autopilot.ai.AiPlanningService
 import com.lifeadmin.autopilot.ai.AndroidNetworkStatus
 import com.lifeadmin.autopilot.ai.NetworkStatus
 import com.lifeadmin.autopilot.ai.TaskPlanningProvider
+import com.lifeadmin.autopilot.ai.anthropic.AnthropicResearchProvider
 import com.lifeadmin.autopilot.ai.anthropic.AnthropicTaskPlanningProvider
+import com.lifeadmin.autopilot.ai.research.ResearchActions
+import com.lifeadmin.autopilot.ai.research.ResearchProvider
+import com.lifeadmin.autopilot.ai.research.ResearchService
 import com.lifeadmin.autopilot.ai.security.ApiKeyStore
 import com.lifeadmin.autopilot.ai.security.EncryptedApiKeyStore
 import com.lifeadmin.autopilot.domain.usecase.HintDismissals
@@ -18,6 +22,7 @@ import com.lifeadmin.autopilot.core.ZoneProvider
 import com.lifeadmin.autopilot.data.local.AppDatabase
 import com.lifeadmin.autopilot.data.repository.BackupRepository
 import com.lifeadmin.autopilot.data.repository.DataStoreSettingsRepository
+import com.lifeadmin.autopilot.data.repository.ResearchRepository
 import com.lifeadmin.autopilot.data.repository.SettingsRepository
 import com.lifeadmin.autopilot.data.repository.TaskRepository
 import com.lifeadmin.autopilot.data.repository.settingsDataStore
@@ -54,6 +59,7 @@ class AppContainer(
     val environmentProbe: EnvironmentProbe = AndroidEnvironmentProbe(context, alarmDriver),
     val apiKeyStore: ApiKeyStore = EncryptedApiKeyStore(context),
     val planningProvider: TaskPlanningProvider = AnthropicTaskPlanningProvider(),
+    val researchProvider: ResearchProvider = AnthropicResearchProvider(),
     val networkStatus: NetworkStatus = AndroidNetworkStatus(context),
     val hintDismissals: HintDismissals = SharedPrefsHintDismissals(context),
 ) {
@@ -77,6 +83,18 @@ class AppContainer(
     val aiPlanning: AiPlanningService = AiPlanningService(
         settingsRepository, apiKeyStore, planningProvider, taskRepository, clock, zoneProvider, ids, networkStatus,
     )
+
+    /** Saved research briefs (M3); readable offline. */
+    val researchRepository: ResearchRepository = ResearchRepository(database, clock, ids)
+
+    /** Consented web research (M3). One run at a time, in app scope so it survives navigation. */
+    val research: ResearchService = ResearchService(
+        settingsRepository, apiKeyStore, aiPlanning, researchProvider, taskRepository, researchRepository,
+        clock, zoneProvider, ids, appScope, networkStatus,
+    )
+
+    /** Applies user-selected research moves through the transactional, idempotent edit path. */
+    val researchActions: ResearchActions = ResearchActions(taskRepository, researchRepository, clock)
 
     val backupRepository: BackupRepository = BackupRepository(
         database, clock, ids, BuildConfig.VERSION_NAME,

@@ -143,6 +143,29 @@ use a server-side proxy instead. Default model: Claude Haiku 5.5 (cheapest). Son
 Opus 5.5 are selectable. Limits: 2,000 characters per request, 6,000 output tokens, 60 requests
 per day, no automatic retries. **Delete AI settings** removes the key and all AI settings.
 
+### Optional web research (M3, bring your own key)
+
+On a task, **Move this forward → Research online** asks Claude to search the web (Anthropic's
+`web_search` server tool) and write a short brief: a quick answer with numbered citations, next
+moves you can add to the task, findings labelled by where they came from (sourced / sources
+disagree / couldn't confirm / Claude's suggestion), the sources, and a log of what was searched.
+
+- You start every request from a preflight that shows exactly what is sent (your question, and
+  by choice the task title, notes, steps, today's date and language). Nothing else about you is
+  sent; your location is never read. A one-time note explains the extra cost before the first run.
+- Caps: 3 web searches per request, 10 research requests per day (separate from planning's 60),
+  no automatic retries, nothing in the background. Anthropic bills searches on top of tokens; the
+  app shows counts, never prices.
+- Briefs are saved with the task, open offline and with AI off, and are included in backups
+  (never transcripts or the key). Deleting research keeps steps you already added.
+- Only structured citations from the API become sources. A URL the model merely writes in text is
+  removed and the sentence is labelled a suggestion. Links open in your browser, never inside the app.
+- Research never changes reminders, status, priority or deadlines. Steps and notes change only when
+  you review and tap Apply; Undo is offered while the task is unchanged since.
+
+Live verification against the real API with a personal key is pending (see
+`docs/M3_RESEARCH_REPORT.md`); everything is tested against fakes and a local MockWebServer.
+
 ## Limitations (honest)
 
 - Default delivery is **best-effort**: Android may delay alarms by minutes, more in Doze or

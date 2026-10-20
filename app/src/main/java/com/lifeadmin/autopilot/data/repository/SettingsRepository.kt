@@ -64,6 +64,9 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
             aiModel = this[AI_MODEL] ?: d.aiModel,
             aiUsageDay = this[AI_USAGE_DAY] ?: d.aiUsageDay,
             aiUsageCount = this[AI_USAGE_COUNT] ?: d.aiUsageCount,
+            researchExplainerVersion = this[RESEARCH_EXPLAINER] ?: d.researchExplainerVersion,
+            researchUsageDay = this[RESEARCH_USAGE_DAY] ?: d.researchUsageDay,
+            researchUsageCount = this[RESEARCH_USAGE_COUNT] ?: d.researchUsageCount,
             lastReconcileAt = this[LAST_RECONCILE]?.let(Instant::ofEpochMilli),
             lastReconcileSummary = this[LAST_RECONCILE_SUMMARY],
             appearance = enumOr(this[APPEARANCE], d.appearance),
@@ -90,6 +93,9 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         this[AI_MODEL] = s.aiModel
         this[AI_USAGE_DAY] = s.aiUsageDay
         this[AI_USAGE_COUNT] = s.aiUsageCount
+        this[RESEARCH_EXPLAINER] = s.researchExplainerVersion
+        this[RESEARCH_USAGE_DAY] = s.researchUsageDay
+        this[RESEARCH_USAGE_COUNT] = s.researchUsageCount
         s.lastReconcileAt?.let { this[LAST_RECONCILE] = it.toEpochMilli() } ?: remove(LAST_RECONCILE)
         s.lastReconcileSummary?.let { this[LAST_RECONCILE_SUMMARY] = it } ?: remove(LAST_RECONCILE_SUMMARY)
         this[APPEARANCE] = s.appearance.name
@@ -118,6 +124,9 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         private val AI_CONSENT_AT = longPreferencesKey("ai_consent_at")
         private val AI_MODEL = stringPreferencesKey("ai_model")
         private val AI_USAGE_DAY = stringPreferencesKey("ai_usage_day")
+        private val RESEARCH_EXPLAINER = intPreferencesKey("research_explainer_version")
+        private val RESEARCH_USAGE_DAY = stringPreferencesKey("research_usage_day")
+        private val RESEARCH_USAGE_COUNT = intPreferencesKey("research_usage_count")
         private val AI_USAGE_COUNT = intPreferencesKey("ai_usage_count")
         private val APPEARANCE = stringPreferencesKey("appearance")
 
