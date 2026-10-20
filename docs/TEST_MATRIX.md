@@ -163,5 +163,5 @@ All provider tests use fakes or a local MockWebServer. **No test calls the live 
 | UI end to end (Robolectric): tile → preflight (requirements edit, template, modes, Adjust, estimate) → explainer → investigation → result C/B (coverage, item cards, callouts, hero, re-rank, compare, excluded, conflict) → proposals (edit, Add anyway, apply, undo) → usage dashboard; stop sheet; provider failure; offline + AI-off reading; continuation | `Research2FlowUiTest` | ✅ 6 tests (CI run 39486121354: 474/474) |
 | Whole M3A.2 flow at 200% text | `ResearchFlowLargeTextUiTest` | ✅ 1 test, fontScale 2.0 (fixed a real squeeze bug first) |
 | Legacy M3A briefs still readable/applicable | `ResearchFlowUiTest` (2 tests) | ✅ |
-| Screens in light/dark at 1.0/1.3/2.0 | `ScreenshotTourResearch2` (emulator, CI screenshot workflow) | ✅ run 39486121391: 4/4 variants, 32 screens each; light/dark 1.0 committed under `docs/screenshots/m3a2/` |
+| Screens in light/dark at 1.0/1.3/2.0 | `ScreenshotTourResearch2` (emulator, CI screenshot workflow) | ✅ runs 39486121391 and 39488460868: 4/4 variants, 32 screens each; light/dark 1.0 from the latter committed under `docs/screenshots/m3a2/` |
 | Live BYOK research against the real API | — | ⏳ pending (not run by the agent) |

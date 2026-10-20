@@ -108,10 +108,13 @@ Earlier heads on the branch, for the record:
   left the preflight list about 100 px tall, so the next scroll found no hierarchy. Fixed in `8876815`
   (tour dismisses the keyboard; the Start button also got a compact label at large text).
 
-The committed set under `docs/screenshots/m3a2/` (light and dark at 1.0, with `INDEX.md`) comes from run
-39486121391. The only UI change after that run is the Start button label at font 1.0, which now reads
-"Start · Thorough" instead of the truncated "Start · Thoroug…" visible in s04/s05; a fourth screenshot run
-was requested with that change.
+Head `a23586a` (report, committed screenshots, Start label): Android CI runs
+[39488460739](https://github.com/HassanJaveed84/autopilot/actions/runs/39488460739) and
+[39488469117](https://github.com/HassanJaveed84/autopilot/actions/runs/39488469117) — lint/unit/APKs ✅ and
+instrumented ✅ in both; screenshot run
+[39488460868](https://github.com/HassanJaveed84/autopilot/actions/runs/39488460868) ✅ 4/4 variants. The
+committed set under `docs/screenshots/m3a2/` (light and dark at 1.0, with `INDEX.md`) comes from that run,
+so it shows the code in the PR head.
 
 ## Delivery
 
