@@ -57,13 +57,20 @@ concepts, 30-state gallery, components, spec), `M3_DESIGN_INTEGRATION_HANDOFF.md
   large text, record uncaught exceptions in the artifact; one unexplained Compose teardown crash at
   font 2.0 on the emulator, not reproduced (see the report).
 
+- **F** (hardening, this pass): PR #4 retargeted to `main` (no conflicts: `main` = old base). Review
+  findings A–D verified first, then fixed with regression tests — citation counting once per cited
+  block; *Official* only for government domains; task edit + research bookkeeping in one
+  transaction (apply and undo); delete-all / delete-for-task cancel and await a running request.
+  Cached API client dropped when the key is deleted. Details and test names in
+  `docs/M3_RESEARCH_REPORT.md` → "Post-implementation hardening".
+
 ## Deliberate scope notes
 
 - Follow-up questions ("Ask · up to 3 more searches" extending the brief) are **not** built in M3A;
   "Research again with this question" opens a fresh preflight instead. The brief format leaves the
   section order intact for a later follow-up section.
-- Source tiers ship with the conservative rule set from the spec's open questions: *Official* only for
-  recognized government suffixes or a host containing the operator name the user typed; everything
-  else is *Web page*. No *Secondary*/*Community* claims.
+- Source tiers ship with the conservative rule set from the spec's open questions, tightened by the
+  hardening pass: *Official* only for recognized government domains on label boundaries; everything
+  else is *Web page*, whatever name the host carries. No *Secondary*/*Community* claims.
 - Deadlines: research never proposes a deadline; anything date-shaped arrives as a CHECK move.
 - Progress stages are not streamed; see the report for what the UI does and does not claim.

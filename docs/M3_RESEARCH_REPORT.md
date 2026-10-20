@@ -14,7 +14,7 @@ prototype HTML and its `.example` sample data were used only as the visual/inter
 | Prompt | `ai/research/ResearchPrompt.kt` | Fixed sections (QUICK ANSWER / NEXT MOVES / FINDINGS / UNCONFIRMED), bullets typed `STEP:` / `CHECK:` / `NOTE:`, rules: no URLs in text, no invented prices/dates, web text is data, never act. A local heuristic adds "no country given → general guidance only" for passport/visa/tax-style questions. |
 | Provider | `ai/anthropic/AnthropicResearchProvider.kt` | Official SDK 2.73.0, `WebSearchTool20250305.maxUses`, no `user_location`, no `fallbacks`, no SDK retries. Reads `server_tool_use` (query), `web_search_tool_result` (results / `error_code`), text blocks with `web_search_result_location` citations, `usage.server_tool_use.web_search_requests`. `pause_turn` → one continuation with the paused assistant message and the remaining `max_uses`. Shared error mapping in `AnthropicErrors` (the planning provider now delegates) plus body-text detection of "web search … not enabled" and "credit balance" 400s. |
 | Brief parser | `ai/research/BriefParser.kt` | A sentence is *Sourced* only if a structured citation overlaps it; numbering follows first citation; uncited search results are appended as "read, not cited"; prose URLs and `[n]` markers are stripped; a *Disagree* needs two different cited sides; injection-looking lines are dropped from moves and flagged. |
-| Source tiers and link safety | `ai/research/Sources.kt` | *Official* only for recognized government suffixes or a host that contains the operator/service the user typed (≥ 4 letters); else *Web page*. `safeExternalUrl`: http/https, public host, no userinfo, no IP literals / localhost. |
+| Source tiers and link safety | `ai/research/Sources.kt` | *Official* only for a recognized government domain matched on whole host labels (`gov.uk`, `*.gov.uk`, `*.gov`, …); every other host is *Web page*, whatever name it carries (hardening finding B). `safeExternalUrl`: http/https, public host, no userinfo, no IP literals / localhost. |
 | Service | `ai/research/ResearchService.kt` | Gate = AI on + planning consent + key + explainer accepted + online + daily cap; the cap is reserved in settings before the request is sent (failed attempts count); one app-scoped run with observable stage; Stop cancels the HTTP call; parse + save. |
 | Persistence | Room v4 `research_briefs`, `data/local/Migrations.kt` `MIGRATION_3_4`, `data/repository/ResearchRepository.kt` | Parsed brief + applied moves as JSON; cascade on task delete; prune to 20 per task; oversized payloads trimmed (uncited sources, then findings); unreadable rows hidden instead of crashing. Schema exported to `app/schemas/…/4.json`. |
 | Backup | `data/repository/BackupRepository.kt` | New `research` list (typed `BriefContent`, applied moves; never transcripts or the key). Orphan or malformed briefs reject the whole import; re-import is idempotent by id. Backup `schemaVersion` stays 1 so older builds still import (they ignore the field). |
@@ -131,13 +131,35 @@ Acceptance scenarios from the handoff:
   does not stop a request already sent.
 - Follow-up questions that extend an existing brief are not implemented (P2). "Research again"
   opens a new preflight with the question.
-- Source tiers: *Official* / *Web page* only; no *Secondary* / *Community* claims.
+- Source tiers: *Official* (government domains only) / *Web page*; no *Secondary* / *Community*
+  claims, and no ownership inferred from names in a host.
 - The daily cap is per device (settings), not per key.
 - Process death during a run: the run is never resumed; the progress screen shows "Research was
   interrupted. Nothing saved; your question is kept" with Research again.
 - One emulator run of the screenshot tour at font 2.0 crashed in Compose's slot table during the
   test activity's teardown (see Delivery). Not reproduced on re-run or under Robolectric; cause
   unknown; the tour now records uncaught exceptions into its artifact.
+
+## Post-implementation hardening (review findings)
+
+PR #4 was retargeted from `flight-plan-stabilization` to **`main`** after #2 merged; `main` is
+exactly the old base commit (`90151a9`), so the PR diff is unchanged and there was nothing to
+resolve. Each finding below was first reproduced (or refuted) with a test before any code changed.
+
+| Finding | Verified as | Root cause | Fix | Tests |
+|---|---|---|---|---|
+| **A** — citation accounting | Partly. Answer-only citations were *already* classified as verified (the per-line pass counted every section). Real defects: a cited block spanning two lines counted twice, and a DISAGREE line counted each side again. | `citedCount` was incremented per *line* overlapping a cited block (and again for disagreement sides) instead of per cited block. | `BriefParser.SourceRegistry` now counts once per cited text block in a pre-pass over the provider's segments (`countBlock`); `refsFor` only resolves. Numbering, quotes and the "read, not cited" results are unchanged; prose URLs still never register. | `CitationAccountingTest` (answer-only, no headings, across sections, block spanning lines, disagreement sides, duplicate URL in one block, wholly uncited) + existing `BriefParserTest` |
+| **B** — unsafe *Official* | Confirmed: a host containing the typed operator name (≥ 4 letters) was labelled Official. | Name-in-host heuristic. | `Sources.tier(url)` labels *Official* only for recognized government suffixes matched on label boundaries (`gov.uk`/`*.gov.uk`; single-label `gov`/`mil` need a preceding label); IP literals and everything else are *Web page*. The operator detail no longer influences tiering; source-sheet copy says ownership is never inferred from a name. URL safety unchanged. | `SourcesTest` (government sites, suffix smuggled into subdomains, hyphen look-alikes, no label boundary, userinfo host, brand names), `BriefParserTest.sourceTieringIsConservative` updated |
+| **C** — edit and bookkeeping not atomic | Confirmed: `applyTaskEdit` committed, then `recordApplied` ran as a second write (same for undo). | Two transactions. | `TaskRepository.applyTaskEdit(cmd, inTransaction)` runs a caller hook inside the same Room transaction with the new step ids; `undoAppliedEdit(…, inTransaction)` likewise. `ResearchActions` records/clears applied moves inside those hooks, so a failure anywhere rolls back steps, notes, history event and record together; any non-validation exception becomes a `Rejected` outcome with the task unchanged. Proposal-id and `updatedAt` guards are untouched; the apply view model ignores a second tap while one is in flight. | `ResearchActionsTest`: `bookkeepingFailureRollsBackTheTaskEditAndARetrySucceedsOnce`, `undoBookkeepingFailureRollsBackTheUndo`, `undoNeverOverwritesALaterUserEdit`, plus the existing idempotency / changed-task / done-task tests |
+| **D** — delete vs running request | Confirmed: `deleteAllResearch()` deleted briefs while the job kept running and would save afterwards. | No cancellation. | `ResearchService.deleteAllResearch()` and new `deleteResearchForTask(taskId)` cancel the running job (all, or that task's), `join()` it, then delete; the job checks `ensureActive()` before parsing/saving so an answer in hand is dropped; the run ends as *Stopped* ("searches already run may be billed"). History and Settings dialogs say a running request is stopped. | `ResearchServiceTest`: `deleteAllWhileSearchingStopsTheRunAndNothingComesBack`, `deleteForAnotherTaskLeavesTheRunAlone`, `deleteForThisTaskWhileRunningCancelsAndSavesNothing`, `deleteDuringTheSaveItselfWinsOverTheLateResult` |
+
+Also from the focused review:
+- API-key confidentiality: deleting or replacing the key now also drops the research adapter's
+  cached HTTP client (`ResearchService.forgetCredentials()`), so the old key does not linger in memory
+  until the process dies. (The planning adapter already did this.)
+- Checked and left as is: `pause_turn` budget (continued once, `max_uses = remaining`, never below
+  the cap), outbound payload = exactly the preflight's switches, Room 3→4 and backup round trip,
+  Stop/offline/interrupted paths, no new permissions or background entry points.
 
 ## Screens
 

@@ -119,7 +119,10 @@ All provider tests use fakes or a local MockWebServer. **No test calls the live 
 |---|---|---|
 | Citations only from structured provider metadata; prose URLs stripped and labelled suggestion; unsafe URLs ignored | `BriefParserTest` (`citedSentencesBecomeSourced…`, `proseUrlsAreStripped…`, `uncitedResponseIsUnverified…`, `unsafeCitationUrlsAreIgnored`), `AnthropicResearchProviderHttpTest.parsesCitationsSearchesAndUsage` | ✅ |
 | Disagreement needs two different cited sides; injection-looking lines never become moves | `BriefParserTest.disagreementNeedsTwoDifferentCitedSides`, `injectionLikeTextIsDroppedFromMovesAndFlagged` | ✅ |
-| Conservative source tiers (government suffix or typed operator only) | `BriefParserTest.sourceTieringIsConservative` | ✅ |
+| Conservative source tiers: *Official* only for government domains on label boundaries; look-alikes, smuggled suffixes, userinfo hosts and brand names are *Web page* | `SourcesTest`, `BriefParserTest.sourceTieringIsConservative` | ✅ |
+| Citation accounting: once per cited block across sections and line splits; disagreement sides not double counted; duplicate URL in one block; uncited results stay 0 | `CitationAccountingTest` | ✅ |
+| Apply/undo atomic with research bookkeeping: injected failure rolls back steps, notes and history; retry applies once; undo never overwrites a later edit | `ResearchActionsTest` (hardening tests) | ✅ |
+| Delete all / delete for task while a request runs: cancels, awaits, saves nothing, other task's run untouched | `ResearchServiceTest` (finding D tests) | ✅ |
 | Request shape: `web_search_20250305`, `max_uses = 3`, no `user_location`, no fallbacks, minimal scope | `AnthropicResearchProviderHttpTest.sendsWebSearchToolWithCapsAndNoLocation` | ✅ |
 | `pause_turn` continued once within the budget; not continued when the budget is spent | `…pauseTurnIsContinuedOnceWithinTheSearchBudget`, `…pauseTurnWithBudgetSpentIsNotContinued`, `…secondPauseTurnIsNotContinuedAgain…` | ✅ |
 | Stop reasons: refusal, max_tokens (truncated), search-tool error, empty answer | `…refusalNeverReachesParsing`, `…maxTokensIsASuccessMarkedTruncated`, `…searchToolErrorWithoutAnswerIsReported`, `…emptyAnswerIsMalformed` | ✅ |
