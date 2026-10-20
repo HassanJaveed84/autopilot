@@ -9,6 +9,7 @@ import com.lifeadmin.autopilot.ai.NetworkStatus
 import com.lifeadmin.autopilot.ai.TaskPlanningProvider
 import com.lifeadmin.autopilot.ai.anthropic.AnthropicResearchProvider
 import com.lifeadmin.autopilot.ai.anthropic.AnthropicTaskPlanningProvider
+import com.lifeadmin.autopilot.ai.research.ResearchActions
 import com.lifeadmin.autopilot.ai.research.ResearchProvider
 import com.lifeadmin.autopilot.ai.research.ResearchService
 import com.lifeadmin.autopilot.ai.security.ApiKeyStore
@@ -91,6 +92,9 @@ class AppContainer(
         settingsRepository, apiKeyStore, aiPlanning, researchProvider, taskRepository, researchRepository,
         clock, zoneProvider, ids, appScope, networkStatus,
     )
+
+    /** Applies user-selected research moves through the transactional, idempotent edit path. */
+    val researchActions: ResearchActions = ResearchActions(taskRepository, researchRepository, clock)
 
     val backupRepository: BackupRepository = BackupRepository(
         database, clock, ids, BuildConfig.VERSION_NAME,

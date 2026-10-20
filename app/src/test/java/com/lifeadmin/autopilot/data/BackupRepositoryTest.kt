@@ -127,4 +127,47 @@ class BackupRepositoryTest {
         }
         assertEquals(0, reconciled)
     }
+
+    @Test fun researchBriefsRoundTripAndBadOnesRejectTheWholeImport() = runTest {
+        val repo = TaskRepository(source, clock, SequentialIds(), { CHICAGO }, ScheduleCoordinator.Direct)
+        val id = repo.createTask(NewTask("Book train ride"))
+        val briefs = com.lifeadmin.autopilot.data.repository.ResearchRepository(source, clock, SequentialIds("b"))
+        val content = com.lifeadmin.autopilot.ai.research.BriefContent(
+            quickAnswer = listOf(com.lifeadmin.autopilot.ai.research.Segment("Tickets go on sale 12 weeks ahead.", listOf(1))),
+            moves = listOf(com.lifeadmin.autopilot.ai.research.NextMove("m1", com.lifeadmin.autopilot.ai.research.MoveKind.STEP, "Check the date", "why", listOf(1))),
+            findings = listOf(
+                com.lifeadmin.autopilot.ai.research.Finding.Sourced("Fact", listOf(1), com.lifeadmin.autopilot.ai.research.SourceTier.WEB),
+                com.lifeadmin.autopilot.ai.research.Finding.Unconfirmed("Topic", "note"),
+            ),
+            sources = listOf(com.lifeadmin.autopilot.ai.research.SourceRef(1, "https://example.com/", "Example", "example.com", com.lifeadmin.autopilot.ai.research.SourceTier.WEB, null, listOf("quote"), 1)),
+            queries = listOf("q"), usage = com.lifeadmin.autopilot.ai.research.ResearchUsage(1, 2, 1, "claude-haiku-5-5", 3),
+            verified = true, truncated = false, injectionNoticed = false, shared = listOf("Task title"),
+        )
+        val briefId = briefs.save(id, "When?", content)
+        briefs.recordApplied(briefId, listOf(com.lifeadmin.autopilot.ai.research.AppliedMove("m1", 5L, "Check the date", "s1")))
+        val json = backup(source).exportJson()
+        assertTrue(json.contains("\"research\""))
+        assertTrue("never exports the key or a transcript", !json.contains("sk-ant") && !json.contains("x-api-key"))
+
+        backup(target).importJson(json)
+        val restored = com.lifeadmin.autopilot.data.repository.ResearchRepository(target, clock, SequentialIds("x")).get(briefId)!!
+        assertEquals(content, restored.content)
+        assertEquals("When?", restored.question)
+        assertEquals(listOf("m1"), restored.applied.map { it.moveId })
+        // Re-import is idempotent.
+        backup(target).importJson(json)
+        assertEquals(1, target.researchDao().getAll().size)
+
+        // A brief pointing at a task not in the file rejects the whole import; nothing changes.
+        val at = json.indexOf("\"research\"")
+        val broken = json.substring(0, at) + json.substring(at).replace("\"taskId\": \"$id\"", "\"taskId\": \"ghost\"")
+        assertTrue("fixture must alter the brief", broken != json)
+        val fresh = inMemoryDatabase()
+        try {
+            backup(fresh).importJson(broken)
+            fail("expected rejection")
+        } catch (e: ImportException) {
+            assertEquals(0, fresh.taskDao().getAll().size)
+        } finally { fresh.close() }
+    }
 }

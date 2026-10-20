@@ -599,6 +599,33 @@ class TaskRepository(
         }
     }
 
+    /**
+     * Reverts one applied research selection, only while it is still safe: the task must not have
+     * changed since the apply ([expectedUpdatedAt]), the steps must still exist unticked, and the
+     * notes must still be exactly what the apply wrote. Otherwise nothing changes and false is
+     * returned. Reminders, deadline and status are never touched.
+     */
+    suspend fun undoAppliedEdit(
+        taskId: String,
+        proposalId: String,
+        expectedUpdatedAt: Instant,
+        stepIds: List<String>,
+        notesAfterApply: String?,
+        notesBeforeApply: String?,
+    ): Boolean = db.withTransaction {
+        val t = taskDao.get(taskId) ?: return@withTransaction false
+        if (t.updatedAt != expectedUpdatedAt || t.status.isTerminal) return@withTransaction false
+        val steps = stepIds.map { stepDao.get(it) ?: return@withTransaction false }
+        if (steps.any { it.isDone || it.taskId != taskId }) return@withTransaction false
+        if (notesAfterApply != null && (t.notes ?: "") != notesAfterApply) return@withTransaction false
+        val now = clock.now()
+        steps.forEach { stepDao.delete(it) }
+        val notes = if (notesAfterApply != null) validateNotes(notesBeforeApply) else t.notes
+        taskDao.update(t.copy(notes = notes, updatedAt = now))
+        log(taskId, now, EventType.EDITED, "Undid applied research changes", mapOf("source" to "ai_research_undo", PROPOSAL_KEY to "$proposalId:undo"))
+        true
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private suspend fun requireTask(taskId: String): TaskEntity =
