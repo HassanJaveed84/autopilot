@@ -41,6 +41,10 @@ data class BackupFile(
     val events: List<EventDto> = emptyList(),
     /** Saved research briefs (M3). Older app versions ignore this field. */
     val research: List<ResearchBriefDto> = emptyList(),
+    /** Saved research sessions (M3A.2). Older app versions ignore this field. */
+    val sessions: List<ResearchSessionDto> = emptyList(),
+    /** Local AI usage ledger (M3A.2): counts and estimates only, never prompts or keys. */
+    val usage: List<UsageRecordDto> = emptyList(),
 ) {
     companion object {
         const val FORMAT = "life-admin-autopilot-backup"
@@ -78,6 +82,24 @@ data class ResearchBriefDto(
     val searchCount: Int, val sourceCount: Int, val content: BriefContent, val applied: List<AppliedMove> = emptyList(),
 )
 
+/** A research session as exported: parsed content and applied proposals only. */
+@Serializable
+data class ResearchSessionDto(
+    val id: String, val taskId: String, val createdAt: String, val updatedAt: String,
+    val content: com.lifeadmin.autopilot.ai.research2.SessionContent,
+    val applied: List<com.lifeadmin.autopilot.ai.research2.AppliedProposal> = emptyList(),
+)
+
+/** One ledger row as exported. Ids, counts, outcome and the local estimate — nothing else. */
+@Serializable
+data class UsageRecordDto(
+    val id: String, val feature: String, val model: String, val startedAt: String,
+    val runId: String? = null, val sessionId: String? = null, val taskId: String? = null, val stage: String? = null,
+    val durationMs: Long? = null, val inputTokens: Long? = null, val outputTokens: Long? = null,
+    val cacheWrite5mTokens: Long? = null, val cacheWrite1hTokens: Long? = null, val cacheReadTokens: Long? = null, val webSearches: Int? = null,
+    val outcome: String, val usageStatus: String, val estimatedMicros: Long? = null, val priceVersion: String = "", val providerMessageId: String? = null,
+)
+
 data class ImportResult(val created: Int, val updated: Int, val skipped: Int)
 
 class ImportException(message: String) : Exception(message)
@@ -110,6 +132,8 @@ class BackupRepository(
                     EventDto(it.id, it.taskId, it.at.toString(), it.eventType.name, it.summary, com.lifeadmin.autopilot.data.local.decodeMetadata(it.structuredMetadata))
                 },
                 research = db.researchDao().getAll().mapNotNull { it.toDto() },
+                sessions = db.researchSessionDao().getAll().mapNotNull { it.toDto() },
+                usage = db.usageDao().getAll().map { it.toDto() },
             )
         }
         return json.encodeToString(BackupFile.serializer(), file)
@@ -150,12 +174,14 @@ class BackupRepository(
         val policies: List<Pair<ReminderPolicyEntity, List<LocalTime>>>,
         val events: List<TaskEventEntity>,
         val research: List<ResearchBriefEntity>,
+        val sessions: List<com.lifeadmin.autopilot.data.local.ResearchSessionEntity> = emptyList(),
+        val usage: List<com.lifeadmin.autopilot.data.local.UsageRecordEntity> = emptyList(),
     )
 
     private fun validate(f: BackupFile): Validated {
         if (f.format != BackupFile.FORMAT) throw ImportException("Unrecognized file format")
         if (f.schemaVersion !in 1..BackupFile.SCHEMA_VERSION) throw ImportException("Backup was made by a newer app version (schema ${f.schemaVersion})")
-        if (f.tasks.size > MAX_TASKS || f.steps.size > MAX_STEPS || f.events.size > MAX_EVENTS || f.policies.size > MAX_TASKS || f.research.size > MAX_BRIEFS) {
+        if (f.tasks.size > MAX_TASKS || f.steps.size > MAX_STEPS || f.events.size > MAX_EVENTS || f.policies.size > MAX_TASKS || f.research.size > MAX_BRIEFS || f.sessions.size > MAX_BRIEFS || f.usage.size > MAX_USAGE) {
             throw ImportException("Backup has too many records")
         }
         fun id(v: String, what: String): String {
@@ -168,7 +194,7 @@ class BackupRepository(
         fun unique(list: List<String>, what: String) { if (list.size != list.toSet().size) throw ImportException("Duplicate $what ids") }
 
         unique(f.tasks.map { it.id }, "task"); unique(f.steps.map { it.id }, "step"); unique(f.policies.map { it.id }, "policy"); unique(f.events.map { it.id }, "event")
-        unique(f.research.map { it.id }, "research brief")
+        unique(f.research.map { it.id }, "research brief"); unique(f.sessions.map { it.id }, "research session"); unique(f.usage.map { it.id }, "usage record")
         val taskIds = f.tasks.map { id(it.id, "task") }.toSet()
         if (f.policies.map { it.taskId }.toSet().size != f.policies.size) throw ImportException("More than one reminder policy for a task")
 
@@ -239,7 +265,33 @@ class BackupRepository(
                 payload = payload, applied = briefJson.encodeToString(kotlinx.serialization.builtins.ListSerializer(AppliedMove.serializer()), b.applied.take(50)),
             )
         }
-        return Validated(tasks, steps, policies, events, research)
+        val sessionRepo = ResearchSessionRepository(db)
+        val sessions = f.sessions.map { b ->
+            id(b.id, "research session")
+            if (b.taskId !in taskIds) throw ImportException("Research session refers to a missing task")
+            val payload = sessionRepo.encode(b.content)
+            if (payload.length > com.lifeadmin.autopilot.ai.research2.Research2Config.MAX_PAYLOAD_BYTES * 2) throw ImportException("Research session too large")
+            com.lifeadmin.autopilot.data.local.ResearchSessionEntity(
+                id = b.id, taskId = b.taskId, createdAt = reqInstant(b.createdAt, "research session"), updatedAt = reqInstant(b.updatedAt, "research session"),
+                title = b.content.title.take(com.lifeadmin.autopilot.ai.research2.Research2Config.MAX_TITLE_CHARS), template = b.content.template.name, outcome = b.content.outcome.name,
+                model = (b.content.latestRun?.model ?: "").take(80), searchCount = b.content.searchesTotal.coerceIn(0, 10_000), sourceCount = b.content.sources.size,
+                payload = payload, applied = sessionRepo.encodeApplied(b.applied.take(50)),
+            )
+        }
+        val usage = f.usage.map { u ->
+            id(u.id, "usage record")
+            enumOf(com.lifeadmin.autopilot.ai.usage.UsageFeature.entries.toTypedArray(), u.feature, "usage feature")
+            val outcome = enumOf(com.lifeadmin.autopilot.ai.usage.CallOutcome.entries.toTypedArray(), u.outcome, "usage outcome")
+            enumOf(com.lifeadmin.autopilot.ai.usage.UsageStatus.entries.toTypedArray(), u.usageStatus, "usage status")
+            com.lifeadmin.autopilot.data.local.UsageRecordEntity(
+                u.id, u.feature, u.model.take(80), reqInstant(u.startedAt, "usage"), u.runId?.take(64), u.sessionId?.take(64), u.taskId?.take(64), u.stage?.take(32),
+                u.durationMs, u.inputTokens, u.outputTokens, u.cacheWrite5mTokens, u.cacheWrite1hTokens, u.cacheReadTokens, u.webSearches,
+                // A call still "in flight" in a backup can never finish: it is interrupted.
+                (if (outcome == com.lifeadmin.autopilot.ai.usage.CallOutcome.IN_FLIGHT) com.lifeadmin.autopilot.ai.usage.CallOutcome.INTERRUPTED else outcome).name,
+                u.usageStatus, u.estimatedMicros, u.priceVersion.take(32), u.providerMessageId?.take(64),
+            )
+        }
+        return Validated(tasks, steps, policies, events, research, sessions, usage)
     }
 
     private suspend fun write(v: Validated): ImportResult {
@@ -277,6 +329,9 @@ class BackupRepository(
         // Briefs are append-only records: restore every one whose task exists locally (idempotent by id).
         val present = db.taskDao().getAll().map { it.id }.toSet()
         for (brief in v.research) if (brief.taskId in present) db.researchDao().upsert(brief)
+        for (session in v.sessions) if (session.taskId in present) db.researchSessionDao().upsert(session)
+        // The ledger is append-only: rows already present are never overwritten by a backup.
+        for (u in v.usage) if (db.usageDao().get(u.id) == null) db.usageDao().upsert(u)
         return ImportResult(created, updated, skipped)
     }
 
@@ -284,6 +339,17 @@ class BackupRepository(
         id, title, notes, status.name, priority.name, createdAt.toString(), updatedAt.toString(), completedAt?.toString(), archivedAt?.toString(),
         deadlineType.name, deadlineLocalDate?.toString(), deadlineInstant?.toString(), deadlineZoneId, snoozedUntil?.toString(), snoozeRemindAtEnd,
         waitingReason, waitingCheckInAt?.toString(),
+    )
+
+    private fun com.lifeadmin.autopilot.data.local.ResearchSessionEntity.toDto(): ResearchSessionDto? {
+        val repo = ResearchSessionRepository(db)
+        val content = repo.decodeContent(payload) ?: return null
+        return ResearchSessionDto(id, taskId, createdAt.toString(), updatedAt.toString(), content, repo.decodeApplied(applied))
+    }
+
+    private fun com.lifeadmin.autopilot.data.local.UsageRecordEntity.toDto() = UsageRecordDto(
+        id, feature, model, startedAt.toString(), runId, sessionId, taskId, stage, durationMs, inputTokens, outputTokens,
+        cacheWrite5mTokens, cacheWrite1hTokens, cacheReadTokens, webSearches, outcome, usageStatus, estimatedMicros, priceVersion, providerMessageId,
     )
 
     private fun ResearchBriefEntity.toDto(): ResearchBriefDto? = runCatching {
@@ -305,6 +371,7 @@ class BackupRepository(
         const val MAX_STEPS = 50_000
         const val MAX_EVENTS = 200_000
         const val MAX_BRIEFS = 20_000
+        const val MAX_USAGE = 200_000
         private val BRIEF_STATUSES = setOf("VERIFIED", "UNVERIFIED", "TRUNCATED")
         private val ID_PATTERN = Regex("^[A-Za-z0-9_-]{1,64}$")
     }

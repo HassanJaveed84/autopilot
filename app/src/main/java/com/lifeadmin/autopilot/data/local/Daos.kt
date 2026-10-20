@@ -253,3 +253,72 @@ interface ResearchBriefDao {
     @Query("DELETE FROM research_briefs")
     suspend fun deleteAll()
 }
+
+@Dao
+interface ResearchSessionDao {
+    @Query("SELECT * FROM research_sessions WHERE taskId = :taskId ORDER BY updatedAt DESC")
+    fun observeForTask(taskId: String): Flow<List<ResearchSessionEntity>>
+
+    @Query("SELECT * FROM research_sessions WHERE taskId = :taskId ORDER BY updatedAt DESC")
+    suspend fun getForTask(taskId: String): List<ResearchSessionEntity>
+
+    @Query("SELECT * FROM research_sessions WHERE id = :id")
+    suspend fun get(id: String): ResearchSessionEntity?
+
+    @Query("SELECT * FROM research_sessions WHERE id = :id")
+    fun observe(id: String): Flow<ResearchSessionEntity?>
+
+    @Query("SELECT * FROM research_sessions ORDER BY updatedAt DESC")
+    suspend fun getAll(): List<ResearchSessionEntity>
+
+    @Query("SELECT COUNT(*) FROM research_sessions")
+    fun observeCount(): Flow<Int>
+
+    @Upsert
+    suspend fun upsert(session: ResearchSessionEntity)
+
+    @Query("UPDATE research_sessions SET applied = :applied WHERE id = :id")
+    suspend fun updateApplied(id: String, applied: String)
+
+    @Query("DELETE FROM research_sessions WHERE id = :id")
+    suspend fun delete(id: String)
+
+    @Query("DELETE FROM research_sessions WHERE taskId = :taskId")
+    suspend fun deleteForTask(taskId: String)
+
+    @Query("DELETE FROM research_sessions")
+    suspend fun deleteAll()
+}
+
+@Dao
+interface UsageRecordDao {
+    @Query("SELECT * FROM usage_records ORDER BY startedAt DESC")
+    fun observeAll(): Flow<List<UsageRecordEntity>>
+
+    @Query("SELECT * FROM usage_records ORDER BY startedAt DESC")
+    suspend fun getAll(): List<UsageRecordEntity>
+
+    @Query("SELECT * FROM usage_records WHERE id = :id")
+    suspend fun get(id: String): UsageRecordEntity?
+
+    @Query("SELECT * FROM usage_records WHERE providerMessageId = :pid")
+    suspend fun byProviderMessage(pid: String): List<UsageRecordEntity>
+
+    @Query("SELECT * FROM usage_records WHERE sessionId = :sessionId ORDER BY startedAt ASC")
+    suspend fun forSession(sessionId: String): List<UsageRecordEntity>
+
+    @Upsert
+    suspend fun upsert(record: UsageRecordEntity)
+
+    @Query("UPDATE usage_records SET outcome = :outcome, usageStatus = :status WHERE outcome = 'IN_FLIGHT'")
+    suspend fun settleInFlight(outcome: String, status: String): Int
+
+    @Query("DELETE FROM usage_records WHERE id = :id")
+    suspend fun delete(id: String)
+
+    @Query("DELETE FROM usage_records WHERE startedAt < :cutoff")
+    suspend fun deleteOlderThan(cutoff: Long): Int
+
+    @Query("DELETE FROM usage_records")
+    suspend fun deleteAll()
+}

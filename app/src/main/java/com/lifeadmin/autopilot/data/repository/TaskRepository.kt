@@ -693,6 +693,8 @@ class TaskRepository(
             return t
         }
 
+        fun validateStepOrNull(raw: String): String? = try { validateStep(raw) } catch (e: ValidationException) { null }
+
         fun validateDeadline(type: DeadlineType, date: LocalDate?, instant: Instant?) {
             when (type) {
                 DeadlineType.NONE -> Unit

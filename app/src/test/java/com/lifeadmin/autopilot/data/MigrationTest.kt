@@ -150,4 +150,39 @@ class MigrationTest {
         room.close()
         context.deleteDatabase(name)
     }
+
+    @Test fun migrateV4ToV5AddsSessionsAndUsageLedgerAndKeepsBriefs() = runTest {
+        context.deleteDatabase(name)
+        val file = context.getDatabasePath(name).also { it.parentFile?.mkdirs() }
+        SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+            schemaStatements(4).forEach(db::execSQL)
+            db.execSQL(
+                "INSERT INTO tasks (id,title,notes,status,priority,createdAt,updatedAt,completedAt,archivedAt,deadlineType,deadlineLocalDate,deadlineInstant,deadlineZoneId,snoozedUntil,snoozeRemindAtEnd,waitingReason,waitingCheckInAt) " +
+                    "VALUES ('t1','Supplements',NULL,'ACTIONABLE','NORMAL',1,1,NULL,NULL,'NONE',NULL,NULL,NULL,NULL,1,NULL,NULL)",
+            )
+            db.execSQL("INSERT INTO research_briefs (id,taskId,createdAt,question,model,status,searchCount,sourceCount,payload,applied) VALUES ('b1','t1',5,'q','claude-haiku-5-5','VERIFIED',1,1,'{}','[]')")
+            db.version = 4
+        }
+        val room = Room.databaseBuilder(context, AppDatabase::class.java, name)
+            .addMigrations(*Migrations.ALL)
+            .setQueryCoroutineContext(Dispatchers.IO)
+            .build()
+        assertEquals("Supplements", room.taskDao().get("t1")!!.title)
+        assertEquals("legacy briefs are untouched", 1, room.researchDao().getForTask("t1").size)
+        assertEquals(0, room.researchSessionDao().observeCount().first())
+        room.researchSessionDao().upsert(
+            com.lifeadmin.autopilot.data.local.ResearchSessionEntity("s1", "t1", java.time.Instant.EPOCH, java.time.Instant.EPOCH, "Picks", "PICK_PER_ITEM", "COMPLETE", "claude-sonnet-5-5", 7, 5, "{}", "[]"),
+        )
+        room.usageDao().upsert(
+            com.lifeadmin.autopilot.data.local.UsageRecordEntity("u1", "RESEARCH", "claude-sonnet-5-5", java.time.Instant.EPOCH, "r1", "s1", "t1", "GATHER", 1000, 41000, 2600, 0, 0, 0, 5, "COMPLETE", "COMPLETE", 158_050, "2026-10", "msg_1"),
+        )
+        assertEquals(1, room.researchSessionDao().getForTask("t1").size)
+        assertEquals(1, room.usageDao().forSession("s1").size)
+        // Sessions cascade with their task; the ledger does not (it has no foreign key by design).
+        room.taskDao().delete("t1")
+        assertEquals(0, room.researchSessionDao().observeCount().first())
+        assertEquals(1, room.usageDao().getAll().size)
+        room.close()
+        context.deleteDatabase(name)
+    }
 }

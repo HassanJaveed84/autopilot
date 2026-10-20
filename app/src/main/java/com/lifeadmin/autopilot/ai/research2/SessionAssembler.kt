@@ -115,7 +115,15 @@ object SessionAssembler {
  */
 object ProposalBuilder {
     fun complete(session: SessionContent, nowEpochMs: Long): List<Proposal> {
-        val out = session.proposals.toMutableList()
+        // A model proposal without its own citations inherits the evidence of the requirement it serves.
+        val out = session.proposals.map { p ->
+            if (p.refs.isNotEmpty() || p.requirementId == null) p
+            else {
+                val pick = session.body.picks.firstOrNull { it.requirementId == p.requirementId }
+                val refs = ((pick?.refs ?: emptyList()) + (pick?.labelFacts?.flatMap { it.refs } ?: emptyList()) + session.coverageOf(p.requirementId).refs).distinct()
+                p.copy(refs = refs)
+            }
+        }.toMutableList()
         val items = session.requirements.filter { it.type == RequirementType.ITEM || it.type == RequirementType.USER_ADDED }
         val wantsStepPerItem = session.template == DeliverableTemplate.PICK_PER_ITEM ||
             session.requirements.any { it.type == RequirementType.OUTPUT && it.label.contains("per item", true) }

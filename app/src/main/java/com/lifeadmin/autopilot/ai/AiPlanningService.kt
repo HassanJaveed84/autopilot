@@ -68,6 +68,8 @@ class AiPlanningService(
     private val clock: AppClock,
     private val zoneProvider: ZoneProvider,
     private val ids: IdGenerator,
+    /** Local usage ledger (M3A.2); null in tests that don't care. Records every planning call, incl. failures. */
+    private val ledger: com.lifeadmin.autopilot.ai.usage.UsageLedger? = null,
     private val network: NetworkStatus = NetworkStatus.UNKNOWN,
 ) {
     suspend fun availability(s: AppSettings? = null): AiAvailability {
@@ -173,7 +175,36 @@ class AiPlanningService(
             if (used >= AiConfig.MAX_REQUESTS_PER_DAY) s else { allowed = true; s.copy(aiUsageDay = day, aiUsageCount = used + 1) }
         }
         if (!allowed) return null
-        return provider.plan(request, key, model)
+        val record = com.lifeadmin.autopilot.ai.usage.UsageRecord(ids.newId(), com.lifeadmin.autopilot.ai.usage.UsageFeature.PLANNING, model, clock.now(), stage = request.mode.name)
+        ledger?.record(record)
+        val started = System.nanoTime()
+        val result = try {
+            provider.plan(request, key, model)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            ledger?.let { kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { it.record(com.lifeadmin.autopilot.ai.usage.UsageRecord.priced(record, null, com.lifeadmin.autopilot.ai.usage.CallOutcome.STOPPED, null)) } }
+            throw e
+        }
+        val elapsed = (System.nanoTime() - started) / 1_000_000L
+        ledger?.record(
+            when (result) {
+                is PlanningResult.Success -> com.lifeadmin.autopilot.ai.usage.UsageRecord.priced(
+                    record, result.usage?.let { com.lifeadmin.autopilot.ai.usage.MeasuredUsage(it.inputTokens, it.outputTokens, it.cacheWriteTokens, 0, it.cacheReadTokens, 0) },
+                    com.lifeadmin.autopilot.ai.usage.CallOutcome.COMPLETE, elapsed, result.usage?.messageId,
+                )
+                is PlanningResult.Failure -> com.lifeadmin.autopilot.ai.usage.UsageRecord.priced(
+                    record, null,
+                    if (notBilled(result.error)) com.lifeadmin.autopilot.ai.usage.CallOutcome.FAILED_NOT_BILLED else com.lifeadmin.autopilot.ai.usage.CallOutcome.FAILED_UNKNOWN,
+                    elapsed,
+                )
+            },
+        )
+        return result
+    }
+
+    /** Rejected before processing: Anthropic bills nothing. Everything else may have been processed. */
+    private fun notBilled(e: PlanningError): Boolean = when (e) {
+        PlanningError.Unauthorized, PlanningError.Forbidden, is PlanningError.BadRequest, is PlanningError.RateLimited, PlanningError.Offline -> true
+        else -> false
     }
 
     private fun today(): String = clock.now().atZone(zoneProvider.current()).toLocalDate().toString()

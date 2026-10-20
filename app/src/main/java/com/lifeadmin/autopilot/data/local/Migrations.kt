@@ -41,5 +41,28 @@ object Migrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+    /** v4 → v5: M3A.2 research sessions (owned by their task) and the usage ledger (no foreign keys by design). */
+    val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `research_sessions` (`id` TEXT NOT NULL, `taskId` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, " +
+                    "`title` TEXT NOT NULL, `template` TEXT NOT NULL, `outcome` TEXT NOT NULL, `model` TEXT NOT NULL, `searchCount` INTEGER NOT NULL, " +
+                    "`sourceCount` INTEGER NOT NULL, `payload` TEXT NOT NULL, `applied` TEXT NOT NULL, PRIMARY KEY(`id`), " +
+                    "FOREIGN KEY(`taskId`) REFERENCES `tasks`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_research_sessions_taskId` ON `research_sessions` (`taskId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_research_sessions_updatedAt` ON `research_sessions` (`updatedAt`)")
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `usage_records` (`id` TEXT NOT NULL, `feature` TEXT NOT NULL, `model` TEXT NOT NULL, `startedAt` INTEGER NOT NULL, " +
+                    "`runId` TEXT, `sessionId` TEXT, `taskId` TEXT, `stage` TEXT, `durationMs` INTEGER, `inputTokens` INTEGER, `outputTokens` INTEGER, " +
+                    "`cacheWrite5mTokens` INTEGER, `cacheWrite1hTokens` INTEGER, `cacheReadTokens` INTEGER, `webSearches` INTEGER, `outcome` TEXT NOT NULL, " +
+                    "`usageStatus` TEXT NOT NULL, `estimatedMicros` INTEGER, `priceVersion` TEXT NOT NULL, `providerMessageId` TEXT, PRIMARY KEY(`id`))",
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_usage_records_startedAt` ON `usage_records` (`startedAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_usage_records_sessionId` ON `usage_records` (`sessionId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_usage_records_providerMessageId` ON `usage_records` (`providerMessageId`)")
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 }

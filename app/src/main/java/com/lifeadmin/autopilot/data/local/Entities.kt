@@ -185,3 +185,61 @@ data class ResearchBriefEntity(
     /** JSON list of [com.lifeadmin.autopilot.ai.research.AppliedMove]. */
     val applied: String,
 )
+
+/**
+ * A saved M3A.2 research session: the request, requirements, structured result and proposals as
+ * JSON, plus which proposals were applied. Owned by its task. Never raw transcripts, page content
+ * or credentials.
+ */
+@Entity(
+    tableName = "research_sessions",
+    foreignKeys = [ForeignKey(entity = TaskEntity::class, parentColumns = ["id"], childColumns = ["taskId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("taskId"), Index("updatedAt")],
+)
+data class ResearchSessionEntity(
+    @PrimaryKey val id: String,
+    val taskId: String,
+    val createdAt: Instant,
+    val updatedAt: Instant,
+    val title: String,
+    /** [com.lifeadmin.autopilot.ai.research2.DeliverableTemplate] name. */
+    val template: String,
+    /** [com.lifeadmin.autopilot.ai.research2.SessionOutcome] name. */
+    val outcome: String,
+    val model: String,
+    val searchCount: Int,
+    val sourceCount: Int,
+    /** JSON of [com.lifeadmin.autopilot.ai.research2.SessionContent]. */
+    val payload: String,
+    /** JSON list of [com.lifeadmin.autopilot.ai.research2.AppliedProposal]. */
+    val applied: String,
+)
+
+/**
+ * One billable API call (planning or research). No foreign key: the ledger outlives tasks and
+ * sessions. Holds ids, counts, outcome and the local price estimate only — never prompts, task text,
+ * queries or keys.
+ */
+@Entity(tableName = "usage_records", indices = [Index("startedAt"), Index("sessionId"), Index("providerMessageId")])
+data class UsageRecordEntity(
+    @PrimaryKey val id: String,
+    val feature: String,
+    val model: String,
+    val startedAt: Instant,
+    val runId: String?,
+    val sessionId: String?,
+    val taskId: String?,
+    val stage: String?,
+    val durationMs: Long?,
+    val inputTokens: Long?,
+    val outputTokens: Long?,
+    val cacheWrite5mTokens: Long?,
+    val cacheWrite1hTokens: Long?,
+    val cacheReadTokens: Long?,
+    val webSearches: Int?,
+    val outcome: String,
+    val usageStatus: String,
+    val estimatedMicros: Long?,
+    val priceVersion: String,
+    val providerMessageId: String?,
+)
