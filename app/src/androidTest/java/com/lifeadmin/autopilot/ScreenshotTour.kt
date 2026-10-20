@@ -52,6 +52,7 @@ import com.lifeadmin.autopilot.di.AppContainer
 import com.lifeadmin.autopilot.domain.model.AppSettings
 import com.lifeadmin.autopilot.domain.model.DeadlineType
 import com.lifeadmin.autopilot.domain.model.Priority
+import com.lifeadmin.autopilot.domain.model.OccurrenceStatus
 import com.lifeadmin.autopilot.domain.model.ReminderPreset
 import com.lifeadmin.autopilot.domain.model.ReminderKind
 import com.lifeadmin.autopilot.domain.model.TaskStatus
@@ -615,33 +616,56 @@ class ScreenshotTour {
 
     /**
      * The nudge itself (board 06): a one-off reminder due in a few seconds, then the shade is
-     * opened with the status-bar shell command (no UiAutomator dependency). Best effort: the
-     * alarm can take a while on a busy emulator, so a timeout only skips the shot.
+     * opened with the status-bar shell command (no UiAutomator dependency).
+     *
+     * Why this used to skip on every CI run: the emulator's clock is UTC and the tour runs in
+     * the early hours, inside the default quiet hours (21:00–08:00), so the engine correctly
+     * deferred the nudge to 08:00 and nothing could be posted within the wait. That is production
+     * behaviour working as designed, not a late alarm. The test therefore turns quiet hours off
+     * for its own task only (per-policy override) and asks for an exact alarm (granting the
+     * emulator app-op the way a user would in Settings), so Android fires at the planned second
+     * instead of batching an inexact alarm minutes later. Scheduling code is untouched.
      */
     @Test fun z_notification() {
         val title = "Book train ride for daughter"
+        val pkg = instrumentation.targetContext.packageName
+        shell("appops set $pkg SCHEDULE_EXACT_ALARM allow")
+        val before = runBlocking { container.settingsRepository.current() }
+        // Test setup a user could do in Settings: quiet hours off, precise timing on.
+        runBlocking { container.settingsRepository.update { it.copy(precisionMode = true, quietHours = it.quietHours.copy(enabled = false)) } }
         val id = runBlocking {
             val id = container.taskRepository.createTask(NewTask(title, status = TaskStatus.ACTIONABLE))
             container.taskRepository.addStep(id, "Check train times and prices")
             listOf("Buy the tickets", "Find and book parking").forEach { container.taskRepository.addStep(id, it) }
             val p = container.taskRepository.getPolicy(id)!!
-            container.taskRepository.savePolicy(p.copy(enabled = true, kind = ReminderKind.ONCE, atInstant = container.clock.now().plusSeconds(5), times = emptyList()))
+            container.taskRepository.savePolicy(p.copy(enabled = true, kind = ReminderKind.ONCE, atInstant = container.clock.now().plusSeconds(8), times = emptyList()))
             id
         }
+        val planned = runBlocking { container.taskActions.previewNext(id) }
         launch()
         try {
             compose.soft("notification shade") {
+                checkNotNull(planned) { "engine planned no nudge for the one-off reminder" }
+                val lead = Duration.between(container.clock.now(), planned.plannedAt).seconds.coerceAtLeast(0)
+                check(lead <= 120) { "nudge planned for ${planned.plannedAt}, ${lead / 60} min away (deferred?), not waiting" }
+                val wait = lead + 60
                 val nm = instrumentation.targetContext.getSystemService(NotificationManager::class.java)
-                val deadline = System.currentTimeMillis() + 120_000
+                val deadline = System.currentTimeMillis() + wait * 1_000
                 while (System.currentTimeMillis() < deadline && nm.activeNotifications.none { it.tag == id }) Thread.sleep(1_000)
-                check(nm.activeNotifications.any { it.tag == id }) { "reminder not posted within 2 minutes" }
+                check(nm.activeNotifications.any { it.tag == id }) {
+                    val ledger = runBlocking { container.database.occurrenceDao().getForTaskWithStatus(id, OccurrenceStatus.entries).joinToString { "${it.status}@${it.plannedAt}" } }
+                    "reminder not posted within ${wait}s of ${planned.plannedAt} (exact alarms=${container.alarmDriver.canScheduleExact()}); ledger: $ledger"
+                }
                 shell("cmd statusbar expand-notifications")
                 Thread.sleep(2_000)
                 screenshot("n1-notification")
             }
         } finally {
             shell("cmd statusbar collapse")
-            runBlocking { container.taskRepository.delete(id) }
+            runBlocking {
+                container.taskRepository.delete(id)
+                container.settingsRepository.update { it.copy(precisionMode = before.precisionMode, quietHours = before.quietHours) }
+            }
         }
     }
 
