@@ -27,5 +27,19 @@ object Migrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+    /** v3 → v4: saved research briefs (M3), owned by their task. */
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `research_briefs` (`id` TEXT NOT NULL, `taskId` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, " +
+                    "`question` TEXT NOT NULL, `model` TEXT NOT NULL, `status` TEXT NOT NULL, `searchCount` INTEGER NOT NULL, " +
+                    "`sourceCount` INTEGER NOT NULL, `payload` TEXT NOT NULL, `applied` TEXT NOT NULL, PRIMARY KEY(`id`), " +
+                    "FOREIGN KEY(`taskId`) REFERENCES `tasks`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_research_briefs_taskId` ON `research_briefs` (`taskId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_research_briefs_createdAt` ON `research_briefs` (`createdAt`)")
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 }

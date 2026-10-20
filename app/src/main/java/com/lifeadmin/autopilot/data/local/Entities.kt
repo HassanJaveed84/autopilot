@@ -159,3 +159,29 @@ data class ReminderDiagnosticEntity(
     val outcome: String?,
     val detail: String?,
 )
+
+/**
+ * A saved research brief (M3): the question, the parsed brief as JSON and which moves were applied.
+ * Owned by its task (deleted with it). Holds normalized findings and source metadata only — never
+ * raw API transcripts, page content or credentials.
+ */
+@Entity(
+    tableName = "research_briefs",
+    foreignKeys = [ForeignKey(entity = TaskEntity::class, parentColumns = ["id"], childColumns = ["taskId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("taskId"), Index("createdAt")],
+)
+data class ResearchBriefEntity(
+    @PrimaryKey val id: String,
+    val taskId: String,
+    val createdAt: Instant,
+    val question: String,
+    val model: String,
+    /** VERIFIED, UNVERIFIED or TRUNCATED. */
+    val status: String,
+    val searchCount: Int,
+    val sourceCount: Int,
+    /** JSON of [com.lifeadmin.autopilot.ai.research.BriefContent]. */
+    val payload: String,
+    /** JSON list of [com.lifeadmin.autopilot.ai.research.AppliedMove]. */
+    val applied: String,
+)

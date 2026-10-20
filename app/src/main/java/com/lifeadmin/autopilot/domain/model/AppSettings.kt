@@ -36,6 +36,11 @@ data class AppSettings(
     /** Local-day request counter used to cap accidental spend ([com.lifeadmin.autopilot.ai.AiConfig.MAX_REQUESTS_PER_DAY]). */
     val aiUsageDay: String = "",
     val aiUsageCount: Int = 0,
+    /** Web research (M3): version of the one-time explainer the user accepted; 0 = not yet. */
+    val researchExplainerVersion: Int = 0,
+    /** Local-day research request counter, separate from planning ([com.lifeadmin.autopilot.ai.research.ResearchConfig.MAX_REQUESTS_PER_DAY]). */
+    val researchUsageDay: String = "",
+    val researchUsageCount: Int = 0,
     val lastReconcileAt: Instant? = null,
     val lastReconcileSummary: String? = null,
     /** Light/dark preference for the UI; SYSTEM follows the phone. Presentation only. */
