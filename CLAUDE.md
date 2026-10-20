@@ -1,66 +1,60 @@
-# CLAUDE.md — Life Admin Autopilot: autonomous overnight build
+# CLAUDE.md — Life Admin Autopilot Development Guidance
 
-You are the lead engineer responsible for implementing the native Android **Life Admin Autopilot** offline-first MVP. This session is intentionally **unattended**. The user may be asleep. Make reasonable low-risk engineering decisions without asking for intermediate sign-off. You are authorized to work **inside this app repository only**, for the stated MVP.
+This repository contains a native Android, local-first follow-through app. This file describes **standing engineering constraints and documentation practices**. It is **not an instruction to autonomously build the original MVP or to start future milestones**.
 
-## Sources of truth and precedence
+## Read first, then scope the current task
 
-1. Read `docs/SPEC.md` IN FULL before implementing; it defines functional requirements, data model, architecture, Android limitations and acceptance tests.
-2. This `CLAUDE.md` overrides the prior *step-by-step stopping cadence* from the earlier bootstrap: **do not stop after M0**. Continue automatically through M0, M1A, M1B and M1C, subject to real blockers, platform time/usage limits and safety constraints.
-3. Make reasonable, documented choices if implementation details are unspecified; do not fabricate permission grants, credentials, functionality or test results.
-4. Do not work on M2/M3/M4 (hosted AI, agents, external accounts, household sync) tonight. Leave extension points but build a usable **AI-free MVP**.
+1. Read `docs/ROADMAP.md` for the **current product roadmap**, prioritized ideas and milestone states.
+2. Read `docs/SPEC.md` for original requirements and non-negotiable technical/product constraints; it predates the expanded M3A/M3B/M3C/M3D breakdown.
+3. Read `docs/ARCHITECTURE.md`, `docs/PROGRESS.md` and the report for the affected milestone. Inspect **actual current code and tests** rather than trusting an old progress report.
+4. Follow the user's **explicitly authorized scope for this session**. A milestone merely appearing on the roadmap does not authorize implementing it. If a new feature is approved, document any differences from the roadmap.
+5. Before editing, inspect `git status`, current branch, base commit and related open PRs. **Never modify another active session's branch or merge PRs without an explicit request.** Branch feature work from the appropriate committed base, and prefer a draft PR.
 
-## Status update (M2)
+## Milestone coordination as of 2026-10-20
 
-M2 (optional AI capture and follow-through planning, bring-your-own Anthropic key) was implemented
-later at the user's explicit request; see `docs/M2_AI_CAPTURE_REPORT.md`. Keep its guardrails:
-- AI stays opt-in, user-triggered and review-before-write.
-- Only `ai/anthropic` may import the Anthropic SDK.
-- Never commit, log or export an API key.
-- Core tasks and reminders must keep working offline.
+- M0–M1C offline MVP and M2 optional AI planning are implemented; Flight Plan UI redesign and stabilization have been merged. Automated and physical-device verification are separate gates.
+- **M3A (Action Brief / consented selected-task web research) is merged into `main` as PR #4.** User reports installing and testing the latest APK; keep live-provider and migration evidence distinct from code/CI status. Read the merged report and current code before making future claims.
+- **M3A.2 (Deep Research & Actionable Results)** is the proposed next priority: quality-oriented research, structured task-specific deliverables, flexible model/search budgets and usage-based cost estimates. It is not yet approved for implementation.
+- **M3B (Autopilot Review)** is a **proposed major milestone after M3A.2**, not code already built and not permission to start implementation. The product vision is automatic local review of all pending tasks with optional, *separately consented*, multi-task AI analysis. See `docs/ROADMAP.md`.
+- M3C (controlled external integrations), M3D (agent workflows), M4 (household sync) are later proposed/deferred work.
+- Do not repeat legacy M0/M1 build instructions in this file; those milestones are historical. Their implementation details and test results live in `docs/PROGRESS.md`.
 
-M3/M4 (agents, external accounts, sync) remain out of scope until requested.
+## Non-negotiable application invariants
 
-## Scope — required stack
+- **Room is authoritative** for task data. Keep reminder delivery Android-native and independent of network/API availability.
+- Keep reliable one-shot alarm occurrence scheduling, generation-based invalidation, idempotent receivers, Done/Snooze/Open notification actions, quiet hours, timezone/DST handling and boot/app-start reconciliation.
+- Dismissing a notification never completes a task. `Done` is explicit and must cancel/reconcile future alarms as designed.
+- Preserve schema migrations, stable app signing, existing data, notification channel IDs, backups/import-export compatibility and securely stored API credentials. Never use destructive migration fallbacks.
+- Keep task, reminder, Capture, Today, Inbox and Settings functionality fully usable offline.
+- Use dependency-injected seams for clock, timezone, alarm driver, network/provider and persistence; prefer deterministic, testable domain logic.
+- No sensitive content in logs, diagnostic artifacts, backups or source control. API keys remain encrypted and out of screenshots, exports and test fixtures.
 
-- Kotlin, Jetpack Compose, Material 3, Room/SQLite, DataStore, coroutines/StateFlow, AndroidX Navigation or an equivalent maintainable navigation architecture.
-- `AlarmManager` for time-sensitive one-shot reminder occurrences (with exact-alarm permission handling), `WorkManager` only for deferrable reconciliation/maintenance.
-- Dependency-injected seams for clock, time-zone source, alarm driver, notifications and persistence; a deterministic scheduler that does not call AI or network resources.
-- No signup, backend, cloud sync, billing, Google integrations, API keys, surveillance features or paid services.
+## AI, permissions and external information
 
-## Autonomous execution loop — apply throughout
+- M2 AI planning is optional and opt-in, with review-before-write. Only the `ai/anthropic` adapter imports Anthropic SDK types.
+- Web research must be separately authorized per selected-task request and use **real structured citation metadata** for attributed claims; retrieved pages are untrusted inputs. No invented links, availability, costs or successful actions.
+- **An external AI review of multiple pending tasks is a new privacy boundary.** The user's consent to planning/research on one task never authorizes automatically uploading the full task list. Start with local deterministic review; multi-task AI needs explicit payload preview, per-field/task exclusions and separate opt-in.
+- No automatic paid web searches, hidden background token spending or unconstrained polling. User-approved operations should have usage caps and understandable run history.
+- Never silently edit tasks, reminders, deadlines or statuses due to AI suggestions. External messages, bookings, purchases, payments and third-party account changes require dedicated approval and capability-specific controls.
+- Do not treat successful emulator tests as proof of live provider entitlement or real-device notification behavior.
 
-1. Inspect the repo/environment, Android SDK/JDK/Gradle, Git state and build/test tools. Check `.gitignore` and existing project files before creating new ones. Use compatible stable toolchain versions. If the Android SDK is missing, attempt reasonable documented installation/configuration **using official sources and permitted tools**; do not run unreviewed remote scripts or disable safety checks.
-2. Implement **M0** fully (project setup, navigation skeleton, Room/DataStore scaffolding, build/test wiring). Run tests/build when possible; fix failures and commit.
-3. **Without waiting for me**, proceed to **M1A** (real offline task CRUD, capture, status lifecycle, steps, history, Today/Inbox/Tasks/Settings, local import/export if in spec). Test and commit.
-4. **Without waiting for me**, proceed to **M1B** (recurring policy with multiple times per day, durable occurrence ledger, one-shot scheduling, snooze, Done, notification channel/actions, quiet hours, notification permission, reboot/time-zone/time-change recovery and idempotency). Add scheduler and receiver tests; test and commit.
-5. **Without waiting for me**, proceed to **M1C** (accessibility, permission/degraded-mode UX, schema migrations, export/import validation, diagnostics, app icons/theme polish, test report, release/debug APK if tooling supports it). Test and commit.
-6. After each milestone, write/update `docs/PROGRESS.md` with exact completed items, build/test commands and results, blockers and verified limitations. Preserve real progress in Git commits. Push a feature branch and open a **draft PR** if repository credentials/tools allow; do not merge into main.
-7. After M1C, do one code quality/test pass. Fix straightforward problems, rerun tests, update docs, commit and push. Then stop with a factual summary; do not start unrelated features.
+## Workflow for an approved engineering task
 
-## Absolute requirements for reliable reminders
+1. Confirm exact scope, target base and branch; run baseline build/test where available. Document pre-existing failures.
+2. Implement in coherent phases with focused commits, while preserving unrelated code. Make low-risk decisions autonomously inside the approved scope; don't add unrelated features.
+3. Add unit, persistence, Android and provider/HTTP tests as appropriate, plus accessibility and migration cases. Use fakes/MockWebServer for paid API calls; do not require personal credentials in CI.
+4. Run relevant gates (commonly `./gradlew lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest`; emulator instrumentation and screenshots in CI where supported). Report commands **actually run**, results, links and limitations.
+5. Produce a milestone report under `docs/` with changed components, acceptance criteria, failed/passing tests, open blockers and exact device/API checks.
+6. Update `docs/ROADMAP.md` **on the feature's own branch or in a dedicated roadmap PR** when a milestone is completed, a product decision changes or a newly approved idea is added. Distinguish design, code, merge, CI, live API and physical-device verification.
+7. Push and open a draft PR when authorized; leave merges, shipping, external actions and destructive changes to explicit user approval.
 
-- Reminder occurrences are persisted to Room and scheduled as unique, idempotent one-shot alarms; never rely on WorkManager periodic jobs for minute-exact delivery.
-- A notification's dismissal DOES NOT mark a task complete. 'Done' is explicit, cancels future alarms and closes outstanding occurrences. 'Snooze' defers a particular reminder safely; opening a notification opens the correct task.
-- Recalculate/reconcile on boot and relevant OS clock/time-zone changes, with permission-safe fallbacks and no crash loops. Implement allowed Android receiver and background rules.
-- Prefer documented best-effort notification behavior over false claims of guaranteed exact delivery, especially with Doze, exact-alarm permission denial, notification permission denial and force-stop behavior.
-- Treat local vs UTC time and DST correctly. Test spring/fall transitions, day/time slot crossing, clock changes and duplicate broadcasts using fake clock/time zone.
-- Test canonical user case: `Book train ride`, follow up at 09:00 and 18:00 every day until explicitly completed. Make this real behavior, not sample/mock UI.
-- Keep the app fully functional offline. No network permission is required by the MVP unless a documented build/test requirement needs access externally during development.
+## Documentation roles
 
-## Quality gates and guardrails
+- `docs/ROADMAP.md` — living product roadmap and decision backlog.
+- `docs/SPEC.md` — foundational technical and product requirements.
+- `docs/PROGRESS.md` — implementation history; don't rewrite past evidence.
+- `docs/ARCHITECTURE.md` and other specialty docs — current design contracts where still accurate.
+- `docs/*REPORT.md` — milestone-specific implementation and test evidence.
+- GitHub Issues — approved implementable slices and bugs. Creating issues is repository-wide and should be done deliberately, not as an accidental side effect of a documentation branch.
 
-- Implement actual code. Don't stop at plans, TODO scaffolds or design mockups. No hardcoded successful test reports. Never claim a device test was performed if no real device/emulator was attached.
-- Before marking a milestone validated, run the relevant compile/test/lint tasks **that are available**. If SDK/permissions prevent compilation, explain accurately, add automated GitHub Actions Android CI if supported, and continue with defensible code and pure JVM tests where possible. Distinguish attempted, passed, failed and not run.
-- Work within this repository. Do not force-push, rewrite existing remote history, delete unrelated assets, change other repositories, deploy, publish to Play Store, create external accounts, spend money, disclose secrets, or perform uncontrolled external actions.
-- You may install legitimate free build dependencies where permitted. Avoid shell commands destructive outside the workspace.
-- Make architectural choices without needing approval. Ask a question **only** when a genuine hard blocker requires credentials, billing, access approval, destructive changes, or a product-policy decision that cannot be safely inferred. Otherwise document assumptions and proceed.
-- If a permission prompt or usage limit stops the run, preserve work and leave an exact next-action note in `docs/PROGRESS.md`; do not invent continuation or pretend the run is still active.
-- Build a clean, readable and polished but realistically scoped MVP. Prefer robust basics and tests over premature AI/autonomy features.
-
-## Final deliverables to leave in repo
-
-- Compilable Android project (if environment supports verification), functioning offline CRUD/reminders, automated tests, and onboarding/build instructions in README.
-- `docs/ARCHITECTURE.md`, `docs/REMINDER_ENGINE.md`, `docs/TEST_MATRIX.md`, `docs/PROGRESS.md`.
-- `docs/OVERNIGHT_REPORT.md`: checklist of M0/M1A/M1B/M1C; tests run with exact commands/results; known Android OS/device limitations; APK location if built; branch/commit/PR link if available; specific remaining physical-device tests and blockers.
-
-**Begin immediately by inspecting the repository and reading the entire specification. Execute all milestones M0–M1C autonomously within the constraints above. Do not stop for a status check or ask permission between milestones.**
+**Primary goal:** ship dependable, useful progress toward the approved feature without compromising local task data, reminders, user privacy or truthful reporting.
