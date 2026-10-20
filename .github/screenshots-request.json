@@ -1,21 +1,6 @@
 {
-  "reason": "M3 research screens (ScreenshotTourResearch), take 2: tour waits for the task list after returning (it keeps its scroll) and scrolls to the operator field at large text",
+  "reason": "M3 research screens, font 2.0 only: capture the exception hidden by the teardown crash",
   "variants": [
-    {
-      "display": "phone",
-      "theme": "light",
-      "font_scale": "1.0"
-    },
-    {
-      "display": "phone",
-      "theme": "dark",
-      "font_scale": "1.0"
-    },
-    {
-      "display": "phone",
-      "theme": "light",
-      "font_scale": "1.3"
-    },
     {
       "display": "phone",
       "theme": "light",

@@ -912,6 +912,22 @@ class ScreenshotTourResearch {
     private lateinit var container: AppContainer
     private lateinit var taskId: String
 
+    /**
+     * A crash during the activity's teardown hides the failure that ended the test. Record the
+     * first uncaught throwable (and any composition exception) in the screenshots folder so the
+     * artifact carries it.
+     */
+    @Before fun captureCrashes() {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            runCatching {
+                val dir = File(instrumentation.targetContext.getExternalFilesDir(null), "screenshots").apply { mkdirs() }
+                File(dir, "crash-${System.currentTimeMillis()}.txt").writeText("thread=${t.name}\n" + Log.getStackTraceString(e))
+            }
+            previous?.uncaughtException(t, e)
+        }
+    }
+
     private fun container(provider: com.lifeadmin.autopilot.ai.research.ResearchProvider, aiEnabled: Boolean = true, explainerAccepted: Boolean = false, online: Boolean = true): AppContainer {
         val context = instrumentation.targetContext
         return AppContainer(
@@ -977,7 +993,7 @@ class ScreenshotTourResearch {
         compose.waitForTag("research_stop")
         screenshot("r06-progress")
         provider.hold!!.complete(Unit)
-        compose.waitForTag("brief_list")
+        compose.soft("brief-open") { compose.waitForTag("brief_list") }
         screenshot("r07-brief-top")
         compose.scrollTo("brief_list", "brief_answer")
         screenshot("r08-brief-answer")
