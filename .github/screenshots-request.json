@@ -1,6 +1,11 @@
 {
-  "reason": "Retry dark 1.0x only: emulator boot timeout in run 39361936111",
+  "reason": "Full-coverage tour for external review: every screen, sheet, dialog and state, light and dark",
   "variants": [
+    {
+      "display": "phone",
+      "theme": "light",
+      "font_scale": "1.0"
+    },
     {
       "display": "phone",
       "theme": "dark",

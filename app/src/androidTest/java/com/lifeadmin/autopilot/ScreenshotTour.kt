@@ -27,6 +27,7 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
@@ -143,6 +144,12 @@ private fun ComposeTestRule.closeDialog() {
     waitForIdle()
 }
 
+/** Closes a sheet or dialog an optional step opened: its Cancel if it has one, else system Back. */
+private fun ComposeTestRule.closeOverlay(tag: String) {
+    closeDialog()
+    if (onAllNodes(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()) back()
+}
+
 /** The screen's state has loaded (the header date is blank until it has). */
 private val hasNonBlankText = SemanticsMatcher("has non-blank text") { node ->
     node.config.getOrNull(SemanticsProperties.Text)?.any { it.text.isNotBlank() } == true
@@ -219,6 +226,21 @@ class ScreenshotTour {
 
         val tax = repo.createTask(NewTask("Pay the council tax", status = TaskStatus.ACTIONABLE))
         repo.complete(tax)
+
+        // Paused, archived and overdue: the remaining statuses and the Today attention row.
+        runCatching {
+            val spanish = repo.createTask(NewTask(SPANISH, status = TaskStatus.ACTIONABLE, preset = ReminderPreset.DAILY))
+            repo.changeStatus(spanish, TaskStatus.PAUSED)
+        }.onFailure { Log.w(TAG, "seed paused: $it") }
+        runCatching {
+            val books = repo.createTask(NewTask(BOOKS, status = TaskStatus.ACTIONABLE))
+            repo.complete(books)
+            repo.archive(books)
+        }.onFailure { Log.w(TAG, "seed archived: $it") }
+        runCatching {
+            val expenses = repo.createTask(NewTask(EXPENSES, status = TaskStatus.ACTIONABLE))
+            repo.setDeadline(expenses, DeadlineType.DATE_ONLY, LocalDate.now().minusDays(1), null)
+        }.onFailure { Log.w(TAG, "seed overdue: $it") }
     }
 
     @After fun close() { scenario?.close() }
@@ -273,6 +295,24 @@ class ScreenshotTour {
         compose.onNodeWithTag("nav_inbox").tap()
         compose.waitForText("Call the bank")
         screenshot("b3-inbox")
+        compose.soft("inbox nudge sheet") {
+            compose.onNodeWithTag("inbox_nudge").tap()
+            compose.waitForTag("policy_save")
+            screenshot("b3b-inbox-nudge-sheet")
+            compose.closeOverlay("policy_save")
+        }
+        compose.soft("inbox waiting sheet") {
+            compose.onNodeWithTag("inbox_waiting").tap()
+            compose.waitForTag("waiting_reason")
+            screenshot("b3c-inbox-waiting-sheet")
+            compose.closeOverlay("waiting_reason")
+        }
+        compose.soft("inbox delete confirm") {
+            compose.onNodeWithTag("inbox_delete").tap()
+            compose.waitForText("Delete this note?")
+            screenshot("b3d-inbox-delete-confirm")
+            compose.closeDialog()
+        }
 
         compose.onNodeWithTag("nav_tasks").tap()
         compose.waitForTag("tasks_list")
@@ -284,6 +324,25 @@ class ScreenshotTour {
             compose.onNodeWithTag("filter_completed").tap()
             compose.waitForText("Pay the council tax")
             screenshot("b6-tasks-done-filter")
+        }
+        compose.soft("paused and archived filters") {
+            compose.onNodeWithTag("filter_paused").tap()
+            compose.waitForText(SPANISH)
+            screenshot("b6b-tasks-paused-filter")
+            compose.onNodeWithTag("filter_archived").tap()
+            compose.waitForText(BOOKS)
+            screenshot("b6c-tasks-archived-filter")
+        }
+        compose.soft("sort and search") {
+            compose.onNodeWithTag("filter_all").tap()
+            compose.onNodeWithTag("tasks_sort").tap() // cycles Next nudge → Deadline → Newest
+            compose.waitForText("Deadline")
+            screenshot("b4b-tasks-sorted-by-deadline")
+            repeat(2) { compose.onNodeWithTag("tasks_sort").tap() }
+            compose.onNodeWithTag("search_field").performTextInput("pass")
+            compose.waitForText("Renew passport")
+            screenshot("b4c-tasks-search")
+            compose.onNodeWithTag("search_field").performTextClearance()
         }
     }
 
@@ -339,6 +398,51 @@ class ScreenshotTour {
             screenshot("c9-more-actions")
             compose.back()
         }
+        compose.soft("steps edit mode") {
+            compose.scrollTo("detail_list", "steps_edit")
+            compose.onNodeWithTag("steps_edit").tap()
+            compose.waitForIdle()
+            Thread.sleep(400)
+            screenshot("c3b-steps-edit")
+            compose.onNodeWithTag("steps_edit").tap()
+        }
+        compose.soft("history") {
+            compose.scrollTo("detail_list", "detail_history_toggle")
+            compose.onNodeWithTag("detail_history_toggle").tap()
+            compose.waitForText("Hide history")
+            compose.scrollTo("detail_list", "detail_history_toggle")
+            screenshot("c3c-history")
+            compose.onNodeWithTag("detail_history_toggle").tap()
+        }
+        compose.soft("priority chooser") {
+            compose.scrollTo("detail_list", "card_action_priority")
+            compose.onNodeWithTag("card_action_priority").tap()
+            compose.waitForIdle()
+            Thread.sleep(400)
+            screenshot("c3d-priority-chooser")
+            compose.onNodeWithTag("card_action_priority").tap()
+        }
+        compose.soft("date picker") {
+            compose.scrollTo("detail_list", "card_action_deadline")
+            compose.onNodeWithTag("card_action_deadline").tap()
+            compose.waitForText("Date and time")
+            compose.onNodeWithText("Date only").tap()
+            compose.onNodeWithText("Tomorrow").tap() // the date button; a task without a deadline starts at tomorrow
+            compose.waitForIdle()
+            Thread.sleep(800)
+            screenshot("c6b-date-picker")
+            compose.closeDialog() // the picker
+            compose.closeDialog() // the deadline dialog
+        }
+        compose.soft("delete confirm") {
+            compose.onNodeWithTag("detail_list").performScrollToIndex(0)
+            compose.onNodeWithContentDescription("More options").tap()
+            compose.waitForText("Delete task")
+            compose.onNodeWithText("Delete task").tap()
+            compose.waitForText("Delete task?")
+            screenshot("c9b-dialog-delete-confirm")
+            compose.closeDialog()
+        }
     }
 
     @Test fun d_otherDetails() {
@@ -364,6 +468,28 @@ class ScreenshotTour {
             compose.waitForTag("detail_title")
             screenshot("d4-detail-done")
         }
+        compose.backToTabs()
+        compose.soft("paused task") {
+            compose.onNodeWithTag("filter_paused").tap()
+            compose.waitForText(SPANISH)
+            compose.onAllNodes(clickableWithText(SPANISH)).onFirst().tap()
+            compose.waitForTag("detail_title")
+            screenshot("d4b-detail-paused")
+            compose.backToTabs()
+        }
+        compose.soft("archived task") {
+            compose.onNodeWithTag("filter_archived").tap()
+            compose.waitForText(BOOKS)
+            compose.onAllNodes(clickableWithText(BOOKS)).onFirst().tap()
+            compose.waitForTag("detail_title")
+            screenshot("d4c-detail-archived")
+            compose.backToTabs()
+        }
+        compose.soft("overdue deadline") {
+            compose.onNodeWithTag("filter_all").tap()
+            openTask(EXPENSES)
+            screenshot("d4d-detail-overdue")
+        }
     }
 
     @Test fun e_captureAndAiEntry() {
@@ -378,6 +504,16 @@ class ScreenshotTour {
             compose.onNodeWithTag("capture_details").tap()
             compose.waitForTag("capture_notes")
             screenshot("e3-capture-more")
+        }
+        compose.soft("capture follow-up sheet") {
+            compose.onNodeWithTag("capture_follow_up").tap()
+            compose.waitForTag("policy_save")
+            screenshot("e2b-capture-follow-up-sheet")
+            compose.closeOverlay("policy_save")
+        }
+        if (compose.onAllNodes(hasTestTag("capture_title")).fetchSemanticsNodes().isEmpty()) {
+            compose.onNodeWithTag("fab_capture").tap()
+            compose.waitForTag("capture_title")
         }
         // With AI off, "Plan with AI" opens the setup sheet in place (the note is kept).
         compose.onNodeWithTag("capture_plan_ai").tap()
@@ -397,6 +533,17 @@ class ScreenshotTour {
         }
     }
 
+    /** Saving from Capture: the confirmation toast (5 s, swipeable) over the Today screen. */
+    @Test fun ez_captureSaveToast() {
+        launch()
+        compose.onNodeWithTag("fab_capture").tap()
+        compose.waitForTag("capture_title")
+        compose.onNodeWithTag("capture_title").performTextInput("Buy new running shoes")
+        compose.onNodeWithTag("capture_save").tap()
+        compose.waitForTag("toast")
+        screenshot("e8-toast-saved")
+    }
+
     @Test fun f_settingsAndHealth() {
         launch()
         compose.onNodeWithTag("nav_settings").tap()
@@ -406,6 +553,48 @@ class ScreenshotTour {
             compose.onNodeWithTag("settings_list").performTouchInput { swipeUp() }
             screenshot("f${i + 2}-settings-scrolled")
         }
+        compose.soft("default follow-up sheet") {
+            compose.scrollTo("settings_list", "settings_default_preset")
+            compose.onNodeWithTag("settings_default_preset").tap()
+            compose.waitForText("Save & nudge uses")
+            screenshot("f1b-sheet-default-follow-up")
+            compose.back()
+        }
+        compose.soft("snooze choices") {
+            compose.onNodeWithTag("settings_list").performScrollToNode(hasText("Snooze button on notifications"))
+            compose.onNodeWithText("Snooze button on notifications").tap()
+            compose.waitForIdle()
+            Thread.sleep(400)
+            screenshot("f1c-snooze-choices")
+            compose.onNodeWithText("Snooze button on notifications").tap()
+        }
+        compose.soft("quiet hours time picker") {
+            compose.onNodeWithTag("settings_list").performScrollToNode(hasText("From ", substring = true))
+            compose.onNode(hasClickAction() and hasText("From ", substring = true)).tap()
+            compose.waitForText("Quiet hours start")
+            screenshot("f2b-time-picker")
+            compose.closeDialog()
+        }
+        compose.soft("export and import dialogs") {
+            compose.scrollTo("settings_list", "export_button")
+            compose.onNodeWithTag("export_button").tap()
+            compose.waitForText("Export plaintext backup?")
+            screenshot("f4b-dialog-export")
+            compose.closeDialog()
+            compose.onNodeWithTag("import_button").tap()
+            compose.waitForText("Import backup?")
+            screenshot("f4c-dialog-import")
+            compose.closeDialog()
+        }
+        compose.soft("licences") {
+            compose.scrollTo("settings_list", "open_licenses")
+            compose.onNodeWithTag("open_licenses").tap()
+            compose.waitForIdle()
+            Thread.sleep(800)
+            screenshot("f5b-licences")
+            compose.back()
+            compose.waitForTag("settings_list")
+        }
         compose.scrollTo("settings_list", "open_health")
         compose.onNodeWithTag("open_health").tap()
         compose.waitForText("Reminder health")
@@ -413,6 +602,14 @@ class ScreenshotTour {
         repeat(3) { i ->
             compose.onNodeWithTag("health_list").performTouchInput { swipeUp() }
             screenshot("f${i + 7}-health-scrolled")
+        }
+        compose.soft("health self-test") {
+            compose.scrollTo("health_list", "test_now")
+            compose.onNodeWithTag("test_now").tap()
+            compose.waitForTag("test_result")
+            compose.scrollTo("health_list", "test_result")
+            screenshot("f9b-health-test-sent")
+            instrumentation.targetContext.getSystemService(NotificationManager::class.java).cancelAll()
         }
     }
 
@@ -457,6 +654,9 @@ class ScreenshotTour {
     private companion object {
         const val TRAIN = "Book train ride"
         const val GYM = "Cancel the gym membership"
+        const val SPANISH = "Learn Spanish for the trip"
+        const val BOOKS = "Return the library books"
+        const val EXPENSES = "Submit the expense claim"
     }
 }
 
@@ -526,6 +726,32 @@ class ScreenshotTourAiReview {
         screenshot("g4-review-reminders")
         compose.scrollTo("plan_list", "review_assumptions")
         screenshot("g5-review-assumptions")
+        compose.soft("saved") {
+            compose.onNodeWithTag("plan_approve").tap()
+            compose.waitForTag("plan_saved")
+            screenshot("g6-plan-saved")
+        }
+    }
+
+    @Test fun g_planUnsupported() {
+        val plan = trainPlan.copy(
+            reminder = RawReminder(kind = "weekly_days", provenance = "explicit", times = listOf("09:00"), weekdays = listOf("monday", "wednesday"), requestedPhrase = "every Monday and Wednesday at 9"),
+            assumptions = emptyList(),
+        )
+        val provider = ScriptedProvider { PlanningResult.Success(plan, PlanningUsage(812, 356, "scripted")) }
+        planScreen(container(provider), "Book the train ride for my daughter, remind me every Monday and Wednesday at 9")
+        compose.onNodeWithTag("plan_request").tap()
+        compose.waitForTag("plan_approve")
+        compose.scrollTo("plan_list", "review_unsupported")
+        screenshot("g7-review-unsupported")
+    }
+
+    @Test fun h_planErrorsUnauthorized() {
+        val provider = ScriptedProvider { PlanningResult.Failure(PlanningError.Unauthorized) }
+        planScreen(container(provider), "Renew the car insurance before the end of the month")
+        compose.onNodeWithTag("plan_request").tap()
+        compose.waitForTag("plan_error")
+        screenshot("h2-plan-error-unauthorized")
     }
 
     @Test fun h_planErrors() {
@@ -580,5 +806,18 @@ class ScreenshotTourAiReview {
         screenshot("k2-ai-settings-ready-scrolled")
         compose.onNodeWithTag("ai_settings_list").performTouchInput { swipeUp() }
         screenshot("k3-ai-settings-ready-bottom")
+        compose.soft("test connection") {
+            compose.scrollTo("ai_settings_list", "ai_test_connection")
+            compose.onNodeWithTag("ai_test_connection").tap()
+            compose.waitForTag("ai_test_result")
+            screenshot("k1b-ai-test-connection")
+        }
+        compose.soft("delete all confirm") {
+            compose.scrollTo("ai_settings_list", "ai_delete_all")
+            compose.onNodeWithTag("ai_delete_all").tap()
+            compose.waitForText("Delete AI settings?")
+            screenshot("k3b-ai-delete-all-confirm")
+            compose.closeDialog()
+        }
     }
 }
