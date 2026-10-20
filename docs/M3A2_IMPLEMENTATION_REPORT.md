@@ -40,6 +40,9 @@ Legacy `…/research/{briefId}` and `…/apply` remain for saved M3A briefs.
   "tidy" call; the screen says "Free — no call is made".
 - **Research-later proposals** are shown unticked and can be applied as a step ("Research … further").
 - **Daily session cap** raised from 10 (M3A requests) to 25 sessions; still shown on the preflight.
+- **Start button label**: "Start · Thorough" at normal text (the search count is in the Adjust panel and
+  the estimate line) and "Start research" at font scale ≥ 1.3; the prototype's "Start · Thorough · 10
+  searches" does not fit a half-width button on a 411 dp phone.
 
 ## Validation
 
@@ -84,13 +87,43 @@ A real defect found by the 2.0 test and fixed before CI: the preflight footer's 
 "This month" link to one character per line, growing the bottom bar to the full screen (the list had
 0 px height). The row now wraps; three other squeeze-prone rows were made robust the same way.
 
-### CI
+### CI (GitHub Actions, draft PR #5)
 
-_Filled in from the GitHub Actions runs on the draft PR (see "Delivery")._
+Head `8876815` (the last code change before this report was finalised):
+
+| Workflow / job | Run | Result |
+|---|---|---|
+| Android CI · Lint, unit/Robolectric tests, APKs (push) | [39486121354](https://github.com/HassanJaveed84/autopilot/actions/runs/39486121354) | ✅ lint "No issues found"; **474 tests, 0 failures, 0 ignored**; `apks` artifact (debug + release + androidTest, 32.8 MB) |
+| Android CI · Instrumented tests (emulator API 34) (push) | 39486121354 | ✅ `connectedDebugAndroidTest`: **17 tests on emulator-5554, BUILD SUCCESSFUL** |
+| Android CI · Lint, unit/Robolectric tests, APKs (pull_request) | [39486127724](https://github.com/HassanJaveed84/autopilot/actions/runs/39486127724) | ✅ same totals |
+| Android CI · Instrumented tests (pull_request) | 39486127724 | ❌ **infrastructure**: `sdkmanager` reported "Error on ZipFile unknown archive" for the API 34 system image and the emulator never started; no test ran. The same job passed on the same commit in the push run above. |
+| Screenshots · from request file (`ScreenshotTourResearch2`) | [39486121391](https://github.com/HassanJaveed84/autopilot/actions/runs/39486121391) | ✅ 4/4 variants (light 1.0, dark 1.0, light 1.3, light 2.0), 32 screens each |
+
+Earlier heads on the branch, for the record:
+
+- `f46c50a` — Android CI green; screenshot run 39481735738 failed in all four variants at scene s12: the tour
+  tapped the item-card column instead of its clickable header. Fixed in `c52821d` (test-only change).
+- `c52821d` — Android CI green in both runs (39483390318, 39483400451); screenshot run 39483390264 passed
+  light 1.0, dark 1.0 and light 1.3 and failed light 2.0 right after s01: the soft keyboard stayed open and
+  left the preflight list about 100 px tall, so the next scroll found no hierarchy. Fixed in `8876815`
+  (tour dismisses the keyboard; the Start button also got a compact label at large text).
+
+The committed set under `docs/screenshots/m3a2/` (light and dark at 1.0, with `INDEX.md`) comes from run
+39486121391. The only UI change after that run is the Start button label at font 1.0, which now reads
+"Start · Thorough" instead of the truncated "Start · Thoroug…" visible in s04/s05; a fourth screenshot run
+was requested with that change.
 
 ## Delivery
 
-_Branch, commits, PR and CI links are listed here once pushed._
+- Branch `m3a2-deep-research`, based on `main` at `a0419ea` (M3A hardening merged as PR #4).
+- Draft PR **#5**: https://github.com/HassanJaveed84/autopilot/pull/5 (against `main`; not merged).
+- Commits: `f0097dc` plan · `3a9eba7` stage 1 (domain, extractor, parser, orchestrator, pricing) ·
+  `fd74364` stage 2 (Room v5, ledger, backup, actions) · `77e8a1d` stages 3–4 (UI, wiring) ·
+  `f46c50a` stage 5 (test sync, validation) · `c52821d`, `8876815` (screenshot-tour hardening) ·
+  then this report/screenshot commit.
+- Diff against `main` before the final commit: 68 files, +8 968 / −313 lines.
+- APKs: the `apks` artifact of each Android CI run (`app-debug.apk` ≈ 29.8 MB, `app-release.apk` ≈ 4.3 MB,
+  `app-debug-androidTest.apk`); nothing was installed on a phone by the agent.
 
 ## Cost rules, assumptions and limitations
 

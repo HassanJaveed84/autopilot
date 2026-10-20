@@ -154,7 +154,7 @@ class Research2FlowUiTest {
         compose.onNodeWithTag("adjust_searches").assertTextContainsSafely("11 searches max")
         compose.onNodeWithTag("adjust_fewer").performClick()
         compose.onNodeWithTag("estimate_value").assertIsDisplayed()
-        compose.onNode(hasText("Start · Thorough · 10 searches")).assertIsDisplayed()
+        compose.onNode(hasText("Start · Thorough")).assertIsDisplayed()
         assertTrue("nothing sent before Start", provider.calls.isEmpty())
         compose.onNodeWithTag("preflight_start").assertIsEnabled().performClick()
 

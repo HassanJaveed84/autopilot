@@ -160,8 +160,8 @@ All provider tests use fakes or a local MockWebServer. **No test calls the live 
 | Session repository: round trip, applied bookkeeping, prune to 30, payload trimming keeps cited sources, unreadable rows hidden | `ResearchSessionRepositoryTest` | ✅ |
 | Backup: sessions + usage round trip; append-only ledger on re-import; in-flight → interrupted; orphan session rejects the import | `BackupRepositoryTest.sessionsAndUsageRoundTrip…` | ✅ |
 | Editable proposals → one transactional edit: edits, Add anyway, duplicates, evidence + check date in notes, idempotent key per task version, conflict on changed task, undo only while safe; never touches reminders/status/deadline | `Research2ActionsTest` | ✅ |
-| UI end to end (Robolectric): tile → preflight (requirements edit, template, modes, Adjust, estimate) → explainer → investigation → result C/B (coverage, item cards, callouts, hero, re-rank, compare, excluded, conflict) → proposals (edit, Add anyway, apply, undo) → usage dashboard; stop sheet; provider failure; offline + AI-off reading; continuation | `Research2FlowUiTest` | see report |
-| Whole M3A.2 flow at 200% text | `ResearchFlowLargeTextUiTest` | see report |
-| Legacy M3A briefs still readable/applicable | `ResearchFlowUiTest` (2 tests) | see report |
-| Screens in light/dark at 1.0/1.3/2.0 | `ScreenshotTourResearch2` (emulator, CI screenshot workflow) | see report |
+| UI end to end (Robolectric): tile → preflight (requirements edit, template, modes, Adjust, estimate) → explainer → investigation → result C/B (coverage, item cards, callouts, hero, re-rank, compare, excluded, conflict) → proposals (edit, Add anyway, apply, undo) → usage dashboard; stop sheet; provider failure; offline + AI-off reading; continuation | `Research2FlowUiTest` | ✅ 6 tests (CI run 39486121354: 474/474) |
+| Whole M3A.2 flow at 200% text | `ResearchFlowLargeTextUiTest` | ✅ 1 test, fontScale 2.0 (fixed a real squeeze bug first) |
+| Legacy M3A briefs still readable/applicable | `ResearchFlowUiTest` (2 tests) | ✅ |
+| Screens in light/dark at 1.0/1.3/2.0 | `ScreenshotTourResearch2` (emulator, CI screenshot workflow) | ✅ run 39486121391: 4/4 variants, 32 screens each; light/dark 1.0 committed under `docs/screenshots/m3a2/` |
 | Live BYOK research against the real API | — | ⏳ pending (not run by the agent) |

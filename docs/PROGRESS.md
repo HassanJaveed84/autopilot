@@ -274,4 +274,9 @@ in `docs/M3A2_IMPLEMENTATION_REPORT.md`; plan in `docs/M3A2_PLAN.md`.
 - **Stage 5 — hardening.** Robolectric flow tests (1.0 and 2.0), legacy brief tests kept, emulator
   screenshot tour `ScreenshotTourResearch2`, docs.
 
-Validation: see the report (exact commands and results).
+Validation (details and links in the report): local `./gradlew --offline lintDebug testDebugUnitTest
+assembleDebug assembleRelease assembleDebugAndroidTest` → BUILD SUCCESSFUL, 474 unit tests / 0 failures,
+lint clean. CI on head `8876815`: lint + unit + APKs ✅ (both runs), instrumented 17 tests ✅ (push run;
+the pull_request run's emulator job died on a corrupt system-image download before any test ran),
+screenshot tour ✅ 4/4 variants (light/dark 1.0 committed under `docs/screenshots/m3a2/`). Draft PR #5.
+Not done: live paid API runs, phone install, Console price reconciliation.
