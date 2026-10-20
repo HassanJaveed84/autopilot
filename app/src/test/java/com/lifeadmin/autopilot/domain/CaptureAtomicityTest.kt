@@ -1,6 +1,7 @@
 package com.lifeadmin.autopilot.domain
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.lifeadmin.autopilot.core.IdGenerator
 import com.lifeadmin.autopilot.data.local.AppDatabase
 import com.lifeadmin.autopilot.data.repository.InMemorySettingsRepository
 import com.lifeadmin.autopilot.data.repository.TaskRepository
@@ -111,6 +112,42 @@ class CaptureAtomicityTest {
         assertNotNull("first nudge is planned", r.firstNudge)
         assertEquals(at(CHICAGO, 2026, 10, 19, 19, 0), r.firstNudge!!.plannedAt)
         assertEquals(1, alarms.forTask(r.taskId).size)
+    }
+
+    /**
+     * A write that fails inside the transaction (here: the second time slot gets a duplicate row
+     * id, which the slot table rejects) must roll back the task and policy already inserted, and
+     * a retry of the same capture must then create exactly one task.
+     */
+    @Test fun failureInsideTheTransactionRollsBackAndTheRetrySucceedsOnce() = runBlocking {
+        val ids = object : IdGenerator {
+            var breakSlots = true
+            private var n = 0
+            // While breaking: the policy gets a real id, then every slot gets the same id, so the
+            // second slot insert violates the primary key inside the transaction.
+            override fun newId(): String = if (breakSlots) (if (++n == 1) "policy-1" else "dup") else "ok-${++n}"
+        }
+        val log = RoomDiagnosticsLog(db, clock, ids)
+        val engine = ReminderEngine(db, settings, alarms, FakeNotificationPublisher(), clock, zone, ids, log, FakeEnvironmentProbe(DeliveryEnvironment()))
+        val repo = TaskRepository(db, clock, ids, zone::current, engine, log)
+        val actions = TaskActions(db, repo, settings, clock, zone)
+        val custom = dailyPolicy(t(9), t(18)).copy(enabled = true)
+        try {
+            actions.capture("Book train ride", null, Priority.NORMAL, nudge = true, policy = custom, deadline = null, captureId = "capture-x")
+            fail("expected the slot insert to fail")
+        } catch (e: Exception) {
+            assertTrue("constraint failure, got $e", e is android.database.sqlite.SQLiteConstraintException || e.cause is android.database.sqlite.SQLiteConstraintException)
+        }
+        assertEquals("task rolled back", 0, tasks().size)
+        assertEquals("policy rolled back", 0, db.policyDao().getAll().size)
+        assertTrue("nothing scheduled", alarms.alarms.isEmpty())
+
+        ids.breakSlots = false
+        val r = actions.capture("Book train ride", null, Priority.NORMAL, nudge = true, policy = custom, deadline = null, captureId = "capture-x")
+        assertEquals("capture-x", r.taskId)
+        assertEquals(1, tasks().size)
+        assertEquals(listOf(t(9), t(18)), repo.getPolicy("capture-x")!!.times)
+        assertEquals(1, alarms.forTask("capture-x").size)
     }
 
     @Test fun inboxCaptureIgnoresTheFollowUpAndSchedulesNothing() = runBlocking {
