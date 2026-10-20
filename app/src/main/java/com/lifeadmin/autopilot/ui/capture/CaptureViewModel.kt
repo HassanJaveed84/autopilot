@@ -40,6 +40,11 @@ data class CaptureDraft(
     /** Custom schedule chosen in the Follow-up sheet; null = the default preset from Settings. */
     val policy: ReminderPolicy? = null,
     val detailsOpen: Boolean = false,
+    /**
+     * Idempotency key for this capture: a retry after a failed save (or a double tap) creates the
+     * same task once instead of a duplicate. A fresh draft gets a fresh key.
+     */
+    val captureId: String = java.util.UUID.randomUUID().toString(),
 ) {
     val isEmpty: Boolean get() = text.isBlank()
 }
@@ -113,14 +118,8 @@ class CaptureViewModel(
     /** Full text sent to "Plan with AI": the sentence plus any notes typed in the disclosure. */
     fun planText(): String = listOf(draft.value.text, draft.value.notes).filter { it.isNotBlank() }.joinToString("\n")
 
-    /** Title = first line (≤ 300 chars); the rest of the text joins the notes. */
-    private fun split(d: CaptureDraft): Pair<String, String?> {
-        val text = d.text.trim()
-        val title = text.lineSequence().first().take(TaskRepository.MAX_TITLE).trim()
-        val remainder = text.removePrefix(text.lineSequence().first()).trim()
-        val notes = listOf(remainder, d.notes.trim()).filter { it.isNotBlank() }.joinToString("\n\n").ifBlank { null }?.take(TaskRepository.MAX_NOTES)
-        return title to notes
-    }
+    /** Title = first line, cut at a word if over the limit; every other character goes to the notes. */
+    private fun split(d: CaptureDraft): Pair<String, String?> = CaptureText.split(d.text, d.notes).let { it.title to it.notes }
 
     /**
      * Commits exactly once per tap (re-entrant taps are ignored while saving) and resets the
@@ -132,7 +131,7 @@ class CaptureViewModel(
         _state.update { it.copy(saving = true, error = null) }
         viewModelScope.launch {
             val (title, notes) = split(d)
-            runCatching { actions.capture(title, notes, d.priority, d.nudge, d.policy, d.deadline) }
+            runCatching { actions.capture(title, notes, d.priority, d.nudge, d.policy, d.deadline, captureId = d.captureId) }
                 .onSuccess { r ->
                     draft.value = CaptureDraft()
                     _state.update { it.copy(saving = false) }

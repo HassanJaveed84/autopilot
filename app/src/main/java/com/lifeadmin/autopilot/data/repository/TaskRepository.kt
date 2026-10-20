@@ -12,6 +12,7 @@ import com.lifeadmin.autopilot.data.local.TaskStepEntity
 import com.lifeadmin.autopilot.data.local.encodeMetadata
 import com.lifeadmin.autopilot.data.local.toDomain
 import com.lifeadmin.autopilot.data.local.toEntity
+import com.lifeadmin.autopilot.domain.model.DeadlineSpec
 import com.lifeadmin.autopilot.domain.model.DeadlineType
 import com.lifeadmin.autopilot.domain.model.DiagnosticEntry
 import com.lifeadmin.autopilot.domain.model.DiagnosticType
@@ -177,6 +178,59 @@ class TaskRepository(
                 }
             }
             id
+        }
+    }
+
+    /**
+     * Creates a task from the Capture sheet in ONE schedule mutation + Room transaction: the
+     * task, its reminder policy (a custom follow-up, the default preset, or none) and its
+     * deadline are written together, so a failure anywhere leaves nothing behind and the engine
+     * schedules exactly once afterwards. [taskId] is the idempotency key: saving the same capture
+     * again (retry after an error, double tap) returns the existing task and writes nothing.
+     *
+     * @return the task id and whether it was newly created.
+     */
+    suspend fun createCapturedTask(draft: NewTask, customPolicy: ReminderPolicy?, deadline: DeadlineSpec?, taskId: String? = null): Pair<String, Boolean> {
+        val title = validateTitle(draft.title)
+        val notes = validateNotes(draft.notes)
+        require(draft.status == TaskStatus.INBOX || draft.status == TaskStatus.ACTIONABLE) { "New tasks start in Inbox or Actionable" }
+        val d = deadline?.takeIf { it.type != DeadlineType.NONE }
+        d?.let { validateDeadline(it.type, it.date, it.instant) }
+        customPolicy?.let(::validatePolicy)
+        val id = taskId?.takeIf { it.isNotBlank() } ?: ids.newId()
+        val now = clock.now()
+        val zone = zoneProvider()
+        return coordinator.mutateTask(id) {
+            db.withTransaction {
+                if (taskDao.get(id) != null) return@withTransaction id to false
+                taskDao.insert(
+                    TaskEntity(
+                        id = id, title = title, notes = notes, status = draft.status, priority = draft.priority,
+                        createdAt = now, updatedAt = now, completedAt = null, archivedAt = null,
+                        deadlineType = d?.type ?: DeadlineType.NONE,
+                        deadlineLocalDate = if (d?.type == DeadlineType.DATE_ONLY) d.date else null,
+                        deadlineInstant = if (d?.type == DeadlineType.EXACT) d.instant else null,
+                        deadlineZoneId = if (d?.type == DeadlineType.EXACT) zone.id else null,
+                        snoozedUntil = null, waitingReason = null, waitingCheckInAt = null,
+                    ),
+                )
+                val blank = ReminderPolicy(id = ids.newId(), taskId = id, lastEditedAt = now)
+                val policy = when {
+                    customPolicy != null -> customPolicy.copy(
+                        id = blank.id, taskId = id, lastEditedAt = now, times = customPolicy.times.distinct().sorted(),
+                        zoneId = if (customPolicy.zoneMode == ZoneMode.FIXED_ZONE) customPolicy.zoneId ?: zone.id else null,
+                    )
+                    draft.preset != null -> ReminderPresets.applyTo(blank, draft.preset, now.atZone(zone).toLocalDate())
+                    else -> blank
+                }
+                writePolicy(policy)
+                log(id, now, EventType.CREATED, "Created in ${draft.status.label()}")
+                if (d != null) log(id, now, EventType.EDITED, "Deadline: ${describeDeadline(d.type, d.date, d.instant, zone)}", mapOf("fields" to "deadline"))
+                if (policy.enabled) {
+                    log(id, now, EventType.POLICY_EDITED, "Reminders: ${PolicyDescriber.describe(policy)}", draft.preset?.let { mapOf("preset" to it.name) } ?: mapOf("kind" to policy.kind.name))
+                }
+                id to true
+            }
         }
     }
 

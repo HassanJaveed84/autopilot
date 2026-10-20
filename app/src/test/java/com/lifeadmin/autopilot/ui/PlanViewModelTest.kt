@@ -187,6 +187,17 @@ class PlanViewModelTest {
         assertTrue(provider.requests.isEmpty())
     }
 
+    @Test fun saveWithoutAiKeepsMultilineTextAsTitlePlusNotesWithoutDuplication() {
+        runBlocking { settings.update { it.copy(aiEnabled = false) } }
+        val v = vm(initial = "Renew the car insurance\nCompare three quotes first\nAsk Sam which broker he used")
+        settle()
+        v.saveWithoutAi()
+        settle { v.state.value.savedTaskId != null }
+        val saved = runBlocking { db.taskDao().get(v.state.value.savedTaskId!!)!! }
+        assertEquals("Renew the car insurance", saved.title)
+        assertEquals("Compare three quotes first\nAsk Sam which broker he used", saved.notes)
+    }
+
     @Test fun validationErrorFromAnEditIsShownAndNothingIsSaved() {
         val v = vm()
         settle()

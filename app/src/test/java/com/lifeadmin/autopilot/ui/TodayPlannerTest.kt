@@ -90,6 +90,37 @@ class TodayPlannerTest {
         assertEquals(1, plan.rail.count { it is RailEntry.Card })
     }
 
+    @Test fun futureCheckInSitsOnTheRailButIsNotCountedAsAThingToMove() {
+        val waiting = task("lease", "Sign the lease", TaskStatus.WAITING).copy(waitingCheckInAt = at(CHICAGO, 2026, 10, 19, 14, 0))
+        val plan = TodayPlanner.plan(listOf(summary(waiting)), settings, now, CHICAGO)
+        assertTrue(plan.rail[0] is RailEntry.Now)
+        assertTrue(plan.rail[1] is RailEntry.CheckIn)
+        assertEquals(0, plan.tasksToday)
+        assertEquals(1, plan.checkInsToday)
+        assertEquals("Nothing nudges you today.", plan.headline)
+        assertEquals("Check-in on Sign the lease at 14:00.", plan.sub)
+    }
+
+    @Test fun passedCheckInBecomesAttentionAndCounts() {
+        val waiting = task("lease", "Sign the lease", TaskStatus.WAITING).copy(waitingCheckInAt = at(CHICAGO, 2026, 10, 19, 8, 0))
+        val plan = TodayPlanner.plan(listOf(summary(waiting)), settings, now, CHICAGO)
+        assertEquals("Check-in due", (plan.rail[1] as RailEntry.Attention).label)
+        assertEquals(1, plan.tasksToday)
+        assertEquals(0, plan.checkInsToday)
+        assertEquals("One thing to move today.", plan.headline)
+        assertEquals("One needs you now.", plan.sub)
+    }
+
+    @Test fun checkInAlongsideNudgesIsMentionedAfterThem() {
+        val train = task("train", "Book train ride")
+        val waiting = task("lease", "Sign the lease", TaskStatus.WAITING).copy(waitingCheckInAt = at(CHICAGO, 2026, 10, 19, 14, 0))
+        val plan = TodayPlanner.plan(listOf(summary(train, policy("train", t(9), t(18)), occ("train", at(CHICAGO, 2026, 10, 19, 9, 0))), summary(waiting)), settings, now, CHICAGO)
+        assertEquals(1, plan.tasksToday)
+        assertEquals(1, plan.checkInsToday)
+        assertEquals("One thing to move today.", plan.headline)
+        assertEquals("Nudges at 09:00 and 18:00. Each one repeats until it's done. Check-in on Sign the lease at 14:00.", plan.sub)
+    }
+
     @Test fun inboxNotesDoneTodayAndEmptyState() {
         val note = task("bank", "Call the bank", TaskStatus.INBOX)
         val done = task("fee", "Dispute the fee", TaskStatus.DONE).copy(completedAt = at(CHICAGO, 2026, 10, 19, 8, 0))

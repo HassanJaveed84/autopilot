@@ -215,9 +215,8 @@ class PlanViewModel(
     fun saveWithoutAi() = viewModelScope.launch {
         val text = _state.value.text.trim()
         if (text.isEmpty()) return@launch
-        val title = text.lineSequence().first().take(300)
-        val notes = text.takeIf { it.length > title.length }
-        runCatching { actions.quickCapture(title, withReminder = false, notes = notes) }
+        val split = com.lifeadmin.autopilot.ui.capture.CaptureText.split(text)
+        runCatching { actions.quickCapture(split.title, withReminder = false, notes = split.notes) }
             .onSuccess { id -> handle[KEY_SAVED] = id; setPhase(PlanPhase.SAVED); _state.update { it.copy(savedTaskId = id) } }
             .onFailure { e -> _state.update { it.copy(saveError = e.userMessage()) } }
     }

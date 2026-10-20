@@ -38,8 +38,16 @@ sealed interface RailEntry {
 
 data class TodayPlan(
     val rail: List<RailEntry>,
-    /** Tasks with a card or attention row today. */
+    /**
+     * Tasks that need a move from you today: those with a card or an attention row. This is the
+     * number in the headline. Waiting tasks whose check-in is still ahead are NOT counted — their
+     * check-in sits on the rail as a slim row and is mentioned in [sub] — because nothing is
+     * asked of you until the check-in time; once it passes, the task becomes an attention row
+     * and counts.
+     */
     val tasksToday: Int,
+    /** Waiting tasks with a check-in later today (slim rail rows, not counted in [tasksToday]). */
+    val checkInsToday: Int,
     val headline: String,
     val sub: String,
     val waiting: List<TaskSummary>,
@@ -115,6 +123,7 @@ object TodayPlanner {
             addAll(sortedTimed)
         }
         val tasksToday = onRail.size
+        val checkIns = sortedTimed.filterIsInstance<RailEntry.CheckIn>()
 
         val waiting = open.filter { it.task.status == TaskStatus.WAITING }.sortedBy { it.task.waitingCheckInAt ?: Instant.MAX }
         val later = open.filter { it.task.status != TaskStatus.WAITING && it.task.id !in onRail && !(it.task.status == TaskStatus.INBOX && it.policy?.enabled != true) }
@@ -124,10 +133,15 @@ object TodayPlanner {
 
         val headline: String
         val sub: String
+        val checkInText = when (checkIns.size) {
+            0 -> ""
+            1 -> "Check-in on ${checkIns.single().summary.task.title} at ${checkIns.single().time}."
+            else -> "${checkIns.size} check-ins, at ${joinList(checkIns.map { it.time }.distinct())}."
+        }
         if (tasksToday == 0) {
             headline = "Nothing nudges you today."
             val best = open.filter { it.nextReminder != null }.minByOrNull { it.nextReminder!!.plannedAt }
-            sub = best?.let { "Next: ${it.task.title}, ${Format.relativeLower(it.nextReminder!!.plannedAt, now, zone)}." } ?: "Enjoy the quiet."
+            sub = checkInText.ifEmpty { best?.let { "Next: ${it.task.title}, ${Format.relativeLower(it.nextReminder!!.plannedAt, now, zone)}." } ?: "Enjoy the quiet." }
         } else {
             headline = "${countWord(tasksToday)} to move today."
             val times = sortedTimed.filter { it !is RailEntry.CheckIn }.map { entryTime(it) }.distinct()
@@ -135,11 +149,12 @@ object TodayPlanner {
                 if (attention.isNotEmpty()) append(if (attention.size == 1) "One needs you now. " else "${attention.size} need you now. ")
                 if (times.isNotEmpty()) {
                     append("Nudges at ").append(joinList(times)).append(". ")
-                    append(if (anyRecurring) "Each one repeats until it's done." else "")
+                    append(if (anyRecurring) "Each one repeats until it's done. " else "")
                 }
+                append(checkInText)
             }.trim()
         }
-        return TodayPlan(rail, tasksToday, headline, sub, waiting, later, doneToday, inbox)
+        return TodayPlan(rail, tasksToday, checkIns.size, headline, sub, waiting, later, doneToday, inbox)
     }
 
     private fun entryInstant(e: RailEntry): Instant = when (e) {

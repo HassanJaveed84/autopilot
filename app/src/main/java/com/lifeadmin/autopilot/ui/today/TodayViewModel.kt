@@ -25,7 +25,7 @@ data class TodayUiState(
     val now: Instant = Instant.EPOCH,
     val zone: ZoneId = ZoneId.systemDefault(),
     val dateText: String = "",
-    val plan: TodayPlan = TodayPlan(emptyList(), 0, "", "", emptyList(), emptyList(), emptyList(), emptyList()),
+    val plan: TodayPlan = TodayPlan(emptyList(), 0, 0, "", "", emptyList(), emptyList(), emptyList(), emptyList()),
     val quietHours: QuietHours = QuietHours(),
     val showOnboarding: Boolean = false,
     val hasAnyTask: Boolean = false,
