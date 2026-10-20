@@ -14,7 +14,7 @@ at the end.
 
 | # | Issue | Root cause | Fix | Tests |
 |---|---|---|---|---|
-| A1 | Capture actions hidden behind the keyboard | Save/Plan lived at the end of the sheet's scrolling column; opening the disclosure added content below the keyboard with nothing scrolling it into view | Sheet footer pinned under the scrolling content and above the IME; the disclosure scrolls itself into view | `CaptureSmallWindowUiTest` (320×480dp, 1.3×) |
+| A1 | Capture actions hidden behind the keyboard | Save/Plan lived at the end of the sheet's scrolling column; opening the disclosure added content below the keyboard with nothing scrolling it into view | Sheet footer pinned under the scrolling content and above the IME (Capture and Waiting sheets); the disclosure scrolls itself into view | `CaptureSmallWindowUiTest` (320×480dp, 1.3×), `InstrumentedUiTest` |
 | A2 | Rail times wrap to "09:0 / 0" at 1.3× | Fixed 52dp time column; `TimeText` allowed wrapping | Column scales with font (52dp × fontScale, capped at 2×); `TimeText` is single-line | `LargeTextLayout130/200UiTest` |
 | A3 | "Yesterday · yesterday · overdue" | Relative date label + relative distance both rendered for dates within a day | `Format.dateWithDistance` (on `main`) and `Format.deadlineDetail` / `deadlineSpec` centralise the wording | `FormatDateTest` |
 | A4 | "Every N d…" in the follow-up kind selector | Segment text `maxLines = 1` with ellipsis; segments did not share height | Row uses intrinsic height, segments fill it and wrap to two lines | `LargeTextLayout130/200UiTest` |
@@ -32,12 +32,15 @@ at the end.
 ### A1 Capture with the keyboard open
 
 `AutopilotSheet` (used by Capture, Follow-up, Snooze, Waiting and AI setup) gained an optional
-`footer`. The sheet's outer column carries `navigationBarsPadding().imePadding()`; inside it, the
-header and content scroll in a `weight(1f, fill = false)` column and the footer sits below, so
-the primary actions are always on screen whatever the content height or the keyboard height.
-`CaptureSheet` moved Save & nudge / Save to Inbox and Plan with AI into that footer and attaches a
-`BringIntoViewRequester` to the notes/priority/deadline section, which is brought into view when
-the disclosure opens. A focused text field is brought into view by Compose itself.
+`footer`. Inside the sheet's `navigationBarsPadding().imePadding()` area, a small `Layout`
+(`BodyWithFooter`) measures the footer first and gives the scrolling body the remaining height,
+so the primary actions are always on screen whatever the content or keyboard height, while
+sheets without a footer are laid out exactly as before and every sheet still wraps its content
+(a weighted column would have stretched sheets to full height). `CaptureSheet` moved Save &
+nudge / Save to Inbox and Plan with AI into the footer and attaches a `BringIntoViewRequester` to
+the notes/priority/deadline section, which is brought into view when the disclosure opens; the
+Waiting sheet, which also has a text field, pins "Start waiting" the same way. A focused text
+field is brought into view by Compose itself.
 
 `CaptureSmallWindowUiTest` runs at 320×480dp and 1.3× text, the space a 320dp phone leaves with
 the keyboard up: after typing and opening the disclosure, the footer and Save are displayed
@@ -171,7 +174,23 @@ Existing suites that cover the remaining Part C items and still pass: `Accessibi
 scheduling and Done/Snooze/Open actions), `ReminderEngineTest`, `FollowUpSheet`/policy
 validation tests, migration tests, settings tests.
 
-Results: RESULTS_PLACEHOLDER
+Results: 
+
+| Check | Where | Result |
+|---|---|---|
+| Android lint (`lintDebug`) | local + CI run 39383228842 | 0 issues |
+| JVM/Robolectric unit tests (`testDebugUnitTest`) | local + CI | **342 run, 0 failed** |
+| Emulator instrumented suite (`connectedDebugAndroidTest`, API 34) | CI run 39383228842 | **8 run, 0 failed** |
+| Screenshot tour, 4 variants (light/dark × 1.0×/1.3×) | CI run 39383190839 | **16 tests OK per variant, 82 screens each, 0 skipped** (the notification shade included) |
+| Debug + release APK build, signed with the personal key | CI run 39383228842 (`apks` artifact) | built; certificate `CN=Life Admin Autopilot` |
+
+One CI failure on the way: run 39381462715's instrumented job failed in
+`InstrumentedUiTest.captureThenMarkWaitingWithTypedReason` (timed out waiting for the task to
+become Waiting). Cause: before this branch the Waiting sheet's Save button was laid out *behind*
+the keyboard, where the test harness could still tap it; with sheet content now kept above the
+keyboard the button was below the fold and the tap missed. Fixed by giving the Waiting sheet the
+same pinned Save as Capture (commit 30835d4), after which the suite passed; the test itself is
+unchanged.
 
 ## Before / after
 
@@ -182,6 +201,7 @@ originals are the CI artifacts named in the table). "Before" is the screenshot r
 | Issue | Comparison | What to look for |
 |---|---|---|
 | A1 Capture with the keyboard | ![](screenshots/stabilization/a1-capture-keyboard-light-1.3.png) | Before: "Notes, priority, deadline" cut off under the keyboard, Save out of reach. After: priority and deadline chips scroll above the pinned Save & nudge / Plan with AI. Also `a1-capture-keyboard-dark-1.3.png`, `a1-capture-keyboard-light-1.0.png`. |
+| A1 Waiting sheet | ![](screenshots/stabilization/a1-waiting-sheet-light-1.3.png) | After: "Start waiting" pinned at the bottom of the sheet (same treatment as Capture). |
 | A2 Today rail times | ![](screenshots/stabilization/a2-today-rail-light-1.3.png) | Before: "09:0 / 0" and "18:0" beside ghost rows. After: "09:00", "09:39", "10:00" on one line. Also `a2-today-rail-dark-1.3.png`. |
 | A3 Overdue deadline row | ![](screenshots/stabilization/a3-deadline-overdue-light-1.0.png) | Before: "Yesterday · yesterday · overdue". After: "Yesterday · overdue". |
 | A4 Follow-up kind selector | ![](screenshots/stabilization/a4-follow-up-kinds-light-1.3.png) | Before: "Every N d…". After: "Every N / days" on two lines, segments the same height. Also `a4-follow-up-kinds-dark-1.3.png`. |
@@ -191,7 +211,7 @@ originals are the CI artifacts named in the table). "Before" is the screenshot r
 | A7 Notification shade | ![](screenshots/stabilization/a7-notification-light-1.0.png) | No "before" exists: this screen had never been captured on CI. After: the reminder with Done · Snooze · tomorrow 09:00 · Open. Also `a7-notification-dark-1.0.png`. |
 
 Full "after" sets (82 screens per variant, light/dark × 1.0×/1.3×) are the artifacts of screenshot
-run 39381260494; the "before" sets are runs 39366414541 (1.0×) and 39361936111 (1.3×).
+run 39383190839; the "before" sets are runs 39366414541 (1.0×) and 39361936111 (1.3×).
 
 ## Remaining known limitations
 
