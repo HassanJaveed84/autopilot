@@ -478,7 +478,7 @@ private fun DeadlineAndPriorityCard(d: TaskDetails, now: Instant, zone: ZoneId, 
     val today = now.atZone(zone).toLocalDate()
     val dueValue = when (task.deadlineType) {
         DeadlineType.NONE -> "None"
-        DeadlineType.DATE_ONLY -> task.deadlineLocalDate?.let { "${Format.date(it, today)} · ${Format.daysUntil(it, today)}" } ?: "None"
+        DeadlineType.DATE_ONLY -> task.deadlineLocalDate?.let { Format.dateWithDistance(it, today) } ?: "None"
         DeadlineType.EXACT -> task.deadlineInstant?.let { Format.relative(it, now, zone) } ?: "None"
     }
     val overdue = task.isOverdue(now, zone)

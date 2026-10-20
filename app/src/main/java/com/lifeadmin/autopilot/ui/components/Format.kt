@@ -57,6 +57,15 @@ object Format {
         else -> if (d > 0) "in $d days" else "${-d} days ago"
     }
 
+    /**
+     * Date plus its distance, e.g. "Fri 30 Oct · in 10 days". Within a day of today the date is
+     * already relative ("Yesterday"), so the distance is left out rather than repeated.
+     */
+    fun dateWithDistance(date: LocalDate, today: LocalDate): String {
+        val label = date(date, today)
+        return if (Math.abs(ChronoUnit.DAYS.between(today, date)) <= 1) label else "$label · ${daysUntil(date, today)}"
+    }
+
     fun date(date: LocalDate, today: LocalDate): String = when (ChronoUnit.DAYS.between(today, date)) {
         0L -> "Today"
         1L -> "Tomorrow"
