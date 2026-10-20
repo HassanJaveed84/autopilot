@@ -213,10 +213,6 @@ class DeepResearchService(
     /** App start: in-flight ledger rows from a previous process are interrupted; nothing is re-sent. */
     suspend fun onAppStart(): Int = ledger.settleInterrupted()
 
-    fun forgetCredentials() {
-        (provider as? com.lifeadmin.autopilot.ai.anthropic.AnthropicResearchCalls)?.let { /* client is owned by the base provider; reset there */ }
-    }
-
     // ------------------------------------------------------------------ the run
 
     private class RunCtx(

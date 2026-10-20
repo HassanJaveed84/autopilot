@@ -404,10 +404,11 @@ fun CandidateCard(cand: Candidate, sources: List<SourceRef2>, now: Instant, zone
 @Composable
 private fun AttrInline(label: String, value: String, tag: ProvenanceTag) {
     val c = AutopilotTheme.colors
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("$label: ", style = MaterialTheme.typography.labelSmall, color = c.ink2)
-        Text(value, style = MaterialTheme.typography.bodySmall, color = c.ink, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 220.dp))
-        ProvenanceTagChip(tag)
+    // FlowRow: the provenance chip moves to the next line instead of being squeezed mid-word at the row end.
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text("$label: ", style = MaterialTheme.typography.labelSmall, color = c.ink2, modifier = Modifier.align(Alignment.CenterVertically))
+        Text(value, style = MaterialTheme.typography.bodySmall, color = c.ink, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 220.dp).align(Alignment.CenterVertically))
+        ProvenanceTagChip(tag, Modifier.align(Alignment.CenterVertically))
     }
 }
 

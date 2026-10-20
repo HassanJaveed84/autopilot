@@ -122,8 +122,9 @@ fun Preflight2Screen(
                             ButtonPair(
                                 secondary = { m -> SecondaryButton("Cancel", onClick = onBack, modifier = m.testTag("preflight_cancel")) },
                                 primary = { m ->
+                                    val compact = LocalDensity.current.fontScale >= 1.3f
                                     PrimaryButton(
-                                        "Start · ${config.mode.label} · ${config.searchBudget} searches",
+                                        if (compact) "Start research" else "Start · ${config.mode.label} · ${config.searchBudget} searches",
                                         onClick = { if (viewModel.needsBudgetConfirmation()) confirmBudget = true else viewModel.start(onStarted) },
                                         enabled = s.canStart && !s.loading, icon = AutopilotIcons.Research, modifier = m.testTag("preflight_start"),
                                     )

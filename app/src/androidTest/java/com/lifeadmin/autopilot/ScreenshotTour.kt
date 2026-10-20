@@ -1106,6 +1106,9 @@ class ScreenshotTourResearch2 {
         compose.onNodeWithTag("action_research").tap()
         compose.waitForTag("preflight_question")
         compose.onNodeWithTag("preflight_question").performTextInput(request)
+        // The soft keyboard can cover most of a 2.0-font-scale list; dismiss it before scrolling.
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.waitForIdle()
     }
 
     @Test fun s1_supplementsPreflightInvestigationResultProposals() {
