@@ -71,6 +71,10 @@ import java.time.format.DateTimeFormatter
 private val hhmm = DateTimeFormatter.ofPattern("HH:mm")
 private val RAIL_COLUMN = 52.dp
 
+/** The time column grows with the system font size so "09:00" stays on one line at 130–200%. */
+@Composable
+private fun railColumn(): androidx.compose.ui.unit.Dp = RAIL_COLUMN * LocalDensity.current.fontScale.coerceIn(1f, 2f)
+
 /**
  * Today as a flight plan: a headline sentence, the inbox prompt, the nudge rail with a Now
  * marker (first nudge per task as a card, repeats as ghost rows, deadlines and due check-ins as
@@ -186,8 +190,8 @@ private fun railKey(i: Int, e: RailEntry): String = when (e) {
 }
 
 /** Draws the rail's vertical line behind a row (continuous across rows because each row draws its own segment). */
-private fun Modifier.railLine(color: Color, fromTop: Boolean = true, last: Boolean = false): Modifier = drawBehind {
-    val x = RAIL_COLUMN.toPx() / 2f
+private fun Modifier.railLine(color: Color, column: androidx.compose.ui.unit.Dp, fromTop: Boolean = true, last: Boolean = false): Modifier = drawBehind {
+    val x = column.toPx() / 2f
     val top = if (fromTop) 0f else size.height / 2f
     val bottom = if (last) size.height * 0.35f else size.height
     if (bottom > top) drawLine(color, Offset(x, top), Offset(x, bottom), strokeWidth = 2.dp.toPx())
@@ -196,11 +200,12 @@ private fun Modifier.railLine(color: Color, fromTop: Boolean = true, last: Boole
 @Composable
 private fun NowRow(time: String, last: Boolean) {
     val c = AutopilotTheme.colors
+    val column = railColumn()
     Row(
-        Modifier.fillMaxWidth().height(32.dp).railLine(c.line, fromTop = false, last = last).semantics(mergeDescendants = true) { contentDescription = "Now, $time" },
+        Modifier.fillMaxWidth().height(32.dp).railLine(c.line, column, fromTop = false, last = last).semantics(mergeDescendants = true) { contentDescription = "Now, $time" },
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.width(RAIL_COLUMN), contentAlignment = Alignment.Center) {
+        Box(Modifier.width(column), contentAlignment = Alignment.Center) {
             Box(Modifier.size(20.dp).clip(CircleShape).background(c.signalSoft), contentAlignment = Alignment.Center) {
                 Box(Modifier.size(12.dp).clip(CircleShape).background(c.signal))
             }
@@ -212,6 +217,7 @@ private fun NowRow(time: String, last: Boolean) {
 @Composable
 private fun RailCardRow(label: String, labelTone: Color, last: Boolean, mono: Boolean = false, card: @Composable () -> Unit) {
     val c = AutopilotTheme.colors
+    val column = railColumn()
     val largeText = LocalDensity.current.fontScale >= 1.3f
     val labelContent: @Composable () -> Unit = {
         if (mono) TimeText(label, size = 13, color = labelTone, modifier = Modifier.background(c.paper).padding(vertical = 3.dp, horizontal = 4.dp))
@@ -219,13 +225,13 @@ private fun RailCardRow(label: String, labelTone: Color, last: Boolean, mono: Bo
     }
     if (largeText) {
         // At ≥ 130% text size the time moves above the card so titles don't squeeze beside the rail.
-        Column(Modifier.fillMaxWidth().padding(top = 10.dp).railLine(c.line, last = last)) {
+        Column(Modifier.fillMaxWidth().padding(top = 10.dp).railLine(c.line, column, last = last)) {
             Row(Modifier.padding(start = 14.dp), verticalAlignment = Alignment.CenterVertically) { labelContent() }
-            Box(Modifier.padding(start = RAIL_COLUMN - 16.dp, top = 4.dp)) { card() }
+            Box(Modifier.padding(start = column - 16.dp, top = 4.dp)) { card() }
         }
     } else {
-        Row(Modifier.fillMaxWidth().padding(top = 10.dp).railLine(c.line, last = last), verticalAlignment = Alignment.Top) {
-            Box(Modifier.width(RAIL_COLUMN).padding(top = 20.dp), contentAlignment = Alignment.TopCenter) { labelContent() }
+        Row(Modifier.fillMaxWidth().padding(top = 10.dp).railLine(c.line, column, last = last), verticalAlignment = Alignment.Top) {
+            Box(Modifier.width(column).padding(top = 20.dp), contentAlignment = Alignment.TopCenter) { labelContent() }
             Box(Modifier.weight(1f)) { card() }
         }
     }
@@ -234,9 +240,10 @@ private fun RailCardRow(label: String, labelTone: Color, last: Boolean, mono: Bo
 @Composable
 private fun GhostRow(time: String, title: String, suffix: String, icon: androidx.compose.ui.graphics.vector.ImageVector, last: Boolean, onOpen: () -> Unit) {
     val c = AutopilotTheme.colors
-    Row(Modifier.fillMaxWidth().padding(top = 10.dp).railLine(c.line, last = last), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.width(RAIL_COLUMN), contentAlignment = Alignment.Center) {
-            TimeText(time, size = 13, color = c.ink2, modifier = Modifier.background(c.paper).padding(vertical = 3.dp))
+    val column = railColumn()
+    Row(Modifier.fillMaxWidth().padding(top = 10.dp).railLine(c.line, column, last = last), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.width(column), contentAlignment = Alignment.Center) {
+            TimeText(time, size = 13, color = c.ink2, modifier = Modifier.background(c.paper).padding(vertical = 3.dp).testTag("rail_time"))
         }
         Row(
             Modifier

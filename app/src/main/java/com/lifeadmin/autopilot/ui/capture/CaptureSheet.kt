@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -79,6 +81,7 @@ import java.time.LocalTime
  * the switch ("Save & nudge" / "Save to Inbox"), "Plan with AI" beside it. Notes, priority and
  * deadline sit behind one disclosure. Everything typed stays in the ViewModel until saved.
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun CaptureSheet(
     viewModel: CaptureViewModel,
@@ -112,8 +115,31 @@ fun CaptureSheet(
     val policy = s.effectivePolicy(now, zone)
     val today = now.atZone(zone).toLocalDate()
 
-    AutopilotSheet(title = "Capture", onDismiss = onDismiss, scrollable = true) {
+    val detailsRequester = remember { BringIntoViewRequester() }
+    AutopilotSheet(
+        title = "Capture", onDismiss = onDismiss, scrollable = true,
+        footer = {
+            // Pinned under the content and above the keyboard: always reachable.
+            ButtonPair(
+                modifier = Modifier.padding(top = 10.dp), primaryWeight = 1.1f,
+                secondary = { m ->
+                    SecondaryButton(
+                        "Plan with AI", onClick = { viewModel.planWithAi(onPlanWithAi) }, enabled = !d.isEmpty && !s.saving,
+                        icon = AutopilotIcons.Route, route = true, modifier = m.testTag("capture_plan_ai"),
+                    )
+                },
+                primary = { m ->
+                    PrimaryButton(
+                        if (d.nudge) "Save & nudge" else "Save to Inbox", onClick = { viewModel.save(onSaved) }, enabled = !d.isEmpty && !s.saving,
+                        modifier = m.testTag("capture_save"),
+                    )
+                },
+            )
+        },
+    ) {
         LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+        // Opening the disclosure scrolls it into view, so the new fields never sit behind the keyboard.
+        LaunchedEffect(d.detailsOpen) { if (d.detailsOpen) runCatching { detailsRequester.bringIntoView() } }
         Text("What do you need to follow through on?", style = MaterialTheme.typography.labelLarge, color = c.ink2, modifier = Modifier.padding(bottom = 8.dp))
         OutlinedTextField(
             value = d.text,
@@ -189,7 +215,7 @@ fun CaptureSheet(
             Text("Notes, priority, deadline", style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp), color = c.ink)
         }
         if (d.detailsOpen) {
-            Column(Modifier.padding(horizontal = 4.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(Modifier.bringIntoViewRequester(detailsRequester).padding(horizontal = 4.dp, vertical = 4.dp).testTag("capture_details_section"), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Priority", style = MaterialTheme.typography.labelMedium, color = c.ink2)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -228,21 +254,6 @@ fun CaptureSheet(
             }
         }
 
-        ButtonPair(
-            modifier = Modifier.padding(top = 10.dp), primaryWeight = 1.1f,
-            secondary = { m ->
-                SecondaryButton(
-                    "Plan with AI", onClick = { viewModel.planWithAi(onPlanWithAi) }, enabled = !d.isEmpty && !s.saving,
-                    icon = AutopilotIcons.Route, route = true, modifier = m.testTag("capture_plan_ai"),
-                )
-            },
-            primary = { m ->
-                PrimaryButton(
-                    if (d.nudge) "Save & nudge" else "Save to Inbox", onClick = { viewModel.save(onSaved) }, enabled = !d.isEmpty && !s.saving,
-                    modifier = m.testTag("capture_save"),
-                )
-            },
-        )
         Text(
             when (s.availability) {
                 is AiAvailability.Ready -> "Plan with AI sends only this text, the date and time, and your reminder settings to Anthropic. You review the plan before it's saved."
@@ -273,11 +284,7 @@ fun CaptureSheet(
     }
 }
 
-private fun deadlineLabel(d: DeadlineSpec, now: java.time.Instant, zone: java.time.ZoneId): String = when (d.type) {
-    DeadlineType.DATE_ONLY -> d.date?.let { Format.date(it, now.atZone(zone).toLocalDate()) } ?: "Date"
-    DeadlineType.EXACT -> d.instant?.let { Format.relative(it, now, zone) } ?: "Date & time"
-    DeadlineType.NONE -> "None"
-}
+private fun deadlineLabel(d: DeadlineSpec, now: java.time.Instant, zone: java.time.ZoneId): String = Format.deadlineSpec(d, now, zone)
 
 /**
  * "Turn on AI planning?" in place of the capture sheet: the note is kept, the key can be pasted,

@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -34,6 +36,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -178,8 +181,10 @@ fun FollowUpSheet(
                 }
             }
             val kinds = listOf(ReminderKind.ONCE to "Once", ReminderKind.DAILY_TIMES to "Daily", ReminderKind.EVERY_N_DAYS to "Every N days")
+            // Segments share the row's height and let a long label ("Every N days" at large text)
+            // take two lines instead of being cut to "Every N d…".
             Row(
-                Modifier.fillMaxWidth().padding(top = 8.dp).clip(RoundedCornerShape(24.dp)).background(c.sunken).padding(4.dp).selectableGroup(),
+                Modifier.fillMaxWidth().padding(top = 8.dp).clip(RoundedCornerShape(24.dp)).background(c.sunken).padding(4.dp).height(IntrinsicSize.Min).selectableGroup(),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 kinds.forEach { (k, label) ->
@@ -187,7 +192,8 @@ fun FollowUpSheet(
                     Box(
                         Modifier
                             .weight(1f)
-                            .heightIn(min = 44.dp)
+                            .fillMaxHeight()
+                            .heightIn(min = 48.dp)
                             .clip(RoundedCornerShape(20.dp))
                             .background(if (sel) c.surface else androidx.compose.ui.graphics.Color.Transparent)
                             .selectable(selected = sel, role = Role.RadioButton, onClick = {
@@ -201,7 +207,7 @@ fun FollowUpSheet(
                             .testTag("policy_kind_${k.name.lowercase()}"),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(label, style = MaterialTheme.typography.labelLarge, color = c.ink, modifier = Modifier.padding(horizontal = 6.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(label, style = MaterialTheme.typography.labelLarge, color = c.ink, modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp), maxLines = 2, textAlign = TextAlign.Center, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }

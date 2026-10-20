@@ -404,16 +404,19 @@ private fun StepsCard(d: TaskDetails, vm: TaskDetailViewModel) {
     }
     // Reorder and delete live behind "Edit" so the resting list is a plain checklist (the board).
     var editing by rememberSaveable { mutableStateOf(false) }
+    // A done, cancelled or archived task keeps its steps read-only; "Reopen" (or restore) unlocks them.
+    val locked = d.task.status.isTerminal || d.task.archivedAt != null
+    if (locked && editing) editing = false
     SurfaceCard(modifier = Modifier.padding(top = 22.dp), contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 8.dp)) {
         Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 10.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Steps", style = MaterialTheme.typography.titleMedium, color = c.ink, modifier = Modifier.weight(1f).semantics { heading() })
             Text(if (d.steps.isEmpty()) "None yet" else "$done of ${d.steps.size} done", style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = c.ink2)
-            if (d.steps.size > 1 || editing) LinkButton(if (editing) "Done" else "Edit", onClick = { editing = !editing }, modifier = Modifier.testTag("steps_edit"))
+            if (!locked && (d.steps.size > 1 || editing)) LinkButton(if (editing) "Done" else "Edit", onClick = { editing = !editing }, modifier = Modifier.testTag("steps_edit"))
         }
         d.steps.forEachIndexed { index, step ->
             GroupDivider()
             Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
-                StepCheck(step.isDone, label = (if (step.isDone) "Mark not done: " else "Mark done: ") + step.title) { vm.toggleStep(step.id, it) }
+                StepCheck(step.isDone, label = (if (step.isDone) "Mark not done: " else "Mark done: ") + step.title, enabled = !locked) { vm.toggleStep(step.id, it) }
                 Text(
                     step.title,
                     style = MaterialTheme.typography.bodyLarge,
@@ -431,6 +434,13 @@ private fun StepsCard(d: TaskDetails, vm: TaskDetailViewModel) {
                 }
             }
         }
+        if (locked) {
+            GroupDivider()
+            Text(
+                if (d.task.archivedAt != null) "Restore the task from the archive to change its steps." else "Reopen the task to change its steps.",
+                style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp).testTag("steps_locked"),
+            )
+        } else {
         GroupDivider()
         Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) { Icon(AutopilotIcons.Plus, contentDescription = null, tint = c.ink3, modifier = Modifier.size(20.dp)) }
@@ -450,6 +460,7 @@ private fun StepsCard(d: TaskDetails, vm: TaskDetailViewModel) {
             // One plus on the left is the design; the add button appears only once there is text to add.
             if (newStep.isNotBlank()) RoundIconButton(AutopilotIcons.Plus, contentDescription = "Add step", tint = c.ink, onClick = { add() }, modifier = Modifier.testTag("step_add"))
         }
+        }
         if (d.steps.isNotEmpty() && done == d.steps.size && !d.task.status.isTerminal) {
             Text("All steps are checked. Mark the task done when you're finished — it won't close automatically.", style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(8.dp))
         }
@@ -457,10 +468,10 @@ private fun StepsCard(d: TaskDetails, vm: TaskDetailViewModel) {
 }
 
 @Composable
-private fun StepCheck(checked: Boolean, label: String, onToggle: (Boolean) -> Unit) {
+private fun StepCheck(checked: Boolean, label: String, enabled: Boolean = true, onToggle: (Boolean) -> Unit) {
     val c = AutopilotTheme.colors
     Box(
-        Modifier.size(48.dp).toggleable(value = checked, role = Role.Checkbox, onValueChange = onToggle).semantics { contentDescription = label },
+        Modifier.size(48.dp).toggleable(value = checked, enabled = enabled, role = Role.Checkbox, onValueChange = onToggle).semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {
         Box(
@@ -475,12 +486,7 @@ private fun DeadlineAndPriorityCard(d: TaskDetails, now: Instant, zone: ZoneId, 
     val c = AutopilotTheme.colors
     val task = d.task
     var prioOpen by rememberSaveable { mutableStateOf(false) }
-    val today = now.atZone(zone).toLocalDate()
-    val dueValue = when (task.deadlineType) {
-        DeadlineType.NONE -> "None"
-        DeadlineType.DATE_ONLY -> task.deadlineLocalDate?.let { Format.dateWithDistance(it, today) } ?: "None"
-        DeadlineType.EXACT -> task.deadlineInstant?.let { Format.relative(it, now, zone) } ?: "None"
-    }
+    val dueValue = Format.deadlineDetail(task, now, zone)
     val overdue = task.isOverdue(now, zone)
     SurfaceCard(modifier = Modifier.padding(top = 12.dp), contentPadding = PaddingValues(0.dp)) {
         Row(
@@ -489,7 +495,7 @@ private fun DeadlineAndPriorityCard(d: TaskDetails, now: Instant, zone: ZoneId, 
         ) {
             Icon(if (overdue) AutopilotIcons.Warn else AutopilotIcons.Calendar, contentDescription = null, tint = if (overdue) c.danger else c.ink2, modifier = Modifier.size(22.dp))
             Text("Deadline", style = MaterialTheme.typography.bodyLarge, color = c.ink, modifier = Modifier.weight(1f))
-            Text(dueValue + if (overdue) " · overdue" else "", style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp), color = if (overdue) c.danger else if (task.deadlineType == DeadlineType.NONE) c.ink2 else c.ink)
+            Text(dueValue, style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp), color = if (overdue) c.danger else if (task.deadlineType == DeadlineType.NONE) c.ink2 else c.ink)
         }
         GroupDivider()
         Row(
@@ -579,10 +585,10 @@ private fun StallHintCard(hint: StallHint, vm: TaskDetailViewModel, openDialog: 
                             StallAction.PAUSE -> vm.changeStatus(TaskStatus.PAUSED)
                         }
                     },
-                    minHeight = 44.dp, modifier = Modifier.testTag("stall_${a.name.lowercase()}"),
+                    minHeight = 44.dp, tint = c.onSignalSoft, modifier = Modifier.testTag("stall_${a.name.lowercase()}"),
                 )
             }
-            LinkButton("Not now", onClick = { vm.dismissHint(hint) }, modifier = Modifier.testTag("stall_dismiss"))
+            LinkButton("Not now", onClick = { vm.dismissHint(hint) }, color = c.onSignalSoft, modifier = Modifier.testTag("stall_dismiss"))
         }
     }
 }

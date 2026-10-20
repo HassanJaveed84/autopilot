@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -16,6 +17,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,6 +40,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
@@ -113,16 +118,7 @@ fun TasksScreen(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             )
         }
-        item {
-            Row(
-                Modifier.horizontalScroll(rememberScrollState()).padding(top = 14.dp, bottom = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                TaskFilter.entries.forEach { f ->
-                    ChoiceChip(f.label, selected = state.filter == f, count = (state.counts[f] ?: 0).toString(), onClick = { viewModel.setFilter(f) }, modifier = Modifier.testTag("filter_${f.name.lowercase()}"))
-                }
-            }
-        }
+        item { FilterChips(state.filter, state.counts, viewModel::setFilter) }
         item {
             Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(if (state.tasks.size == 1) "1 task" else "${state.tasks.size} tasks", style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = c.ink2, modifier = Modifier.weight(1f))
@@ -144,6 +140,45 @@ fun TasksScreen(
                 onOpen = { onOpenTask(s.task.id) },
                 onToggleDone = if (s.task.archivedAt != null) null else if (s.task.status.isTerminal) ({ viewModel.reopen(s.task.id) }) else ({ doneWithUndo(scope, snackbar, viewModel, s) }),
                 modifier = Modifier.padding(top = 10.dp),
+            )
+        }
+    }
+}
+
+/**
+ * The status filters in one scrolling row. More chips than fit is made visible by a fade at the
+ * edge that still has chips behind it, and the selected chip is scrolled into view, so "Done"
+ * and "Archived" are discoverable rather than hidden off-screen.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun FilterChips(selected: TaskFilter, counts: Map<TaskFilter, Int>, onSelect: (TaskFilter) -> Unit) {
+    val c = AutopilotTheme.colors
+    val scroll = rememberScrollState()
+    val requesters = remember { TaskFilter.entries.associateWith { BringIntoViewRequester() } }
+    LaunchedEffect(selected) { runCatching { requesters.getValue(selected).bringIntoView() } }
+    Box(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 4.dp)) {
+        Row(Modifier.horizontalScroll(scroll).testTag("filter_row"), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TaskFilter.entries.forEach { f ->
+                ChoiceChip(
+                    f.label, selected = selected == f, count = (counts[f] ?: 0).toString(), onClick = { onSelect(f) },
+                    modifier = Modifier.bringIntoViewRequester(requesters.getValue(f)).testTag("filter_${f.name.lowercase()}"),
+                )
+            }
+        }
+        // Fades are drawn over the row's own bounds (no pointer handling), only on the side that still hides chips.
+        if (scroll.canScrollForward) {
+            Box(
+                Modifier.matchParentSize().testTag("filter_more_end").drawBehind {
+                    drawRect(Brush.horizontalGradient(listOf(Color.Transparent, c.paper), startX = size.width - 44.dp.toPx(), endX = size.width))
+                },
+            )
+        }
+        if (scroll.canScrollBackward) {
+            Box(
+                Modifier.matchParentSize().drawBehind {
+                    drawRect(Brush.horizontalGradient(listOf(c.paper, Color.Transparent), startX = 0f, endX = 28.dp.toPx()))
+                },
             )
         }
     }

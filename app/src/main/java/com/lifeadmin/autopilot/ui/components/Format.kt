@@ -1,5 +1,6 @@
 package com.lifeadmin.autopilot.ui.components
 
+import com.lifeadmin.autopilot.domain.model.DeadlineSpec
 import com.lifeadmin.autopilot.domain.model.DeadlineType
 import com.lifeadmin.autopilot.domain.model.Task
 import java.time.Instant
@@ -74,6 +75,27 @@ object Format {
     }
 
     fun full(instant: Instant, zone: ZoneId): String = instant.atZone(zone).format(full)
+
+    /** A deadline being chosen (capture sheet chips): "Tomorrow", "Fri 30 Oct", "Wed 21 Oct, 17:00". */
+    fun deadlineSpec(d: DeadlineSpec, now: Instant, zone: ZoneId): String = when (d.type) {
+        DeadlineType.DATE_ONLY -> d.date?.let { date(it, now.atZone(zone).toLocalDate()) } ?: "Date"
+        DeadlineType.EXACT -> d.instant?.let { relative(it, now, zone) } ?: "Date & time"
+        DeadlineType.NONE -> "None"
+    }
+
+    /**
+     * The deadline row on a task's detail screen: "None", a date with its distance ("Fri 30 Oct ·
+     * in 10 days", "Yesterday") or an exact time, plus " · overdue" when it has passed.
+     */
+    fun deadlineDetail(task: Task, now: Instant, zone: ZoneId): String {
+        val today = now.atZone(zone).toLocalDate()
+        val value = when (task.deadlineType) {
+            DeadlineType.NONE -> "None"
+            DeadlineType.DATE_ONLY -> task.deadlineLocalDate?.let { dateWithDistance(it, today) } ?: "None"
+            DeadlineType.EXACT -> task.deadlineInstant?.let { relative(it, now, zone) } ?: "None"
+        }
+        return if (task.isOverdue(now, zone)) "$value · overdue" else value
+    }
 
     fun deadline(task: Task, now: Instant, zone: ZoneId): String? = when (task.deadlineType) {
         DeadlineType.NONE -> null

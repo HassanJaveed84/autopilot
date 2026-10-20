@@ -112,10 +112,12 @@ fun SecondaryButton(
     minHeight: Dp = 56.dp,
     /** Route (indigo) styling for AI actions. */
     route: Boolean = false,
+    /** Text and border color on a tinted surface (e.g. the stall card), where ink/lineStrong lack contrast. */
+    tint: Color = Color.Unspecified,
 ) {
     val c = AutopilotTheme.colors
-    val fg = if (!enabled) c.ink3 else if (route) c.route else c.ink
-    val bd = if (!enabled) c.line else if (route) c.route else c.lineStrong
+    val fg = if (!enabled) c.ink3 else if (tint != Color.Unspecified) tint else if (route) c.route else c.ink
+    val bd = if (!enabled) c.line else if (tint != Color.Unspecified) tint else if (route) c.route else c.lineStrong
     OutlinedButton(
         onClick = onClick,
         enabled = enabled,
@@ -160,12 +162,12 @@ fun ButtonPair(
 }
 
 @Composable
-fun LinkButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+fun LinkButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, color: Color = Color.Unspecified) {
     val c = AutopilotTheme.colors
     Text(
         text,
         style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp, textDecoration = TextDecoration.Underline),
-        color = if (enabled) c.ink else c.ink3,
+        color = if (!enabled) c.ink3 else if (color != Color.Unspecified) color else c.ink,
         modifier = modifier
             .clip(CircleShape)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
@@ -392,7 +394,8 @@ fun SectionTitle(text: String, modifier: Modifier = Modifier, trailing: String? 
 /** Mono, tabular clock time. */
 @Composable
 fun TimeText(text: String, modifier: Modifier = Modifier, color: Color = Color.Unspecified, size: Int = 14) {
-    Text(text, style = TimeTextStyle.copy(fontSize = size.sp, lineHeight = (size + 4).sp), color = if (color == Color.Unspecified) AutopilotTheme.colors.ink else color, modifier = modifier)
+    // Times and counts are never wrapped: "09:00" must not become "09:0" over "0" at large text.
+    Text(text, style = TimeTextStyle.copy(fontSize = size.sp, lineHeight = (size + 4).sp), color = if (color == Color.Unspecified) AutopilotTheme.colors.ink else color, modifier = modifier, maxLines = 1, softWrap = false)
 }
 
 /** Small uppercase kind tag ("ADD STEP · FIRST"). */
