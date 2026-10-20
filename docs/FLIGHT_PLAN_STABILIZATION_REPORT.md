@@ -179,7 +179,19 @@ Side-by-side images live in `docs/screenshots/stabilization/` (each half is 480p
 originals are the CI artifacts named in the table). "Before" is the screenshot run on `main`
 (c7f133a / b8ae9be) and "after" is the run on this branch.
 
-SCREENSHOTS_PLACEHOLDER
+| Issue | Comparison | What to look for |
+|---|---|---|
+| A1 Capture with the keyboard | ![](screenshots/stabilization/a1-capture-keyboard-light-1.3.png) | Before: "Notes, priority, deadline" cut off under the keyboard, Save out of reach. After: priority and deadline chips scroll above the pinned Save & nudge / Plan with AI. Also `a1-capture-keyboard-dark-1.3.png`, `a1-capture-keyboard-light-1.0.png`. |
+| A2 Today rail times | ![](screenshots/stabilization/a2-today-rail-light-1.3.png) | Before: "09:0 / 0" and "18:0" beside ghost rows. After: "09:00", "09:39", "10:00" on one line. Also `a2-today-rail-dark-1.3.png`. |
+| A3 Overdue deadline row | ![](screenshots/stabilization/a3-deadline-overdue-light-1.0.png) | Before: "Yesterday · yesterday · overdue". After: "Yesterday · overdue". |
+| A4 Follow-up kind selector | ![](screenshots/stabilization/a4-follow-up-kinds-light-1.3.png) | Before: "Every N d…". After: "Every N / days" on two lines, segments the same height. Also `a4-follow-up-kinds-dark-1.3.png`. |
+| A5 Stall card contrast | ![](screenshots/stabilization/a5-stall-card-dark-1.0.png) | Before: grey outlines on the brown card. After: the card's own orange for border and label, in both themes. Also `a5-stall-card-light-1.0.png`. |
+| A6 Filter chips | ![](screenshots/stabilization/a6-filter-chips-light-1.3.png) | Before: the row ends at a hard edge. After: a fade over the last chip signals more to the right. Also `a6-filter-chips-dark-1.0.png`. |
+| A6 Done task steps | ![](screenshots/stabilization/a6-done-task-steps-light-1.0.png) | Before: "Add a step" on a done task. After: "Reopen the task to change its steps." Also `a6-done-task-steps-dark-1.0.png`. |
+| A7 Notification shade | ![](screenshots/stabilization/a7-notification-light-1.0.png) | No "before" exists: this screen had never been captured on CI. After: the reminder with Done · Snooze · tomorrow 09:00 · Open. Also `a7-notification-dark-1.0.png`. |
+
+Full "after" sets (82 screens per variant, light/dark × 1.0×/1.3×) are the artifacts of screenshot
+run 39381260494; the "before" sets are runs 39366414541 (1.0×) and 39361936111 (1.3×).
 
 ## Remaining known limitations
 
