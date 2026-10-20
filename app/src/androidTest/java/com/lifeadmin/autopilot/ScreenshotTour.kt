@@ -953,6 +953,7 @@ class ScreenshotTourResearch {
         compose.onNodeWithTag("action_research").tap()
         compose.waitForTag("preflight_question")
         compose.onNodeWithTag("preflight_question").performTextInput(question)
+        compose.scrollTo("preflight_list", "detail_OPERATOR") // below the fold at large text
         compose.onNodeWithTag("detail_OPERATOR").performTextInput("Northline Rail")
     }
 
@@ -1001,7 +1002,7 @@ class ScreenshotTourResearch {
         compose.waitForTag("apply_result")
         screenshot("r15-applied-undo")
         compose.onNodeWithTag("apply_done").tap()
-        compose.waitForTag("detail_title")
+        compose.waitForTag("detail_list") // the list keeps its scroll position, so the title may be off screen
         compose.scrollTo("detail_list", "detail_research_card")
         screenshot("r16-detail-research-card")
         compose.onNodeWithTag("detail_research_history").tap()
@@ -1022,7 +1023,7 @@ class ScreenshotTourResearch {
         compose.waitForTag("brief_offline")
         screenshot("r19-brief-offline")
         compose.back()
-        compose.waitForTag("detail_title")
+        compose.waitForTag("detail_list")
         compose.scrollTo("detail_list", "action_research")
         compose.onNodeWithTag("action_research").tap()
         compose.waitForTag("preflight_blocker")

@@ -1,5 +1,5 @@
 {
-  "reason": "M3 research screens (ScreenshotTourResearch): light/dark 1.0, light 1.3 and 2.0 for footer stacking and one-column details",
+  "reason": "M3 research screens (ScreenshotTourResearch), take 2: tour waits for the task list after returning (it keeps its scroll) and scrolls to the operator field at large text",
   "variants": [
     {
       "display": "phone",

@@ -138,7 +138,7 @@ fun TaskDetailScreen(
         snackbarHost = { SnackbarHost(snackbar) { data -> AutopilotSnackbar(data) } },
     ) { padding ->
         when {
-            state.loading -> Box(Modifier.fillMaxSize().padding(padding))
+            state.loading -> Box(Modifier.fillMaxSize().padding(padding).testTag("detail_loading"))
             details == null -> Column(Modifier.fillMaxSize().padding(padding).statusBarsPadding().padding(horizontal = 20.dp)) {
                 Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) { RoundIconButton(AutopilotIcons.Back, "Back", onBack) }
                 Text("Task not found", style = MaterialTheme.typography.titleLarge, color = c.ink)

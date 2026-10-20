@@ -267,4 +267,37 @@ class ResearchFlowUiTest {
         compose.onNodeWithTag("preflight_start").assertIsNotEnabled()
         assertTrue(provider.requests.isEmpty())
     }
+
+    /**
+     * Mirrors the emulator tour: leave the task (scrolled down) for longer than the detail flow's
+     * 5 s stop timeout, then come back. The list keeps its scroll position, so the title row may be
+     * off screen; the screen itself must be there with the research card still present.
+     */
+    @Test fun returningToTheTaskAfterALongDetourStillShowsIt() {
+        launch(aiEnabled = true, explainerAccepted = true, seedBrief = true)
+        detailScrollTo("detail_research_latest")
+        compose.onNodeWithTag("detail_research_latest").performClick()
+        waitFor("brief_list")
+        compose.mainClock.advanceTimeBy(7_000)
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(7))
+        compose.onNodeWithTag("brief_done").performClick()
+        waitFor("detail_list")
+        detailScrollTo("detail_research_latest")
+        compose.onNodeWithTag("detail_research_latest").assertIsDisplayed()
+        // And the same through the apply screen's "Back to task".
+        detailScrollTo("detail_research_latest")
+        compose.onNodeWithTag("detail_research_latest").performClick()
+        waitFor("brief_list")
+        compose.onNodeWithTag("brief_review").performClick()
+        waitFor("apply_rows")
+        compose.mainClock.advanceTimeBy(7_000)
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(7))
+        compose.onNodeWithTag("apply_confirm").performClick()
+        waitFor("apply_result")
+        compose.onNodeWithTag("apply_done").performClick()
+        waitFor("detail_list")
+        detailScrollTo("detail_title")
+        compose.onNodeWithTag("detail_title").assertIsDisplayed()
+        assertEquals(2, runBlocking { container.taskRepository.getSteps(taskId) }.size)
+    }
 }
