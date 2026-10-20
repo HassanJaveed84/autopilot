@@ -1,25 +1,10 @@
 {
-  "reason": "Re-check the pre-redesign polish list on main (c7f133a) at 1.0x and 1.3x, light and dark",
+  "reason": "Retry dark 1.0x only: emulator boot timeout in run 39361936111",
   "variants": [
     {
       "display": "phone",
-      "theme": "light",
-      "font_scale": "1.0"
-    },
-    {
-      "display": "phone",
       "theme": "dark",
       "font_scale": "1.0"
-    },
-    {
-      "display": "phone",
-      "theme": "light",
-      "font_scale": "1.3"
-    },
-    {
-      "display": "phone",
-      "theme": "dark",
-      "font_scale": "1.3"
     }
   ],
   "tests": ""
