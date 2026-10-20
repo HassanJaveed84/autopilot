@@ -25,6 +25,8 @@ data class ReminderNotification(
     val postedAt: Instant = plannedAt,
     /** Local due time label, e.g. "18:25" or "Fri 17 Oct 18:25". */
     val dueLabel: String = "",
+    /** Where the Snooze action lands, e.g. "tomorrow 09:00" or "11:42"; blank hides it from the label. */
+    val snoozeLabel: String = "",
 )
 
 data class TestNotification(

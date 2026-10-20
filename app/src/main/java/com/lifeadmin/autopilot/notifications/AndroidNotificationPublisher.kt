@@ -74,7 +74,7 @@ class AndroidNotificationPublisher(private val context: Context) : NotificationP
             .setShowWhen(true)
             .setContentIntent(openTaskIntent(taskId))
             .addAction(0, "Done", actionIntent(taskId, IntentContract.ACTION_DONE))
-            .addAction(0, "Snooze", actionIntent(taskId, IntentContract.ACTION_SNOOZE))
+            .addAction(0, if (notification.snoozeLabel.isBlank()) "Snooze" else "Snooze · ${notification.snoozeLabel}", actionIntent(taskId, IntentContract.ACTION_SNOOZE))
             .addAction(0, "Open", openTaskIntent(taskId))
         if (notification.redactOnLockScreen) {
             builder.setVisibility(NotificationCompat.VISIBILITY_PRIVATE)

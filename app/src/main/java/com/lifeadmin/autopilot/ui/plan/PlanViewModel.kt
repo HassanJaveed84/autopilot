@@ -65,6 +65,12 @@ class PlanViewModel(
     /** Non-null for FOLLOW_THROUGH. */
     private val targetTaskId: String?,
     initialText: String,
+    /**
+     * True when the user tapped "Plan with AI" in the capture sheet: that tap is the explicit
+     * request, so the first request is sent on arrival (once; never again after rotation or
+     * process death — those restore the text and wait for a tap).
+     */
+    autoRequest: Boolean = false,
 ) : ViewModel() {
     private val mode = if (targetTaskId != null) PlanningMode.FOLLOW_THROUGH else PlanningMode.CAPTURE
 
@@ -78,7 +84,18 @@ class PlanViewModel(
         if (targetTaskId != null) viewModelScope.launch {
             _state.update { it.copy(current = repository.observeDetails(targetTaskId).first()) }
         }
+        if (autoRequest && handle.get<Boolean>(KEY_AUTO_CONSUMED) != true) {
+            handle[KEY_AUTO_CONSUMED] = true
+            viewModelScope.launch {
+                val s = settings.current()
+                if (service.availability(s) is AiAvailability.Ready && _state.value.text.isNotBlank() && _state.value.phase == PlanPhase.INPUT) requestPlan()
+            }
+        }
     }
+
+    /** Which stage of the real request the UI should show: 0 = sending, 1 = waiting for Claude, 2 = checking. */
+    private val _stage = MutableStateFlow(0)
+    val stage: StateFlow<Int> = _stage.asStateFlow()
 
     private fun restore(initialText: String): PlanUiState {
         val text = handle.get<String>(KEY_TEXT) ?: initialText.also { handle[KEY_TEXT] = it }
@@ -113,8 +130,10 @@ class PlanViewModel(
         if (_state.value.phase == PlanPhase.WORKING) return
         setPhase(PlanPhase.WORKING)
         _state.update { it.copy(error = null, interrupted = false, saveError = null) }
+        _stage.value = 0
         job = viewModelScope.launch {
             val text = _state.value.text
+            _stage.value = 1
             val outcome = try {
                 if (targetTaskId != null) service.proposeFollowThrough(targetTaskId, text) else service.proposeNewTask(text)
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -122,6 +141,7 @@ class PlanViewModel(
             } catch (e: Exception) {
                 ProposalOutcome.Failed(PlanningError.Unexpected(e.javaClass.simpleName))
             }
+            _stage.value = 2
             when (outcome) {
                 is ProposalOutcome.Ready -> {
                     handle[KEY_DRAFT] = outcome.draft.encode()
@@ -146,6 +166,9 @@ class PlanViewModel(
     }
 
     fun retry() = requestPlan()
+
+    /** "Edit your words" on the error screen: back to the editable field, text untouched. */
+    fun dismissError() = _state.update { it.copy(error = null) }
 
     fun updateDraft(transform: (ProposalDraft) -> ProposalDraft) {
         val d = _state.value.draft ?: return
@@ -209,5 +232,6 @@ class PlanViewModel(
         const val KEY_DRAFT = "plan_draft"
         const val KEY_PHASE = "plan_phase"
         const val KEY_SAVED = "plan_saved_task"
+        const val KEY_AUTO_CONSUMED = "plan_auto_consumed"
     }
 }

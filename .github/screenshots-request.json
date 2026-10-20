@@ -1,5 +1,5 @@
 {
-  "reason": "Run 6: scroll detail cards into view before tapping; skipped steps no longer press Back",
+  "reason": "Flight Plan redesign: parity pass 2 verification: Apply count after deselect, notification shade",
   "variants": [
     {
       "display": "phone",
@@ -14,7 +14,12 @@
     {
       "display": "phone",
       "theme": "light",
-      "font_scale": "1.3"
+      "font_scale": "2.0"
+    },
+    {
+      "display": "small",
+      "theme": "light",
+      "font_scale": "1.0"
     }
   ],
   "tests": ""

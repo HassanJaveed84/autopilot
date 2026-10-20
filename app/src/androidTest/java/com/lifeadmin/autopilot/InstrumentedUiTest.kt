@@ -1,9 +1,10 @@
 package com.lifeadmin.autopilot
 
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -31,14 +32,17 @@ class InstrumentedUiTest {
         val title = "Repair car ${System.nanoTime() % 100000}"
         compose.onNodeWithTag("fab_capture").performClick()
         compose.onNodeWithTag("capture_title").performTextInput(title)
-        compose.onNodeWithTag("capture_save_inbox").performClick()
+        compose.onNodeWithTag("capture_nudge_switch").performClick() // off = Save to Inbox
+        compose.onNodeWithTag("capture_save").performClick()
         compose.onNodeWithTag("nav_inbox").performClick()
         waitForText(title)
-        compose.onNodeWithText(title).performClick()
+        // During the tab crossfade the title is also on Today's inbox prompt; pick the Inbox card.
+        compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("inbox_list")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(hasText(title) and hasAnyAncestor(hasTestTag("inbox_list"))).performClick()
         compose.waitUntil(10_000) { compose.onAllNodes(androidx.compose.ui.test.hasTestTag("action_waiting")).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("action_waiting").performClick()
         compose.onNodeWithTag("waiting_reason").performTextInput("Mechanic to call back")
-        compose.onNodeWithText("Save").performClick()
+        compose.onNodeWithTag("waiting_save").performClick()
         compose.waitUntil(10_000) {
             runBlocking { container.database.taskDao().getAll().firstOrNull { it.title == title }?.status == TaskStatus.WAITING }
         }

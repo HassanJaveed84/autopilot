@@ -3,6 +3,7 @@ package com.lifeadmin.autopilot
 import android.Manifest
 import android.accessibilityservice.AccessibilityService
 import android.graphics.Bitmap
+import android.app.NotificationManager
 import android.os.Build
 import android.util.Log
 import android.view.accessibility.AccessibilityNodeInfo
@@ -18,6 +19,9 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.onFirst
@@ -48,6 +52,7 @@ import com.lifeadmin.autopilot.domain.model.AppSettings
 import com.lifeadmin.autopilot.domain.model.DeadlineType
 import com.lifeadmin.autopilot.domain.model.Priority
 import com.lifeadmin.autopilot.domain.model.ReminderPreset
+import com.lifeadmin.autopilot.domain.model.ReminderKind
 import com.lifeadmin.autopilot.domain.model.TaskStatus
 import com.lifeadmin.autopilot.ui.ai.AiSettingsScreen
 import com.lifeadmin.autopilot.ui.ai.AiSettingsViewModel
@@ -113,6 +118,17 @@ private fun ComposeTestRule.back() {
 }
 
 /**
+ * Back until the tab bar is on screen again. A dialog that outlived closeDialog() (its Cancel
+ * click still settling) would otherwise swallow the one press meant for the screen.
+ */
+private fun ComposeTestRule.backToTabs() {
+    repeat(3) {
+        if (onAllNodes(hasTestTag("nav_tasks")).fetchSemanticsNodes().isNotEmpty()) return
+        back()
+    }
+}
+
+/**
  * Closes a dialog with its own Cancel / Discard button. System Back is unreliable there: with a
  * text field focused, the first Back only hides the keyboard. Does nothing when no dialog is open,
  * so a failed optional step can't navigate away from the screen the next steps need.
@@ -127,6 +143,11 @@ private fun ComposeTestRule.closeDialog() {
     waitForIdle()
 }
 
+/** The screen's state has loaded (the header date is blank until it has). */
+private val hasNonBlankText = SemanticsMatcher("has non-blank text") { node ->
+    node.config.getOrNull(SemanticsProperties.Text)?.any { it.text.isNotBlank() } == true
+}
+
 private fun ComposeTestRule.waitForTag(tag: String) =
     waitUntil(15_000) { onAllNodes(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
 
@@ -134,6 +155,13 @@ private fun ComposeTestRule.waitForText(text: String) =
     waitUntil(15_000) { onAllNodes(hasText(text, substring = true)).fetchSemanticsNodes().isNotEmpty() }
 
 private fun ComposeTestRule.scrollTo(list: String, child: String) = onNodeWithTag(list).performScrollToNode(hasTestTag(child))
+
+/**
+ * A task card merges its text into the clickable column (one TalkBack announcement), so the title
+ * is on the clickable node itself; compact rows keep the text in a descendant. Match either.
+ */
+private fun clickableWithText(text: String) =
+    hasClickAction() and (hasText(text, substring = true) or hasAnyDescendant(hasText(text, substring = true)))
 
 /**
  * Clicks through the semantics tree instead of injecting a touch, so a target hidden behind the
@@ -197,16 +225,33 @@ class ScreenshotTour {
 
     private fun launch() {
         scenario = ActivityScenario.launch(MainActivity::class.java)
-        compose.waitForText(TRAIN)
+        // Wait for the day's headline rather than a card: at 200% text or on a small display the
+        // train card can sit below the fold of the lazy rail, where it is not composed yet. The
+        // tab bar and a non-empty header date mean the first frame after launch is behind us.
+        compose.waitForTag("today_headline")
+        compose.waitForTag("nav_tasks")
+        compose.waitUntil(15_000) { compose.onAllNodes(hasTestTag("header_date") and hasNonBlankText).fetchSemanticsNodes().isNotEmpty() }
     }
 
     private fun openTask(title: String) {
         compose.onNodeWithTag("nav_tasks").tap()
         compose.waitForTag("tasks_list")
         compose.onNodeWithTag("tasks_list").performScrollToNode(hasText(title, substring = true))
-        // The row's text is its own merged node; the click lives on the enclosing row.
-        compose.onAllNodes(hasClickAction() and hasAnyDescendant(hasText(title, substring = true))).onFirst().tap()
+        compose.onAllNodes(clickableWithText(title)).onFirst().tap()
         compose.waitForTag("detail_title")
+    }
+
+    /** Empty states (board 13 and 14): no tasks at all. The next test's seed puts the data back. */
+    @Test fun a0_emptyStates() {
+        runBlocking { container.database.taskDao().getAll().forEach { container.taskRepository.delete(it.id) } }
+        launch()
+        compose.waitForText("Try something like") // the whole empty state, not just its headline
+        compose.waitForIdle()
+        Thread.sleep(800)
+        screenshot("a0-today-empty")
+        compose.onNodeWithTag("nav_inbox").tap()
+        compose.waitForText("Inbox clear")
+        screenshot("a0-inbox-clear")
     }
 
     @Test fun a_onboarding() {
@@ -253,6 +298,7 @@ class ScreenshotTour {
         screenshot("c3-detail-steps-history")
 
         compose.soft("edit dialog") {
+            compose.onNodeWithTag("detail_list").performScrollToIndex(0) // the header is the list's first item
             compose.onNodeWithContentDescription("Edit task").tap()
             compose.waitForTag("edit_title")
             screenshot("c4-dialog-edit")
@@ -262,8 +308,8 @@ class ScreenshotTour {
             compose.scrollTo("detail_list", "card_action_reminders")
             compose.onNodeWithTag("card_action_reminders").tap()
             compose.waitForTag("policy_save")
-            screenshot("c5-dialog-reminders")
-            compose.closeDialog()
+            screenshot("c5-sheet-follow-up")
+            compose.back()
         }
         compose.soft("deadline dialog") {
             compose.scrollTo("detail_list", "card_action_deadline")
@@ -277,7 +323,7 @@ class ScreenshotTour {
             compose.onNodeWithTag("action_snooze").tap()
             compose.waitForText("Tomorrow morning")
             screenshot("c7-dialog-snooze")
-            compose.closeDialog()
+            compose.back()
         }
         compose.soft("waiting dialog") {
             compose.scrollTo("detail_list", "action_waiting")
@@ -287,9 +333,10 @@ class ScreenshotTour {
             compose.closeDialog()
         }
         compose.soft("overflow menu") {
+            compose.onNodeWithTag("detail_list").performScrollToIndex(0)
             compose.onNodeWithContentDescription("More options").tap()
-            compose.waitForText("Delete permanently")
-            screenshot("c9-menu")
+            compose.waitForText("Delete task")
+            screenshot("c9-more-actions")
             compose.back()
         }
     }
@@ -305,15 +352,15 @@ class ScreenshotTour {
             screenshot("d2-dialog-small-step")
             compose.closeDialog()
         }
-        compose.back()
+        compose.backToTabs()
         openTask("Sign the lease renewal")
         screenshot("d3-detail-waiting")
-        compose.back()
+        compose.backToTabs()
         compose.soft("done task") {
             compose.onNodeWithTag("tasks_list").performScrollToIndex(0)
             compose.onNodeWithTag("filter_completed").tap()
             compose.waitForText("Pay the council tax")
-            compose.onAllNodes(hasClickAction() and hasAnyDescendant(hasText("Pay the council tax"))).onFirst().tap()
+            compose.onAllNodes(clickableWithText("Pay the council tax")).onFirst().tap()
             compose.waitForTag("detail_title")
             screenshot("d4-detail-done")
         }
@@ -325,16 +372,18 @@ class ScreenshotTour {
         compose.waitForTag("capture_title")
         screenshot("e1-capture-empty")
         compose.onNodeWithTag("capture_title").performTextInput("Book the train ride for my daughter, find parking and tickets, remind me at 9 and 6 every day until done")
+        compose.waitForText("104 / 2000") // the typed text reaches the field through the view model
         screenshot("e2-capture-typed-keyboard")
-        compose.soft("notes and priority") {
-            compose.onNodeWithText("Add notes or priority").tap()
+        compose.soft("notes, priority, deadline") {
+            compose.onNodeWithTag("capture_details").tap()
             compose.waitForTag("capture_notes")
             screenshot("e3-capture-more")
         }
+        // With AI off, "Plan with AI" opens the setup sheet in place (the note is kept).
         compose.onNodeWithTag("capture_plan_ai").tap()
-        compose.waitForTag("plan_setup")
-        screenshot("e4-plan-ai-not-set-up")
-        compose.onNodeWithTag("plan_open_ai_settings").tap()
+        compose.waitForTag("capture_ai_turn_on")
+        screenshot("e4-ai-setup-in-place")
+        compose.onNodeWithTag("capture_ai_settings").tap()
         compose.waitForTag("ai_settings_list")
         screenshot("e5-ai-settings-off")
         compose.onNodeWithTag("ai_settings_list").performTouchInput { swipeUp() }
@@ -364,6 +413,44 @@ class ScreenshotTour {
         repeat(3) { i ->
             compose.onNodeWithTag("health_list").performTouchInput { swipeUp() }
             screenshot("f${i + 7}-health-scrolled")
+        }
+    }
+
+    /**
+     * The nudge itself (board 06): a one-off reminder due in a few seconds, then the shade is
+     * opened with the status-bar shell command (no UiAutomator dependency). Best effort: the
+     * alarm can take a while on a busy emulator, so a timeout only skips the shot.
+     */
+    @Test fun z_notification() {
+        val title = "Book train ride for daughter"
+        val id = runBlocking {
+            val id = container.taskRepository.createTask(NewTask(title, status = TaskStatus.ACTIONABLE))
+            container.taskRepository.addStep(id, "Check train times and prices")
+            listOf("Buy the tickets", "Find and book parking").forEach { container.taskRepository.addStep(id, it) }
+            val p = container.taskRepository.getPolicy(id)!!
+            container.taskRepository.savePolicy(p.copy(enabled = true, kind = ReminderKind.ONCE, atInstant = container.clock.now().plusSeconds(5), times = emptyList()))
+            id
+        }
+        launch()
+        try {
+            compose.soft("notification shade") {
+                val nm = instrumentation.targetContext.getSystemService(NotificationManager::class.java)
+                val deadline = System.currentTimeMillis() + 120_000
+                while (System.currentTimeMillis() < deadline && nm.activeNotifications.none { it.tag == id }) Thread.sleep(1_000)
+                check(nm.activeNotifications.any { it.tag == id }) { "reminder not posted within 2 minutes" }
+                shell("cmd statusbar expand-notifications")
+                Thread.sleep(2_000)
+                screenshot("n1-notification")
+            }
+        } finally {
+            shell("cmd statusbar collapse")
+            runBlocking { container.taskRepository.delete(id) }
+        }
+    }
+
+    private fun shell(command: String) {
+        instrumentation.uiAutomation.executeShellCommand(command).use { fd ->
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(fd).use { it.readBytes() }
         }
     }
 
@@ -432,7 +519,8 @@ class ScreenshotTourAiReview {
         compose.waitForTag("plan_working")
         screenshot("g2-plan-working")
         provider.hold!!.complete(Unit)
-        compose.waitForTag("review_title")
+        compose.waitForTag("plan_approve") // the review bottom bar is always on screen
+        compose.scrollTo("plan_list", "review_title") // the title card can be below the fold at 200% text
         screenshot("g3-review-top")
         compose.scrollTo("plan_list", "review_reminders")
         screenshot("g4-review-reminders")
@@ -474,10 +562,11 @@ class ScreenshotTourAiReview {
         screenshot("j2-move-forward-review")
         compose.onNodeWithTag("plan_list").performTouchInput { swipeUp() }
         screenshot("j3-move-forward-review-scrolled")
-        compose.soft("apply confirmation") {
-            compose.onNodeWithTag("plan_approve").tap()
-            compose.waitForTag("plan_confirm_summary")
-            screenshot("j4-move-forward-confirm")
+        compose.soft("deselect a change") {
+            compose.scrollTo("plan_list", "review_step_check_1")
+            compose.onNodeWithTag("review_step_check_1").tap() // the Apply count follows the selection
+            compose.waitForText("Apply 2 changes")
+            screenshot("j4-move-forward-two-changes")
         }
     }
 

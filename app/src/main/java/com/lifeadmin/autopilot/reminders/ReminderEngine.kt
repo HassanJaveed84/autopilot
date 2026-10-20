@@ -13,6 +13,7 @@ import com.lifeadmin.autopilot.data.local.encodeMetadata
 import com.lifeadmin.autopilot.data.local.toDomain
 import com.lifeadmin.autopilot.data.repository.SettingsRepository
 import com.lifeadmin.autopilot.domain.model.AppSettings
+import com.lifeadmin.autopilot.domain.scheduling.SnoozeCalculator
 import com.lifeadmin.autopilot.domain.model.DiagnosticEntry
 import com.lifeadmin.autopilot.domain.model.DiagnosticType
 import com.lifeadmin.autopilot.domain.model.EventType
@@ -459,6 +460,7 @@ class ReminderEngine(
                 body = notificationBody(task, occ),
                 plannedAt = occ.plannedAt, late = late, redactOnLockScreen = c.settings.lockScreenPrivacy,
                 postedAt = c.now, dueLabel = dueLabel(occ.plannedAt, c),
+                snoozeLabel = snoozeLabel(policy, c),
             ),
         )
         val meta = mapOf(
@@ -476,6 +478,20 @@ class ReminderEngine(
             diag(DiagnosticType.POST_FAILED, c, occ, outcome = result.name.lowercase(), detail = env?.compact(), withLateness = true)
             log(task.id, c.now, EventType.REMINDER_SUPPRESSED, "Reminder not shown: ${result.name.lowercase().replace('_', ' ')}", meta + ("reason" to result.name))
             AlarmOutcome.SUPPRESSED
+        }
+    }
+
+    /** Same target the Snooze action will use (per-policy minutes, else the global preset), as a label. */
+    private fun snoozeLabel(policy: ReminderPolicy, c: Ctx): String {
+        val target = policy.snoozeDefaultMinutes?.let { SnoozeCalculator.targetMinutes(it, c.now) }
+            ?: SnoozeCalculator.target(c.settings.defaultSnooze, c.now, c.zone)
+        val local = target.atZone(c.zone)
+        val today = c.now.atZone(c.zone).toLocalDate()
+        val time = local.toLocalTime().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+        return when (local.toLocalDate()) {
+            today -> time
+            today.plusDays(1) -> "tomorrow $time"
+            else -> "${local.toLocalDate().format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM"))} $time"
         }
     }
 

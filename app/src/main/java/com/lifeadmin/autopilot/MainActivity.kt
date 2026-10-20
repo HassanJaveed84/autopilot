@@ -3,18 +3,25 @@ package com.lifeadmin.autopilot
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import com.lifeadmin.autopilot.domain.model.AppSettings
+import com.lifeadmin.autopilot.notifications.AndroidNotificationPublisher
 import com.lifeadmin.autopilot.reminders.IntentContract
 import com.lifeadmin.autopilot.ui.LifeAdminRoot
-import com.lifeadmin.autopilot.notifications.AndroidNotificationPublisher
 import com.lifeadmin.autopilot.ui.theme.LifeAdminTheme
+import com.lifeadmin.autopilot.ui.theme.resolveDarkTheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
@@ -36,7 +43,16 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null && !fromHistory) handleIntent(intent)
         val container = appContainer
         setContent {
-            LifeAdminTheme {
+            val settings by container.settingsRepository.settings.collectAsStateWithLifecycle(AppSettings())
+            val dark = resolveDarkTheme(settings.appearance)
+            // Keep status/navigation bar icon contrast in step with the chosen appearance.
+            LaunchedEffect(dark) {
+                enableEdgeToEdge(
+                    statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { dark },
+                    navigationBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { dark },
+                )
+            }
+            LifeAdminTheme(darkTheme = dark) {
                 LifeAdminRoot(
                     container = container,
                     openTaskRequests = openTaskRequests,

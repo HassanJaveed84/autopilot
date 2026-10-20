@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.lifeadmin.autopilot.domain.model.Appearance
 import com.lifeadmin.autopilot.domain.model.AppSettings
 import com.lifeadmin.autopilot.domain.model.QuietHours
 import com.lifeadmin.autopilot.domain.model.QuietHoursBehavior
@@ -65,6 +66,7 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
             aiUsageCount = this[AI_USAGE_COUNT] ?: d.aiUsageCount,
             lastReconcileAt = this[LAST_RECONCILE]?.let(Instant::ofEpochMilli),
             lastReconcileSummary = this[LAST_RECONCILE_SUMMARY],
+            appearance = enumOr(this[APPEARANCE], d.appearance),
         )
     }
 
@@ -90,6 +92,7 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         this[AI_USAGE_COUNT] = s.aiUsageCount
         s.lastReconcileAt?.let { this[LAST_RECONCILE] = it.toEpochMilli() } ?: remove(LAST_RECONCILE)
         s.lastReconcileSummary?.let { this[LAST_RECONCILE_SUMMARY] = it } ?: remove(LAST_RECONCILE_SUMMARY)
+        this[APPEARANCE] = s.appearance.name
     }
 
     companion object {
@@ -116,6 +119,7 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         private val AI_MODEL = stringPreferencesKey("ai_model")
         private val AI_USAGE_DAY = stringPreferencesKey("ai_usage_day")
         private val AI_USAGE_COUNT = intPreferencesKey("ai_usage_count")
+        private val APPEARANCE = stringPreferencesKey("appearance")
 
         private fun parseTime(raw: String): LocalTime? = runCatching { LocalTime.parse(raw) }.getOrNull()
         private inline fun <reified E : Enum<E>> enumOr(raw: String?, default: E): E =
