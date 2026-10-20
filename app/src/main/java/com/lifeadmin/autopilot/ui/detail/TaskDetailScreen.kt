@@ -60,6 +60,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.lifeadmin.autopilot.ui.components.showToast
 import kotlinx.coroutines.launch
 import com.lifeadmin.autopilot.data.repository.TaskDetails
 import com.lifeadmin.autopilot.data.repository.TaskSummary
@@ -121,7 +122,7 @@ fun TaskDetailScreen(
     LaunchedEffect(viewModel) {
         viewModel.eventFlow.collect { e ->
             when (e) {
-                is DetailEvent.Message -> snackbar.showSnackbar(e.text)
+                is DetailEvent.Message -> snackbar.showToast(e.text)
                 DetailEvent.Deleted -> onBack()
                 DetailEvent.ReminderEnabled -> onReminderEnabled()
             }
@@ -148,14 +149,14 @@ fun TaskDetailScreen(
                 onDone = {
                     viewModel.complete()
                     scope.launch {
-                        val r = snackbar.showSnackbar("Done. Nudges stopped.", actionLabel = "Undo")
+                        val r = snackbar.showToast("Done. Nudges stopped.", actionLabel = "Undo")
                         if (r == SnackbarResult.ActionPerformed) viewModel.reopen()
                     }
                 },
                 onPause = {
                     viewModel.changeStatus(TaskStatus.PAUSED)
                     scope.launch {
-                        val r = snackbar.showSnackbar("Paused. No nudges until you resume.", actionLabel = "Undo")
+                        val r = snackbar.showToast("Paused. No nudges until you resume.", actionLabel = "Undo")
                         if (r == SnackbarResult.ActionPerformed) viewModel.changeStatus(TaskStatus.ACTIONABLE)
                     }
                 },
@@ -178,7 +179,7 @@ fun TaskDetailScreen(
         ) { until, remind ->
             viewModel.snooze(until, remind); dialog = null
             scope.launch {
-                val r = snackbar.showSnackbar("Snoozed until ${Format.relativeLower(until, state.now, state.zone)}.", actionLabel = "Undo")
+                val r = snackbar.showToast("Snoozed until ${Format.relativeLower(until, state.now, state.zone)}.", actionLabel = "Undo")
                 if (r == SnackbarResult.ActionPerformed) viewModel.clearSnooze()
             }
         }

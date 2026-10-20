@@ -63,6 +63,7 @@ import com.lifeadmin.autopilot.ui.components.SecondaryButton
 import com.lifeadmin.autopilot.ui.components.SectionTitle
 import com.lifeadmin.autopilot.ui.components.SurfaceCard
 import com.lifeadmin.autopilot.ui.components.TimeText
+import com.lifeadmin.autopilot.ui.components.showToast
 import com.lifeadmin.autopilot.ui.theme.AutopilotTheme
 
 /** What leaves the device, shown before the first request and on this screen. */
@@ -98,7 +99,7 @@ fun AiSettingsScreen(viewModel: AiSettingsViewModel, onBack: () -> Unit) {
     var editingKey by remember { mutableStateOf(false) }
     var showSecurity by remember { mutableStateOf(false) }
 
-    LaunchedEffect(s.message) { s.message?.let { snackbar.showSnackbar(it); viewModel.messageShown() } }
+    LaunchedEffect(s.message) { s.message?.let { snackbar.showToast(it); viewModel.messageShown() } }
 
     Scaffold(containerColor = c.paper, contentWindowInsets = WindowInsets(0), snackbarHost = { SnackbarHost(snackbar) { data -> AutopilotSnackbar(data) } }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("ai_settings_list"), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 48.dp)) {

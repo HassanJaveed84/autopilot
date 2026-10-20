@@ -20,16 +20,24 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarData
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalAccessibilityManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -41,6 +49,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lifeadmin.autopilot.ui.theme.AutopilotTheme
+import kotlinx.coroutines.delay
 
 /**
  * Top row of the three main tabs: route mark + today's date on the left, Settings (with a warning
@@ -179,24 +188,55 @@ fun FlightNavBar(
 
 data class NavItem(val route: String, val label: String, val icon: ImageVector, val badge: Int = 0)
 
-/** Toast-styled snackbar: dark pill with an orange action, announced politely to TalkBack. */
+/**
+ * How long a toast stays up. Material 3 only offers 4 s, 10 s or forever (and defaults to forever
+ * whenever there is an action label, which left "Saved to Inbox. Open" covering the screen), so
+ * [AutopilotSnackbar] runs the timer itself and every caller goes through [showToast].
+ */
+const val TOAST_MILLIS = 5_000L
+
+/**
+ * Show a toast for [TOAST_MILLIS] (longer if an accessibility service asks for more time), with
+ * an optional action. The toast can also be swiped away. Returns [SnackbarResult.ActionPerformed]
+ * if the action was tapped in time, otherwise [SnackbarResult.Dismissed].
+ */
+suspend fun SnackbarHostState.showToast(message: String, actionLabel: String? = null): SnackbarResult =
+    showSnackbar(message, actionLabel, withDismissAction = false, duration = SnackbarDuration.Indefinite)
+
+/**
+ * Toast-styled snackbar: dark pill with an orange action, announced politely to TalkBack, dismissed
+ * after [TOAST_MILLIS] or by swiping it sideways.
+ */
 @Composable
 fun AutopilotSnackbar(data: SnackbarData, modifier: Modifier = Modifier) {
     val c = AutopilotTheme.colors
-    Snackbar(
-        modifier = modifier.padding(horizontal = 16.dp, vertical = 8.dp).semantics { liveRegion = LiveRegionMode.Polite },
-        shape = RoundedCornerShape(18.dp),
-        containerColor = c.toast,
-        contentColor = c.onToast,
-        action = data.visuals.actionLabel?.let { label ->
-            {
-                TextButton(onClick = { data.performAction() }, colors = ButtonDefaults.textButtonColors(contentColor = c.toastAction)) {
-                    Text(label, style = MaterialTheme.typography.labelLarge)
+    val accessibility = LocalAccessibilityManager.current
+    LaunchedEffect(data) {
+        val millis = accessibility?.calculateRecommendedTimeoutMillis(
+            TOAST_MILLIS, containsIcons = false, containsText = true, containsControls = data.visuals.actionLabel != null,
+        ) ?: TOAST_MILLIS
+        delay(millis)
+        data.dismiss()
+    }
+    val swipe = rememberSwipeToDismissBoxState(
+        confirmValueChange = { target -> if (target != SwipeToDismissBoxValue.Settled) data.dismiss(); true },
+    )
+    SwipeToDismissBox(state = swipe, backgroundContent = {}, modifier = modifier.testTag("toast")) {
+        Snackbar(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).semantics { liveRegion = LiveRegionMode.Polite },
+            shape = RoundedCornerShape(18.dp),
+            containerColor = c.toast,
+            contentColor = c.onToast,
+            action = data.visuals.actionLabel?.let { label ->
+                {
+                    TextButton(onClick = { data.performAction() }, colors = ButtonDefaults.textButtonColors(contentColor = c.toastAction)) {
+                        Text(label, style = MaterialTheme.typography.labelLarge)
+                    }
                 }
-            }
-        },
-        dismissAction = null,
-    ) {
-        Text(data.visuals.message, style = MaterialTheme.typography.bodyMedium)
+            },
+            dismissAction = null,
+        ) {
+            Text(data.visuals.message, style = MaterialTheme.typography.bodyMedium)
+        }
     }
 }

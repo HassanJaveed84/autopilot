@@ -24,7 +24,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
@@ -62,6 +61,7 @@ import com.lifeadmin.autopilot.ui.components.RoundIconButton
 import com.lifeadmin.autopilot.ui.components.ScreenHeader
 import com.lifeadmin.autopilot.ui.components.SurfaceCard
 import com.lifeadmin.autopilot.ui.components.TaskCard
+import com.lifeadmin.autopilot.ui.components.showToast
 import com.lifeadmin.autopilot.ui.detail.ConfirmDialog
 import com.lifeadmin.autopilot.ui.detail.FollowUpSheet
 import com.lifeadmin.autopilot.ui.detail.WaitingSheet
@@ -72,7 +72,7 @@ import kotlinx.coroutines.launch
 internal fun doneWithUndo(scope: CoroutineScope, snackbar: SnackbarHostState, vm: TaskListViewModel, s: TaskSummary, message: String = "Done. Nudges stopped.") {
     vm.complete(s.task.id) {
         scope.launch {
-            val r = snackbar.showSnackbar(message, actionLabel = "Undo", duration = SnackbarDuration.Long)
+            val r = snackbar.showToast(message, actionLabel = "Undo")
             if (r == SnackbarResult.ActionPerformed) vm.reopen(s.task.id)
         }
     }
@@ -91,7 +91,7 @@ fun TasksScreen(
     val message by viewModel.message.collectAsStateWithLifecycle()
     val c = AutopilotTheme.colors
     val scope = rememberCoroutineScope()
-    LaunchedEffect(message) { message?.let { snackbar.showSnackbar(it); viewModel.messageShown() } }
+    LaunchedEffect(message) { message?.let { snackbar.showToast(it); viewModel.messageShown() } }
 
     LazyColumn(Modifier.fillMaxSize().testTag("tasks_list"), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp)) {
         item { ScreenHeader(state.dateText, onOpenSettings, Modifier.statusBarsPadding(), healthDot = healthIssue) }
@@ -177,7 +177,7 @@ fun InboxScreen(
     var nudging by remember { mutableStateOf<TaskSummary?>(null) }
     var waiting by remember { mutableStateOf<TaskSummary?>(null) }
     var deleting by remember { mutableStateOf<TaskSummary?>(null) }
-    LaunchedEffect(message) { message?.let { snackbar.showSnackbar(it); viewModel.messageShown() } }
+    LaunchedEffect(message) { message?.let { snackbar.showToast(it); viewModel.messageShown() } }
 
     LazyColumn(Modifier.fillMaxSize().testTag("inbox_list"), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp)) {
         item { ScreenHeader(state.dateText, onOpenSettings, Modifier.statusBarsPadding(), healthDot = healthIssue) }
@@ -229,7 +229,7 @@ fun InboxScreen(
                 if (!policy.enabled) { onError("Choose a follow-up to move this note to your tasks, or leave it in the Inbox."); return@FollowUpSheet }
                 viewModel.nudge(s.task.id, policy, onDone = {
                     nudging = null
-                    scope.launch { snackbar.showSnackbar("Moved to Tasks. It will nudge you ${com.lifeadmin.autopilot.ui.components.TaskPresentation.scheduleShort(policy, zone, now)}.") }
+                    scope.launch { snackbar.showToast("Moved to Tasks. It will nudge you ${com.lifeadmin.autopilot.ui.components.TaskPresentation.scheduleShort(policy, zone, now)}.") }
                 }, onError = onError)
             },
             contextText = "Turns this note into a task that nudges you.",
@@ -240,13 +240,13 @@ fun InboxScreen(
     waiting?.let { s ->
         WaitingSheet(s.task, viewModel.now(), viewModel.zone(), onDismiss = { waiting = null }) { reason, checkIn ->
             viewModel.wait(s.task.id, reason, checkIn); waiting = null
-            scope.launch { snackbar.showSnackbar("Waiting" + (reason?.let { " on $it" } ?: "") + (checkIn?.let { ". Check-in ${Format.relativeLower(it, viewModel.now(), viewModel.zone())}." } ?: ".")) }
+            scope.launch { snackbar.showToast("Waiting" + (reason?.let { " on $it" } ?: "") + (checkIn?.let { ". Check-in ${Format.relativeLower(it, viewModel.now(), viewModel.zone())}." } ?: ".")) }
         }
     }
     deleting?.let { s ->
         ConfirmDialog("Delete this note?", "“${s.task.title}” will be removed permanently.", "Delete", onDismiss = { deleting = null }) {
             deleting = null; viewModel.delete(s.task.id)
-            scope.launch { snackbar.showSnackbar("Deleted.") }
+            scope.launch { snackbar.showToast("Deleted.") }
         }
     }
 }

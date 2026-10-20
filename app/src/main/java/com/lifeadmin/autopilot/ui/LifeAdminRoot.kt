@@ -41,6 +41,7 @@ import com.lifeadmin.autopilot.ui.components.CaptureBar
 import com.lifeadmin.autopilot.ui.components.FlightNavBar
 import com.lifeadmin.autopilot.ui.components.NavItem
 import com.lifeadmin.autopilot.ui.components.PaperBackground
+import com.lifeadmin.autopilot.ui.components.showToast
 import com.lifeadmin.autopilot.ui.detail.TaskDetailScreen
 import com.lifeadmin.autopilot.ui.detail.TaskDetailViewModel
 import com.lifeadmin.autopilot.ui.health.ReminderHealthScreen
@@ -248,7 +249,7 @@ fun LifeAdminRoot(
                         firstNudge != null -> "Saved. First nudge $firstNudge."
                         else -> "Saved."
                     }
-                    val r = snackbar.showSnackbar(message, actionLabel = "Open")
+                    val r = snackbar.showToast(message, actionLabel = "Open")
                     if (r == SnackbarResult.ActionPerformed) openTask(id)
                 }
             },

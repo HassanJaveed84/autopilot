@@ -87,6 +87,7 @@ import com.lifeadmin.autopilot.ui.components.SecondaryButton
 import com.lifeadmin.autopilot.ui.components.SectionTitle
 import com.lifeadmin.autopilot.ui.components.SurfaceCard
 import com.lifeadmin.autopilot.ui.components.SwitchRow
+import com.lifeadmin.autopilot.ui.components.showToast
 import com.lifeadmin.autopilot.ui.theme.AutopilotColors
 import com.lifeadmin.autopilot.ui.theme.AutopilotTheme
 import kotlinx.coroutines.Dispatchers
@@ -257,7 +258,7 @@ fun ReminderHealthScreen(
     var showModes by remember { mutableStateOf(false) }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refresh() }
-    LaunchedEffect(viewModel) { viewModel.messageFlow.collect { snackbar.showSnackbar(it) } }
+    LaunchedEffect(viewModel) { viewModel.messageFlow.collect { snackbar.showToast(it) } }
     // Refresh while a scheduled test is pending so its result appears without leaving the screen.
     LaunchedEffect(recent.firstOrNull()?.id) { viewModel.refresh() }
 
@@ -343,7 +344,7 @@ fun ReminderHealthScreen(
                         scope.launch {
                             val text = viewModel.diagnosticsText()
                             context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Reminder diagnostics", text))
-                            snackbar.showSnackbar("Diagnostics copied")
+                            snackbar.showToast("Diagnostics copied")
                         }
                     }, icon = AutopilotIcons.Clip, minHeight = 44.dp, modifier = Modifier.testTag("copy_diagnostics"))
                     SecondaryButton("Share…", onClick = {

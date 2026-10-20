@@ -24,7 +24,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
@@ -63,6 +62,7 @@ import com.lifeadmin.autopilot.ui.components.SectionTitle
 import com.lifeadmin.autopilot.ui.components.TaskCard
 import com.lifeadmin.autopilot.ui.components.TimeText
 import com.lifeadmin.autopilot.ui.components.dashedBorder
+import com.lifeadmin.autopilot.ui.components.showToast
 import com.lifeadmin.autopilot.ui.health.HealthBanner
 import com.lifeadmin.autopilot.ui.theme.AutopilotTheme
 import kotlinx.coroutines.launch
@@ -98,7 +98,7 @@ fun TodayScreen(
 
     fun done(s: TaskSummary) = viewModel.complete(s.task.id) {
         scope.launch {
-            val r = snackbar.showSnackbar("Done. Nudges stopped.", actionLabel = "Undo", duration = SnackbarDuration.Long)
+            val r = snackbar.showToast("Done. Nudges stopped.", actionLabel = "Undo")
             if (r == SnackbarResult.ActionPerformed) viewModel.undoComplete(s.task.id)
         }
     }

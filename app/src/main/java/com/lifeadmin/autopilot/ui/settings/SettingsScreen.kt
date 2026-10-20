@@ -68,6 +68,7 @@ import com.lifeadmin.autopilot.ui.components.SectionTitle
 import com.lifeadmin.autopilot.ui.components.SurfaceCard
 import com.lifeadmin.autopilot.ui.components.SwitchRow
 import com.lifeadmin.autopilot.ui.components.TimeSelectDialog
+import com.lifeadmin.autopilot.ui.components.showToast
 import com.lifeadmin.autopilot.ui.health.HealthSummaryCard
 import com.lifeadmin.autopilot.ui.theme.AutopilotTheme
 import java.time.LocalDate
@@ -102,7 +103,7 @@ fun SettingsScreen(
     var snoozeOpen by rememberSaveable { mutableStateOf(false) }
     var quietOpen by rememberSaveable { mutableStateOf(false) }
 
-    LaunchedEffect(viewModel) { viewModel.messageFlow.collect { snackbar.showSnackbar(it) } }
+    LaunchedEffect(viewModel) { viewModel.messageFlow.collect { snackbar.showToast(it) } }
 
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) viewModel.export { context.contentResolver.openOutputStream(uri, "wt") }
