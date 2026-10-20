@@ -17,21 +17,40 @@ Autopilot is an Android-native, local-first follow-through assistant. Tasks and 
 | M0–M1C | Native Android app, local task lifecycle, reminders, notification actions, diagnostic and recovery tools | Implemented | Continue physical-device validation |
 | M2 | Opt-in AI-assisted capture, review-before-write planning and per-task suggestions | Implemented | Live provider and phone validation separate from mock CI |
 | Flight Plan UI | Native redesign and stabilization | Merged | Field usability/upgrade checks |
-| **M3A** | **Action Brief: selected-task web research, real source attribution, saved research briefs, reviewed task updates** | **In progress in a separate Claude Code session** | Await implementation PR/report, automated tests and live API/phone checks |
-| **M3B** | **Autopilot Review: automatically review open tasks and detect overlooked obligations** | **Proposed — next priority after M3A** | Focused design, privacy specification, phased implementation |
+| **M3A** | **Action Brief: selected-task web research, real source attribution, saved research briefs, reviewed task updates** | **Merged into `main`** | [PR #4](../pull/4) (squash `4477ee6`); final automated CI green; user reports installing/testing latest APK; exact upgrade and paid live-API validation evidence tracked separately |
+| **M3A.2** | **Deep Research & Actionable Results: flexible investigation depth, model selection, evidence coverage, exact requested deliverables, cost intelligence** | **Proposed — next product priority** | Design and benchmark supplement-category steps and US perfume gift shortlist; add visible per-request cost estimates and controllable budgets |
+| **M3B** | **Autopilot Review: automatically review open tasks and detect overlooked obligations** | **Proposed — next major milestone after M3A.2** | Focused design, privacy specification, phased implementation |
 | M3C | Scoped calendar/email/service integrations and user-approved external actions | Proposed | Design permissions, OAuth, provider integrations and auditability |
 | M3D | Multi-step agent workflows with per-action approval and verified outcomes | Proposed | Reliable execution, scope, idempotency and recovery |
 | M4 | Optional household collaboration and sync | Deferred | Explicit approval and identity/sharing architecture |
 
-**Coordination:** M3A is in progress on a separate development session. This document-only roadmap branch does not modify M3A, declare it complete or request M3A changes.
+**Coordination:** M3A landed in `main` as PR #4. The user reports installing and testing the latest APK. This documentation-only PR has no app behavior changes. M3A.2 and M3B remain proposed; no implementation is authorized by this document.
 
-## M3A — Action Brief: consented task research
+## M3A — Action Brief: consented task research (merged)
 
-Allow the user to open **one selected task**, specify what to research and explicitly authorize sharing the chosen task context and incurring a bounded web-search API request.
+Implemented in [PR #4](https://github.com/HassanJaveed84/autopilot/pull/4): the user opens **one selected task**, specifies a research question and explicitly authorizes sharing the chosen context and incurring a bounded web-search API request.
 
 The desired experience includes a concise quick answer, uncertain findings clearly labeled, credible structured citations and sources, actionable next moves, offline access to prior research, and **selective** task updates applied only with approval. Avoid fabricated source links and any claim that simulated prototype data is real research.
 
-M3A does **not** scan all tasks, autonomously conduct paid searches, send messages, book tickets, purchase items or change reminders without approval. Completion requires real implementation and regression evidence; mock API success is not live API validation.
+M3A does **not** scan all tasks, autonomously conduct paid searches, send messages, book tickets, purchase items or change reminders without approval. The hardened code landed via PR #4; reported CI included 415 unit/Robolectric tests and 14 instrumented tests with the latest head's CI also green. The user reports installing and testing the APK, but specific migration-path and real-provider results should still be recorded explicitly rather than inferred.
+
+## M3A.2 — Deep Research & Actionable Results (next product priority)
+
+**Reason:** Real-world tests of supplement research and a $150 US perfume gift search showed that a fixed three-search, under-350-word Action Brief can produce shallow comparisons and generic task steps instead of fulfilling the requested deliverable. The priority is **useful, trustworthy research**, with transparent user-controlled spending rather than prematurely minimizing API cost.
+
+**Desired capabilities:**
+
+- **Intent-aware output:** Distinguish factual lookup, shopping comparison, multi-category recommendation, procedural research and step creation. Identify exactly what the user asked to receive; do not silently drop categories or requirements.
+- **Adaptive investigation:** Plan research questions, gather corroborating sources, verify evidence gaps, resolve material contradictions when possible, and synthesize findings. Allow configurable Quick / Thorough / Deep modes with flexible per-run search and model budgets; stop on evidence sufficiency, not an arbitrary target search count.
+- **Model fit:** Support per-request model choice, with stronger models available for difficult synthesis; benchmark them instead of assuming the most expensive model is always best.
+- **Task-specific deliverables:** Product comparisons should preserve candidate name, variant/concentration/size, independently supported pros/cons, pricing with retailer/time, source references, and uncertainty. Multi-category requests should produce one reviewable proposed step per requested category when safe, including explicit unresolved fields.
+- **Evidence integrity:** Preserve provider-issued citation metadata; avoid model-invented URLs, false 'Official' badges and confident assertions without enough sources. Distinguish official vendor claims from independent evaluation and current commercial pricing. Important health/product suitability questions deserve especially careful qualification.
+- **Research result vs. action separation:** Produce a substantive answer first, then a separately structured and editable list of proposed task changes. Never directly mutate tasks because a model recommended it.
+- **Cost intelligence:** Locally capture usage metadata and estimated token/search cost per run, plus a daily/monthly ledger and spend settings; mark failures/cancellations with unknown or partial usage honestly. Never persist API secrets or full task text in diagnostics. Do not embed Anthropic organization admin credentials in the APK.
+- **User-controlled spend:** Provide preflight disclosure, sensible optional spending ceilings, visible model/search choices and a continuation path for unresolved questions. No hidden recurrent paid browsing.
+- **Quality benchmarks:** Supplement example must preserve four categories (multivitamin, vitamin D, magnesium, glucosamine) and the preferred brand constraint in four proposed category steps. Perfume example must yield a diverse, evidence-backed gift shortlist under a stated $150 US budget, including specific variants and comparable verified prices where available.
+
+**Boundary:** Planned enhancement only. Preserve existing M3A functionality, offline history, provenance, review-before-apply and capped background behavior until the new permissions/budgets are explicitly designed and approved. Do not automatically execute M3A.2 just because this roadmap lists it.
 
 ## M3B — Autopilot Review: identify what the user might miss
 
@@ -94,7 +113,8 @@ Optional sharing, identity, task ownership, member permissions, cross-device con
 
 | Topic | Status |
 | --- | --- |
-| Automatic pending-task review | **Captured 2026-10-20; prioritized as M3B** |
+| Deep research with actionable outputs and usage/cost ledger | **Captured 2026-10-20; prioritized as M3A.2** |
+| Automatic pending-task review | **Captured 2026-10-20; prioritized as M3B after M3A.2** |
 | Focused M3B design | Planned after M3A UX exists |
 | Real-device installation and reminder/keyboard checks | Verification outstanding |
 | Live Anthropic planning/research tests | Verification outstanding |
@@ -114,4 +134,4 @@ Optional sharing, identity, task ownership, member permissions, cross-device con
 
 ## Next checkpoint
 
-Review the M3A implementation PR and its source-attribution/tests/real-device limitations. Then schedule M3B's focused product design and engineering brief, leaving future features unimplemented until explicitly requested.
+Review recorded M3A field-testing outcomes and any remaining live-provider/upgrade verification. Next, design M3A.2 research depth, structured deliverables and cost intelligence using real supplement and fragrance tasks as acceptance scenarios. Then prepare M3B's focused design/engineering brief; start no new feature without explicit approval.
