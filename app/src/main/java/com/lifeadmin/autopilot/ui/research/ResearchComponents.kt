@@ -350,7 +350,8 @@ fun SourceSheet(source: SourceRef, usedFor: List<String>, researchedLine: String
             PrimaryButton(
                 if (online == false) "Open in browser (offline)" else "Open in browser",
                 onClick = {
-                    val uri = safe?.let { androidx.core.net.toUri(it) } ?: return@PrimaryButton
+                    @Suppress("UseKtx") // core-ktx is not a dependency of this module
+                    val uri = safe?.let { android.net.Uri.parse(it) } ?: return@PrimaryButton
                     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE)) }
                 },
                 enabled = safe != null && online != false, icon = AutopilotIcons.OpenExternal,

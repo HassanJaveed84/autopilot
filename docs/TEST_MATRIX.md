@@ -112,3 +112,28 @@ All provider tests use fakes or a local MockWebServer. **No test calls the live 
 | Network config: TLS only, system CAs | `ManifestContractTest.networkIsTlsOnlyWithSystemCertificates` | ✅ |
 | Regression: scheduler, snooze, quiet hours, notifications, diagnostics | the full pre-M2 suite (186 tests) | ✅ |
 | Live Anthropic API with a real key; device install | `docs/M2_AI_CAPTURE_REPORT.md` § device steps | 📱 not performed |
+
+## M3 — consented web research (2026-10-20)
+
+| Requirement | Tests | Status |
+|---|---|---|
+| Citations only from structured provider metadata; prose URLs stripped and labelled suggestion; unsafe URLs ignored | `BriefParserTest` (`citedSentencesBecomeSourced…`, `proseUrlsAreStripped…`, `uncitedResponseIsUnverified…`, `unsafeCitationUrlsAreIgnored`), `AnthropicResearchProviderHttpTest.parsesCitationsSearchesAndUsage` | ✅ |
+| Disagreement needs two different cited sides; injection-looking lines never become moves | `BriefParserTest.disagreementNeedsTwoDifferentCitedSides`, `injectionLikeTextIsDroppedFromMovesAndFlagged` | ✅ |
+| Conservative source tiers (government suffix or typed operator only) | `BriefParserTest.sourceTieringIsConservative` | ✅ |
+| Request shape: `web_search_20250305`, `max_uses = 3`, no `user_location`, no fallbacks, minimal scope | `AnthropicResearchProviderHttpTest.sendsWebSearchToolWithCapsAndNoLocation` | ✅ |
+| `pause_turn` continued once within the budget; not continued when the budget is spent | `…pauseTurnIsContinuedOnceWithinTheSearchBudget`, `…pauseTurnWithBudgetSpentIsNotContinued`, `…secondPauseTurnIsNotContinuedAgain…` | ✅ |
+| Stop reasons: refusal, max_tokens (truncated), search-tool error, empty answer | `…refusalNeverReachesParsing`, `…maxTokensIsASuccessMarkedTruncated`, `…searchToolErrorWithoutAnswerIsReported`, `…emptyAnswerIsMalformed` | ✅ |
+| Error table: web search not enabled, credit, 401/403/429(+retry-after)/5xx, timeout, network, cancel; one HTTP request per attempt | `…mapsWebSearchNotEnabledAndCreditErrors`, `…mapsAuthRateLimitAndServerErrors`, `…timeoutAndNetworkFailuresAreReportedNotRetried`, `…cancellationAbortsTheCallAndPropagates` | ✅ |
+| Gating: AI off, consent, key, explainer version, offline, daily cap (10, separate from planning); rejected starts send nothing | `ResearchServiceTest` (`gateReflectsEveryPrecondition`, `rejectedStartsSendNothing`, `dailyCapIsEnforcedAndResetsNextDay`) | ✅ |
+| Scope toggles change exactly what is sent; brief saved with status; failures save nothing but count | `ResearchServiceTest` (`successfulRunSavesABrief…`, `scopeTogglesChangeWhatIsSent`, `providerFailureIsSurfaced…`, `unverifiedResponseIsSavedAsUnverified`) | ✅ |
+| Stop cancels the run, reports searches seen, saves nothing; one run at a time | `ResearchServiceTest.stopCancelsTheRunAndReportsSearchesSeen` | ✅ |
+| Delete all research removes briefs + explainer only; task delete cascades to briefs | `ResearchServiceTest.deleteAllResearch…`, `…deletingTheTaskCascadesToItsBriefs`, `ResearchRepositoryTest.deleteAndCascade` | ✅ |
+| Persistence: round trip of every finding type, applied moves, pruning to 20, payload cap, unreadable rows hidden | `ResearchRepositoryTest` | ✅ |
+| Migration 3→4 keeps data and adds `research_briefs` with cascade | `MigrationTest.migrateV3ToV4AddsResearchBriefsAndKeepsData` | ✅ |
+| Backup includes briefs (typed, no transcript/key); orphan brief rejects the import; re-import idempotent | `BackupRepositoryTest.researchBriefsRoundTripAndBadOnesRejectTheWholeImport` | ✅ |
+| Selective apply: dedupe against steps and applied list, notes appended under one header, idempotent per selection, conflict on changed task, refused on done task, never touches reminders/status/deadline | `ResearchActionsTest` (`planDeduplicatesAndShapesRows`, `applyIsTransactionalIdempotentAndRecorded`, `applyRefusesWhenTheTaskChangedUnderneath`, `applyRefusesOnDoneTasks`, `notesAreAppended…`) | ✅ |
+| Undo only while safe | `ResearchActionsTest.undoRestoresOnlyWhileSafe` | ✅ |
+| UI end to end: tiles → preflight → explainer → progress → brief → source sheet → apply → undo → research card; AI off + offline reading; provider failure keeps the question; Stop; offline preflight blocker; stateDescription on move rows; 48dp source targets | `ResearchFlowUiTest` (Robolectric, fake provider) | ✅ |
+| Screens in light/dark at 1.0/1.3/2.0 | `ScreenshotTourResearch` (emulator, CI screenshot workflow) | see report |
+| Live BYOK research against the real API | — | ⏳ pending (not run by the agent; see report) |
+

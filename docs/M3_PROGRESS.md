@@ -31,5 +31,35 @@ concepts, 30-state gallery, components, spec), `M3_DESIGN_INTEGRATION_HANDOFF.md
 
 ## Phase log
 
-- **A** (done): branch, baseline, this file.
-- **B** (in progress): domain models, prompt, brief parser, Anthropic research provider, service.
+- **A** (done, this file): branch, baseline, design contract.
+- **B** (done, commit `2796486`): `ai/research` models + caps, `ResearchPrompt`, `BriefParser`
+  (provenance only from structured citations, prose URLs stripped, conservative source tiers,
+  injection lines dropped), `ai/anthropic/AnthropicResearchProvider` (web_search_20250305 with
+  `max_uses`, no `user_location`, one `pause_turn` continuation inside the budget, citations and
+  search results from content blocks), shared `AnthropicErrors`, `ResearchService` (gating, explainer
+  version, daily cap reserved before sending, single app-scoped run, Stop), `ResearchRepository` +
+  Room v4 `research_briefs` (migration 3→4). Tests: `BriefParserTest`, `AnthropicResearchProviderHttpTest`
+  (MockWebServer), `ResearchServiceTest`, `ResearchRepositoryTest`, `MigrationTest.migrateV3ToV4…`.
+- **C** (done, commit `35428bc`): briefs in backup export/import (typed content, no transcripts or
+  keys; orphan/malformed briefs reject the import), `ResearchActions` (selective transactional apply
+  via `TaskRepository.applyTaskEdit`, dedupe, idempotent proposal id per selection, conflict on a
+  changed task, Undo only while the task is exactly as the apply left it). Tests: `ResearchActionsTest`,
+  `BackupRepositoryTest.researchBriefsRoundTrip…`.
+- **D** (done, commit `0e86390`): native Compose screens in `ui/research` (preflight + explainer,
+  progress, brief + source sheet, apply, history), task-detail tiles + research card, AI settings
+  "Web research" section, routes. Test: `ResearchFlowUiTest` (5 end-to-end Robolectric scenarios).
+- **E** (this commit): `ScreenshotTourResearch` (23 screens, scripted provider, `.example` sources),
+  screenshot request (light/dark 1.0, light 1.3, light 2.0), `docs/M3_RESEARCH_REPORT.md`, README,
+  architecture and test matrix updates, push + stacked draft PR. CI links are recorded in the report
+  once the runs finish.
+
+## Deliberate scope notes
+
+- Follow-up questions ("Ask · up to 3 more searches" extending the brief) are **not** built in M3A;
+  "Research again with this question" opens a fresh preflight instead. The brief format leaves the
+  section order intact for a later follow-up section.
+- Source tiers ship with the conservative rule set from the spec's open questions: *Official* only for
+  recognized government suffixes or a host containing the operator name the user typed; everything
+  else is *Web page*. No *Secondary*/*Community* claims.
+- Deadlines: research never proposes a deadline; anything date-shaped arrives as a CHECK move.
+- Progress stages are not streamed; see the report for what the UI does and does not claim.
