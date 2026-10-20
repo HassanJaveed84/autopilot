@@ -138,7 +138,7 @@ class ResearchService(
         question = question.trim(),
         focus = focus,
         details = fields.mapValues { it.value.trim().take(ResearchConfig.MAX_DETAIL_CHARS) }.filterValues { it.isNotBlank() },
-        title = details.task.title,
+        title = if (scope.shareTitle) details.task.title else null,
         notes = if (scope.shareNotes) details.task.notes?.takeIf { it.isNotBlank() } else null,
         steps = if (scope.shareSteps) details.steps.map { it.title } else null,
         localeLine = if (scope.shareLocale) localeLine() else null,

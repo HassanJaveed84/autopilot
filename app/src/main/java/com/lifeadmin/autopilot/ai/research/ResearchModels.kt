@@ -61,8 +61,9 @@ enum class DetailField(val label: String, val placeholder: String) {
     JURISDICTION("Country or region", "e.g. United Kingdom"),
 }
 
-/** What the user chose to share for one request. The title and question always go. */
+/** What the user chose to share for one request. The question always goes. */
 data class ResearchScope(
+    val shareTitle: Boolean = true,
     val shareNotes: Boolean = true,
     val shareSteps: Boolean = false,
     val shareLocale: Boolean = true,
@@ -77,7 +78,8 @@ data class ResearchRequest(
     val question: String,
     val focus: Set<ResearchFocus>,
     val details: Map<DetailField, String>,
-    val title: String,
+    /** Null when the user switched the title off for this request. */
+    val title: String?,
     val notes: String?,
     val steps: List<String>?,
     /** "Tue 20 Oct 2026 · English (US)" when the user shares date and language, else null. */
@@ -86,7 +88,7 @@ data class ResearchRequest(
 ) {
     /** Plain-language list of what is sent, for the preflight and the saved brief. */
     fun sharedSummary(): List<String> = buildList {
-        add("Task title")
+        if (title != null) add("Task title")
         add("Your question" + if (details.values.any { it.isNotBlank() }) " and details" else "")
         if (notes != null) add("Notes")
         if (steps != null) add("Steps (${steps.size})")

@@ -93,6 +93,7 @@ fun AiSettingsScreen(viewModel: AiSettingsViewModel, onBack: () -> Unit) {
     val clipboard = LocalClipboardManager.current
     var showConsent by remember { mutableStateOf(false) }
     var confirmDeleteAll by remember { mutableStateOf(false) }
+    var confirmDeleteResearch by remember { mutableStateOf(false) }
     var confirmDeleteKey by remember { mutableStateOf(false) }
     var keyInput by remember { mutableStateOf("") }
     var keyError by remember { mutableStateOf<String?>(null) }
@@ -225,6 +226,23 @@ fun AiSettingsScreen(viewModel: AiSettingsViewModel, onBack: () -> Unit) {
                     }
                 }
             }
+            item { SectionTitle("Web research", Modifier.padding(top = 26.dp, bottom = 10.dp, start = 4.dp)) }
+            item {
+                SurfaceCard(radius = 22.dp, modifier = Modifier.testTag("ai_research")) {
+                    Text(
+                        "From a task, “Research online” searches the web with Anthropic’s web search tool and cites sources. Each request is started by you, capped at " +
+                            "${com.lifeadmin.autopilot.ai.research.ResearchConfig.MAX_SEARCHES_PER_REQUEST} searches, and billed by Anthropic on top of tokens. Nothing runs in the background.",
+                        style = MaterialTheme.typography.bodyMedium, color = c.ink2,
+                    )
+                    Text(
+                        "Research today: ${s.researchToday} of ${com.lifeadmin.autopilot.ai.research.ResearchConfig.MAX_REQUESTS_PER_DAY} · saved briefs: ${s.briefCount}" +
+                            (if (s.researchExplainerAccepted) " · one-time note accepted" else " · one-time note shown before the first request"),
+                        style = MaterialTheme.typography.bodySmall, color = c.ink3, modifier = Modifier.padding(top = 8.dp).testTag("ai_research_usage"),
+                    )
+                    Text("Saved briefs open offline and are included in backups (never transcripts or the key). Deleting them keeps any steps you added.", style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(top = 8.dp))
+                    SecondaryButton("Delete all research", onClick = { confirmDeleteResearch = true }, enabled = s.briefCount > 0 || s.researchExplainerAccepted, minHeight = 48.dp, modifier = Modifier.padding(top = 10.dp).testTag("ai_research_delete"))
+                }
+            }
             item { SectionTitle("Remove", Modifier.padding(top = 26.dp, bottom = 10.dp, start = 4.dp)) }
             item {
                 SurfaceCard(radius = 22.dp) {
@@ -233,6 +251,16 @@ fun AiSettingsScreen(viewModel: AiSettingsViewModel, onBack: () -> Unit) {
                 }
             }
         }
+    }
+
+    if (confirmDeleteResearch) {
+        AlertDialog(
+            onDismissRequest = { confirmDeleteResearch = false },
+            title = { Text("Delete all research?") },
+            text = { Text("Removes every saved research brief from this phone and shows the one-time research note again next time. Steps and notes already added to tasks stay.") },
+            confirmButton = { TextButton(onClick = { confirmDeleteResearch = false; viewModel.deleteAllResearch() }, modifier = Modifier.testTag("ai_research_delete_confirm")) { Text("Delete") } },
+            dismissButton = { TextButton(onClick = { confirmDeleteResearch = false }) { Text("Keep") } },
+        )
     }
 
     if (showConsent) {

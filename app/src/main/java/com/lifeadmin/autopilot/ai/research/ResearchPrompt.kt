@@ -48,10 +48,10 @@ object ResearchPrompt {
             appendLine("Details the person typed:")
             DetailField.entries.forEach { f -> details[f]?.let { appendLine("- ${f.label}: ${it.trim()}") } }
         }
-        if (r.details[DetailField.JURISDICTION].isNullOrBlank() && looksJurisdictionBound(r.question + " " + r.title)) {
+        if (r.details[DetailField.JURISDICTION].isNullOrBlank() && looksJurisdictionBound(r.question + " " + r.title.orEmpty())) {
             appendLine("No country or region was given. Give general guidance only and say clearly what depends on the country.")
         }
-        appendLine("Task title: ${r.title.trim()}")
+        r.title?.let { appendLine("Task title: ${it.trim()}") }
         r.notes?.takeIf { it.isNotBlank() }?.let { appendLine("Task notes: ${it.trim()}") }
         r.steps?.let { steps -> appendLine("Current steps: " + (if (steps.isEmpty()) "none" else steps.joinToString("; "))) }
         r.localeLine?.let { appendLine("Today: $it") }

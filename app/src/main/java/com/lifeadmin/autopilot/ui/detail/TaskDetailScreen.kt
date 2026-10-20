@@ -112,6 +112,8 @@ fun TaskDetailScreen(
     /** Opens "Move this forward"; null hides the AI card (e.g. in tests). */
     onMoveForward: (() -> Unit)? = null,
     onOpenAiSettings: () -> Unit = {},
+    /** Research (M3) navigation; null hides the research tile and card. */
+    research: ResearchNav? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val c = AutopilotTheme.colors
@@ -146,6 +148,7 @@ fun TaskDetailScreen(
                 details, state.now, state.zone, viewModel, Modifier.padding(padding), onBack = onBack,
                 openDialog = { dialog = it }, stallHint = state.stallHint, onMoveForward = onMoveForward, onOpenAiSettings = onOpenAiSettings,
                 aiEnabled = state.settings.aiEnabled,
+                research = research, state = state,
                 onDone = {
                     viewModel.complete()
                     scope.launch {
@@ -234,6 +237,8 @@ private fun DetailContent(
     onMoveForward: (() -> Unit)?,
     onOpenAiSettings: () -> Unit,
     aiEnabled: Boolean,
+    research: ResearchNav?,
+    state: TaskDetailUiState,
     onDone: () -> Unit,
     onPause: () -> Unit,
 ) {
@@ -296,7 +301,8 @@ private fun DetailContent(
         if (stallHint != null) item { StallHintCard(stallHint, vm, openDialog) }
         item { StepsCard(d, vm) }
         item { DeadlineAndPriorityCard(d, now, zone, vm, openDialog) }
-        if (onMoveForward != null && !task.status.isTerminal) item { AiCard(aiEnabled, onMoveForward, onOpenAiSettings) }
+        if (onMoveForward != null && !task.status.isTerminal) item { AiCard(aiEnabled, onMoveForward, onOpenAiSettings, research = research?.takeIf { true }, researching = state.researching) }
+        if (research != null && (state.briefs.isNotEmpty() || state.researching)) item { ResearchCard(state, now, zone, research) }
         item {
             LinkButton(if (showHistory) "Hide history" else "History · ${d.events.size} entries", onClick = { showHistory = !showHistory }, modifier = Modifier.padding(top = 12.dp).testTag("detail_history_toggle"))
         }
@@ -516,8 +522,17 @@ private fun DeadlineAndPriorityCard(d: TaskDetails, now: Instant, zone: ZoneId, 
     }
 }
 
+/** Research (M3) entry points from the task; all optional so the detail screen renders without them. */
+data class ResearchNav(
+    val onResearch: () -> Unit,
+    val onOpenBrief: (briefId: String) -> Unit,
+    val onOpenHistory: () -> Unit,
+    val onOpenRun: (runId: String, question: String) -> Unit,
+)
+
+/** "Move this forward": two ways Claude can help. Nothing changes until the user approves. */
 @Composable
-private fun AiCard(aiEnabled: Boolean, onMoveForward: () -> Unit, onOpenAiSettings: () -> Unit) {
+private fun AiCard(aiEnabled: Boolean, onMoveForward: () -> Unit, onOpenAiSettings: () -> Unit, research: ResearchNav?, researching: Boolean) {
     val c = AutopilotTheme.colors
     Column(
         Modifier.fillMaxWidth().padding(top = 12.dp).provenanceBorder(suggested = aiEnabled, radius = 20.dp).padding(16.dp).testTag("detail_ai_card"),
@@ -526,20 +541,91 @@ private fun AiCard(aiEnabled: Boolean, onMoveForward: () -> Unit, onOpenAiSettin
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
             IconCircle(AutopilotIcons.Route, tint = if (aiEnabled) c.route else c.ink2, background = if (aiEnabled) c.routeSoft else c.sunken)
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(if (aiEnabled) "Stuck? Ask Claude for a next step" else "AI suggestions are off", style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp), color = c.ink)
+                Text(if (aiEnabled) "Move this forward" else "AI suggestions and research are off", style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp), color = c.ink, modifier = Modifier.semantics { heading() })
                 Text(
-                    if (aiEnabled) "Suggests missing steps or a better date. You choose what to apply. Sends this task only."
+                    if (aiEnabled) "Two ways Claude can help. Nothing changes until you approve."
+                    else if (research != null) "Turn on AI planning to plan steps or research this task online. Saved research below still opens."
                     else "Turn on AI planning to get suggested steps and dates for a task like this.",
                     style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = c.ink2,
                 )
             }
         }
-        SecondaryButton(
-            if (aiEnabled) "Suggest" else "Set up AI planning",
-            onClick = if (aiEnabled) onMoveForward else onOpenAiSettings,
-            route = aiEnabled, minHeight = 44.dp,
-            modifier = Modifier.padding(start = 52.dp).testTag("action_move_forward"),
-        )
+        if (!aiEnabled) {
+            SecondaryButton("Set up AI planning", onClick = onOpenAiSettings, minHeight = 44.dp, modifier = Modifier.padding(start = 52.dp).testTag("action_move_forward"))
+        } else if (research == null) {
+            SecondaryButton("Suggest", onClick = onMoveForward, route = true, minHeight = 44.dp, modifier = Modifier.padding(start = 52.dp).testTag("action_move_forward"))
+        } else {
+            val stacked = LocalDensity.current.fontScale >= 1.3f
+            val plan: @Composable (Modifier) -> Unit = { m -> HelpTile(AutopilotIcons.Route, "Plan next step", "Thinks with what’s in this task. No web.", m.testTag("action_move_forward"), onClick = onMoveForward) }
+            val web: @Composable (Modifier) -> Unit = { m ->
+                HelpTile(
+                    AutopilotIcons.Research, if (researching) "Researching…" else "Research online",
+                    if (researching) "A request is running for this task." else "Searches the web and cites sources. Uses paid web search on your key.",
+                    m.testTag("action_research"), enabled = !researching, onClick = research.onResearch,
+                )
+            }
+            if (stacked) Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { plan(Modifier.fillMaxWidth()); web(Modifier.fillMaxWidth()) }
+            else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { plan(Modifier.weight(1f)); web(Modifier.weight(1f)) }
+        }
+    }
+}
+
+@Composable
+private fun HelpTile(icon: ImageVector, title: String, body: String, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
+    val c = AutopilotTheme.colors
+    Column(
+        modifier
+            .heightIn(min = 96.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(c.surface)
+            .border(1.dp, c.line, RoundedCornerShape(16.dp))
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = if (enabled) c.route else c.ink3, modifier = Modifier.size(22.dp))
+        Text(title, style = MaterialTheme.typography.titleSmall, color = if (enabled) c.ink else c.ink3)
+        Text(body, style = MaterialTheme.typography.bodySmall, color = c.ink2)
+    }
+}
+
+/** Saved research for this task: running state, latest brief, link to all. Readable offline and with AI off. */
+@Composable
+private fun ResearchCard(state: TaskDetailUiState, now: Instant, zone: ZoneId, nav: ResearchNav) {
+    val c = AutopilotTheme.colors
+    val latest = state.briefs.firstOrNull()
+    SurfaceCard(radius = 20.dp, contentPadding = PaddingValues(0.dp), modifier = Modifier.padding(top = 12.dp).testTag("detail_research_card")) {
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Research", style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp), color = c.ink, modifier = Modifier.weight(1f).semantics { heading() })
+            LinkButton(if (state.briefs.size > 1) "All ${state.briefs.size}" else "History", onClick = nav.onOpenHistory, modifier = Modifier.padding(end = 8.dp).testTag("detail_research_history"))
+        }
+        if (state.researching && state.researchRunId != null) {
+            GroupDivider()
+            Row(
+                Modifier.fillMaxWidth().clickable(role = Role.Button) { nav.onOpenRun(state.researchRunId, state.researchQuestion.orEmpty()) }.padding(16.dp).testTag("detail_research_running"),
+                horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconCircle(AutopilotIcons.Research, tint = c.route, background = c.routeSoft, size = 36.dp)
+                Column(Modifier.weight(1f)) {
+                    Text("Researching now…", style = MaterialTheme.typography.bodyLarge, color = c.ink)
+                    state.researchQuestion?.let { Text("“$it”", style = MaterialTheme.typography.bodySmall, color = c.ink2, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
+                }
+                Icon(AutopilotIcons.ChevronRight, contentDescription = null, tint = c.ink3)
+            }
+        }
+        if (latest != null) {
+            GroupDivider()
+            Column(Modifier.fillMaxWidth().clickable(role = Role.Button) { nav.onOpenBrief(latest.id) }.padding(16.dp).testTag("detail_research_latest"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    ("Researched " + Format.relative(latest.createdAt, now, zone) + " · ${latest.searchCount} ${if (latest.searchCount == 1) "search" else "searches"} · ${latest.sourceCount} ${if (latest.sourceCount == 1) "source" else "sources"}" +
+                        (if (latest.isStale(now)) " · may be out of date" else "")).uppercase(),
+                    style = com.lifeadmin.autopilot.ui.theme.TimeTextStyle.copy(fontSize = 12.sp, lineHeight = 16.sp), color = c.ink2,
+                )
+                Text(latest.question, style = MaterialTheme.typography.bodyLarge, color = c.ink, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                latest.content.quickAnswer.firstOrNull()?.let { Text(it.text, style = MaterialTheme.typography.bodySmall, color = c.ink2, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
+                if (latest.applied.isNotEmpty()) Text("${latest.applied.size} applied to this task", style = MaterialTheme.typography.labelSmall, color = c.onDoneSoft)
+            }
+        }
     }
 }
 
