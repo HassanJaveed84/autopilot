@@ -260,8 +260,18 @@ was:<[1]>" for the uncited search result, "expected:<NOT_CONFIRMED> but was:<CON
 model-typed price, "the floor is $0.02, not unknown", and the two false-Complete cases) — then deleted
 once the permanent tests covered the same ground.
 
-CI results for the hardening head are listed under "CI (GitHub Actions, draft PR #5)" below once the
-runs complete.
+CI, hardening head `bb0da9b`:
+
+| Workflow / job | Run | Result |
+|---|---|---|
+| Android CI · Lint, unit/Robolectric tests, APKs (push) | [39499635955](https://github.com/HassanJaveed84/autopilot/actions/runs/39499635955) | ✅ lint "No issues found"; **509 tests, 0 failures, 0 ignored**; `apks` artifact 32.9 MB |
+| Android CI · Instrumented tests (emulator API 34) (push) | 39499635955 | ✅ **17 tests on emulator-5554, BUILD SUCCESSFUL** |
+| Android CI (pull_request), both jobs | [39499640832](https://github.com/HassanJaveed84/autopilot/actions/runs/39499640832) | ✅ same results |
+| Screenshots · from request file (run 5) | [39499637962](https://github.com/HassanJaveed84/autopilot/actions/runs/39499637962) | ✅ 4/4 variants (light 1.0, dark 1.0, light 1.3, light 2.0), 32 screens each; light/dark 1.0 committed under `docs/screenshots/m3a2/` |
+
+The committed coverage screen (s10) now shows the brand preference verified in code ("Every pick is
+from Thorne or Pure Encapsulations") and the output wish honestly Partly ("Steps for 3 of 4 items")
+under the "Incomplete · not enough evidence" banner.
 
 ## Cost rules, assumptions and limitations
 
