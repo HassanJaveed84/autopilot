@@ -48,10 +48,14 @@ concepts, 30-state gallery, components, spec), `M3_DESIGN_INTEGRATION_HANDOFF.md
 - **D** (done, commit `0e86390`): native Compose screens in `ui/research` (preflight + explainer,
   progress, brief + source sheet, apply, history), task-detail tiles + research card, AI settings
   "Web research" section, routes. Test: `ResearchFlowUiTest` (5 end-to-end Robolectric scenarios).
-- **E** (this commit): `ScreenshotTourResearch` (23 screens, scripted provider, `.example` sources),
-  screenshot request (light/dark 1.0, light 1.3, light 2.0), `docs/M3_RESEARCH_REPORT.md`, README,
-  architecture and test matrix updates, push + stacked draft PR. CI links are recorded in the report
-  once the runs finish.
+- **E** (commits `07936ec` … `02b01ad`): `ScreenshotTourResearch` (23 screens, scripted provider,
+  `.example` sources), screenshot request (light/dark 1.0, light 1.3, light 2.0),
+  `docs/M3_RESEARCH_REPORT.md`, README, architecture and test matrix updates, `docs/screenshots/m3`,
+  draft PR #4 (base `flight-plan-stabilization`). Final head `02b01ad`: Android CI green (397 unit
+  tests, 14 instrumented, lint clean, signed APKs), screenshots 4/4 green. Tour fixes along the way:
+  wait for the task *list* after returning (it keeps its scroll), scroll to the operator field at
+  large text, record uncaught exceptions in the artifact; one unexplained Compose teardown crash at
+  font 2.0 on the emulator, not reproduced (see the report).
 
 ## Deliberate scope notes
 

@@ -172,6 +172,21 @@ nothing is clipped; the preflight header pill moves under the title at ≥ 1.3×
     leaves its cause in the artifact. It is listed under known limits as an unexplained single
     occurrence rather than claimed fixed.
 
-### Final CI
+### Final CI (head `02b01ad`)
 
-_Updated after the final head's runs complete._
+| Run | What | Result |
+|---|---|---|
+| [39405082133](https://github.com/HassanJaveed84/autopilot/actions/runs/39405082133) (push) and [39405088322](https://github.com/HassanJaveed84/autopilot/actions/runs/39405088322) (pull_request) | Android CI: lint, **397 unit/Robolectric tests**, debug + release APKs, **14 instrumented tests** on an API 34 emulator | ✅ both green, 0 failures, lint 0 errors |
+| APK artifact | `apks` on run 39405082133 (artifact 12256991526, ~32 MB: `app-debug.apk`, `app-release.apk`, `app-debug-androidTest.apk`) — the personal keystore secret was present, so the debug APK installs over the user's current build without a data wipe | ✅ |
+| [39405082136](https://github.com/HassanJaveed84/autopilot/actions/runs/39405082136) | Screenshot tour `ScreenshotTourResearch`, 4 variants (light/dark 1.0, light 1.3, light 2.0), 23 screens each | ✅ 4/4 green, `OK (6 tests)` each; artifacts `screenshots-phone-*` |
+
+The committed `docs/screenshots/m3` set comes from run 39402883317 (`70aee28`); the only UI change
+after it is the preflight pill position at ≥ 1.3×, which does not affect the 1.0 set.
+
+### Still pending (needs the user)
+
+- Live BYOK run against the real API (see "Known limits"): a first real question on a task, then
+  check the brief's citations, the usage line and the console's billing for one request.
+- Install the signed debug APK from the `apks` artifact over the current build (upgrade path:
+  Room 3→4 migration runs on first open; verify tasks, reminders, AI key and backups are intact).
+- Decide on merging #2 and then #4; the agent merges nothing.

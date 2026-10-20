@@ -134,6 +134,7 @@ All provider tests use fakes or a local MockWebServer. **No test calls the live 
 | Selective apply: dedupe against steps and applied list, notes appended under one header, idempotent per selection, conflict on changed task, refused on done task, never touches reminders/status/deadline | `ResearchActionsTest` (`planDeduplicatesAndShapesRows`, `applyIsTransactionalIdempotentAndRecorded`, `applyRefusesWhenTheTaskChangedUnderneath`, `applyRefusesOnDoneTasks`, `notesAreAppended…`) | ✅ |
 | Undo only while safe | `ResearchActionsTest.undoRestoresOnlyWhileSafe` | ✅ |
 | UI end to end: tiles → preflight → explainer → progress → brief → source sheet → apply → undo → research card; AI off + offline reading; provider failure keeps the question; Stop; offline preflight blocker; stateDescription on move rows; 48dp source targets | `ResearchFlowUiTest` (Robolectric, fake provider) | ✅ |
-| Screens in light/dark at 1.0/1.3/2.0 | `ScreenshotTourResearch` (emulator, CI screenshot workflow) | see report |
+| Screens in light/dark at 1.0/1.3/2.0 | `ScreenshotTourResearch` (emulator, CI screenshot run 39405082136: 4 variants × 23 screens) | ✅ |
+| Whole flow at 200% text under Robolectric; return to a scrolled task after a long detour | `ResearchFlowLargeTextUiTest`, `ResearchFlowUiTest.returningToTheTaskAfterALongDetourStillShowsIt` | ✅ |
 | Live BYOK research against the real API | — | ⏳ pending (not run by the agent; see report) |
 
