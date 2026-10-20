@@ -65,6 +65,9 @@ class AnthropicResearchProvider(
         }
     }
 
+    /** Shared client for the M3A.2 call adapter (same key handling and connection pool). */
+    internal fun clientFor(apiKey: String): AnthropicClientAsync = client(apiKey)
+
     fun reset() = synchronized(this) {
         cached?.second?.let { runCatching { it.close() } }
         cached = null
@@ -214,5 +217,77 @@ class AnthropicResearchProvider(
 
     companion object {
         private const val TIMEOUT_SLACK_MS = 5_000L
+    }
+}
+
+// ------------------------------------------------------------------ M3A.2 structured call
+
+/**
+ * Generic single Messages call for the multi-stage orchestrator. Same client, caps and error
+ * mapping as [AnthropicResearchProvider.research]; `pause_turn` is handed back to the caller so every
+ * HTTP call is accounted for separately. System prompt caching is 5-minute ephemeral when asked.
+ */
+class AnthropicResearchCalls(
+    private val base: AnthropicResearchProvider,
+    private val timeout: Duration = com.lifeadmin.autopilot.ai.research2.Research2Config.CALL_TIMEOUT,
+    private val nanoTime: () -> Long = System::nanoTime,
+) : com.lifeadmin.autopilot.ai.research2.ResearchCallProvider {
+    override val id: String = "anthropic-web-search-v2"
+
+    fun buildParams(call: com.lifeadmin.autopilot.ai.research2.ModelCall): MessageCreateParams {
+        val builder = MessageCreateParams.builder().model(call.model).maxTokens(call.maxTokens)
+        if (call.cacheSystem) {
+            builder.systemOfTextBlockParams(
+                listOf(
+                    com.anthropic.models.messages.TextBlockParam.builder().text(call.system)
+                        .cacheControl(com.anthropic.models.messages.CacheControlEphemeral.builder().ttl(com.anthropic.models.messages.CacheControlEphemeral.Ttl.TTL_5M).build())
+                        .build(),
+                ),
+            )
+        } else {
+            builder.system(call.system)
+        }
+        builder.addUserMessage(call.user)
+        if (call.maxSearches > 0) builder.addTool(WebSearchTool20250305.builder().maxUses(call.maxSearches.toLong()).build())
+        (call.prior as? Message)?.let { builder.addMessage(it) }
+        return builder.build()
+    }
+
+    override suspend fun call(call: com.lifeadmin.autopilot.ai.research2.ModelCall, apiKey: String): com.lifeadmin.autopilot.ai.research2.CallResult {
+        val started = nanoTime()
+        fun elapsed() = ((nanoTime() - started) / 1_000_000L).coerceAtLeast(0)
+        val absorbed = AnthropicResearchProvider.Absorbed()
+        try {
+            val message = withTimeout(timeout.toMillis() + 5_000L) { base.clientFor(apiKey).messages().create(buildParams(call)).await() }
+            absorbed.add(message)
+            val u = runCatching { message.usage() }.getOrNull()
+            val usage = com.lifeadmin.autopilot.ai.usage.MeasuredUsage(
+                inputTokens = u?.inputTokens(),
+                outputTokens = u?.outputTokens(),
+                cacheWrite5mTokens = u?.cacheCreation()?.orElse(null)?.ephemeral5mInputTokens() ?: u?.cacheCreationInputTokens()?.orElse(null) ?: 0L,
+                cacheWrite1hTokens = u?.cacheCreation()?.orElse(null)?.ephemeral1hInputTokens() ?: 0L,
+                cacheReadTokens = u?.cacheReadInputTokens()?.orElse(null) ?: 0L,
+                // Measured searches: the server's own count when present, else the result blocks seen; never max_uses.
+                webSearches = u?.serverToolUse()?.orElse(null)?.webSearchRequests()?.toInt() ?: absorbed.searches.count { it.errorCode == null },
+            )
+            val stopReason = message.stopReason().orElse(null)
+            val stop = when (stopReason) {
+                StopReason.PAUSE_TURN -> com.lifeadmin.autopilot.ai.research2.CallStop.PAUSE_TURN
+                StopReason.MAX_TOKENS, StopReason.MODEL_CONTEXT_WINDOW_EXCEEDED -> com.lifeadmin.autopilot.ai.research2.CallStop.MAX_TOKENS
+                StopReason.REFUSAL -> com.lifeadmin.autopilot.ai.research2.CallStop.REFUSAL
+                else -> com.lifeadmin.autopilot.ai.research2.CallStop.END
+            }
+            val category = if (stop == com.lifeadmin.autopilot.ai.research2.CallStop.REFUSAL) message.stopDetails().flatMap { it.category() }.map { it.toString() }.orElse(null) else null
+            return com.lifeadmin.autopilot.ai.research2.CallResult.Done(
+                absorbed.segments.toList(), absorbed.searches.toList(), usage, stop, elapsed(), runCatching { message.id() }.getOrNull(),
+                paused = if (stop == com.lifeadmin.autopilot.ai.research2.CallStop.PAUSE_TURN) message else null, refusalCategory = category,
+            )
+        } catch (e: TimeoutCancellationException) {
+            return com.lifeadmin.autopilot.ai.research2.CallResult.Failed(ResearchError.Timeout, absorbed.searchCount, null, elapsed())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return com.lifeadmin.autopilot.ai.research2.CallResult.Failed(base.mapError(e), absorbed.searchCount, null, elapsed())
+        }
     }
 }
