@@ -25,7 +25,21 @@ jobs:
           distribution: temurin
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
+      # The personal signing key (see app/build.gradle.kts) keeps installs updatable. Forks and
+      # repos without the secret fall back to the debug key.
+      - name: Restore the personal signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.AUTOPILOT_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            mkdir -p keystore && echo "$KEYSTORE_B64" | base64 -d > keystore/personal.jks
+            echo "Signing with the personal key."
+          else
+            echo "No AUTOPILOT_KEYSTORE_B64 secret: signing with the debug key (a fresh one on every run)."
+          fi
       - name: Build and test
+        env:
+          AUTOPILOT_KEYSTORE_PASSWORD: ${{ secrets.AUTOPILOT_KEYSTORE_PASSWORD }}
         run: ./gradlew --stacktrace lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest
       - name: Upload APKs
         if: always()

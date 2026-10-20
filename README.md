@@ -97,9 +97,22 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk     # package com.lifea
 adb install -r app/build/outputs/apk/release/app-release.apk # package com.lifeadmin.autopilot
 ```
 
-Or download the `apks` artifact from the latest GitHub Actions run. The release APK is signed with
-the Android debug key — fine for personal sideloading, **not** for distribution. To publish, create
-your own keystore (never commit it) and configure a release `signingConfig`.
+Or download the `apks` artifact from the latest GitHub Actions run.
+
+**Keep your data across updates.** Android only installs an update signed with the same key as the
+installed app, and a plain debug build is signed with a key that differs per machine (and per CI
+run), which forces an uninstall and wipes the app's data. Personal builds therefore use one stable
+key when it is available and fall back to the debug key otherwise:
+
+- CI: add the repository secrets `AUTOPILOT_KEYSTORE_B64` (the `.jks` file, base64) and
+  `AUTOPILOT_KEYSTORE_PASSWORD`. Forks and repos without them still build, with the debug key.
+- Locally: put the same file at `keystore/personal.jks` (gitignored) and set
+  `AUTOPILOT_KEYSTORE_PASSWORD` in the environment or `autopilot.keystorePassword` in
+  `~/.gradle/gradle.properties`.
+
+Create one with `keytool -genkeypair -keystore personal.jks -alias autopilot -keyalg RSA -keysize 2048 -validity 10000`.
+This key is for sideloading only, **not** for store distribution. Switching keys requires one
+uninstall: use Settings → Export first, then Import after installing.
 
 ## Permissions
 

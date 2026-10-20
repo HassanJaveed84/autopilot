@@ -7,6 +7,17 @@ plugins {
     alias(libs.plugins.room)
 }
 
+// One stable signing key for personal builds, so each new APK installs over the previous one and
+// keeps its data (Android refuses an update signed with a different key, and every CI runner would
+// otherwise mint a fresh debug key). The key is never committed: CI restores it from the
+// AUTOPILOT_KEYSTORE_B64 secret; locally put it at keystore/personal.jks (or set AUTOPILOT_KEYSTORE)
+// and give the password via AUTOPILOT_KEYSTORE_PASSWORD or autopilot.keystorePassword in
+// ~/.gradle/gradle.properties. Without it, builds fall back to the Android debug key.
+val personalKeystore = file(System.getenv("AUTOPILOT_KEYSTORE") ?: "$rootDir/keystore/personal.jks")
+val personalKeystorePassword: String? =
+    System.getenv("AUTOPILOT_KEYSTORE_PASSWORD") ?: providers.gradleProperty("autopilot.keystorePassword").orNull
+val hasPersonalKey = personalKeystore.isFile && !personalKeystorePassword.isNullOrBlank()
+
 android {
     namespace = "com.lifeadmin.autopilot"
     compileSdk = 36
@@ -20,18 +31,30 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (hasPersonalKey) {
+            create("personal") {
+                storeFile = personalKeystore
+                storePassword = personalKeystorePassword
+                keyAlias = "autopilot"
+                keyPassword = personalKeystorePassword
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            if (hasPersonalKey) signingConfig = signingConfigs.getByName("personal")
         }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Personal-use builds: signed with the debug key unless a real keystore is configured.
-            // See README "Release APK" — never commit signing keys.
-            signingConfig = signingConfigs.getByName("debug")
+            // Personal-use builds: the personal key when configured (see above), else the debug key.
+            // Not for store distribution — never commit signing keys.
+            signingConfig = signingConfigs.getByName(if (hasPersonalKey) "personal" else "debug")
         }
     }
 
