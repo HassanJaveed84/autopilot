@@ -1,6 +1,21 @@
 {
-  "reason": "M3 research screens, font 2.0 only: capture the exception hidden by the teardown crash",
+  "reason": "M3 research screens, final set on the PR head: light/dark 1.0, light 1.3 and 2.0",
   "variants": [
+    {
+      "display": "phone",
+      "theme": "light",
+      "font_scale": "1.0"
+    },
+    {
+      "display": "phone",
+      "theme": "dark",
+      "font_scale": "1.0"
+    },
+    {
+      "display": "phone",
+      "theme": "light",
+      "font_scale": "1.3"
+    },
     {
       "display": "phone",
       "theme": "light",

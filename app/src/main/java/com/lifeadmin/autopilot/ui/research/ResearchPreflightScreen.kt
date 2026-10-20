@@ -78,10 +78,15 @@ fun ResearchPreflightScreen(
         containerColor = c.paper,
         contentWindowInsets = WindowInsets(0),
         topBar = {
-            Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 8.dp, end = 16.dp, top = 4.dp).heightIn(min = 60.dp), verticalAlignment = Alignment.CenterVertically) {
-                RoundIconButton(AutopilotIcons.Close, contentDescription = "Cancel", onClick = onBack)
-                Text("Research online", style = MaterialTheme.typography.titleLarge.copy(fontSize = 22.sp), color = c.ink, modifier = Modifier.weight(1f).padding(start = 4.dp).semantics { heading() })
-                DraftPill("Nothing sent yet", Modifier.testTag("preflight_pill"))
+            // At large text the pill gets its own line so the title never wraps mid-word.
+            val stacked = LocalDensity.current.fontScale >= 1.3f
+            Column(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 8.dp, end = 16.dp, top = 4.dp)) {
+                Row(Modifier.fillMaxWidth().heightIn(min = 60.dp), verticalAlignment = Alignment.CenterVertically) {
+                    RoundIconButton(AutopilotIcons.Close, contentDescription = "Cancel", onClick = onBack)
+                    Text("Research online", style = MaterialTheme.typography.titleLarge.copy(fontSize = 22.sp), color = c.ink, modifier = Modifier.weight(1f).padding(start = 4.dp).semantics { heading() })
+                    if (!stacked) DraftPill("Nothing sent yet", Modifier.testTag("preflight_pill"))
+                }
+                if (stacked) DraftPill("Nothing sent yet", Modifier.padding(start = 12.dp, bottom = 6.dp).testTag("preflight_pill"))
             }
         },
         bottomBar = {

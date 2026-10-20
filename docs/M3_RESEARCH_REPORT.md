@@ -135,7 +135,43 @@ Acceptance scenarios from the handoff:
 - The daily cap is per device (settings), not per key.
 - Process death during a run: the run is never resumed; the progress screen shows "Research was
   interrupted. Nothing saved; your question is kept" with Research again.
+- One emulator run of the screenshot tour at font 2.0 crashed in Compose's slot table during the
+  test activity's teardown (see Delivery). Not reproduced on re-run or under Robolectric; cause
+  unknown; the tour now records uncaught exceptions into its artifact.
+
+## Screens
+
+`docs/screenshots/m3/INDEX.md` lists the 23 research screens, light and dark at font 1.0 (captured on
+the CI emulator from `ScreenshotTourResearch` with the scripted provider and fictional `.example`
+sources). The font 1.3 and 2.0 sets are CI artifacts of the screenshot workflow (links under Delivery).
+Checked by eye at 2.0: footers stack (primary above secondary), the details grid is one column,
+nothing is clipped; the preflight header pill moves under the title at ≥ 1.3× (fixed after the first
+2.0 capture showed "Research online" wrapping mid-word).
 
 ## Delivery
 
-Filled in after push and CI (see the end of this file).
+- Branch `m3-consented-research`, draft PR **#4** → `flight-plan-stabilization` (stacked on #2).
+  Not merged. Commits: `2796486` (B), `35428bc` (C), `0e86390` (D), `07936ec` (E), then tour/doc
+  fixes `825bf27`, `70aee28`, `63cf33a` and the final commit (this one).
+- Android CI (`lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest`
+  + the instrumented suite on an API 34 emulator): result and APK artifact (`apks`, signed with the
+  personal key when the repository secrets are present) are recorded in the PR checks for the final
+  head; see "Final CI" below once complete.
+- Screenshot workflow runs on this branch:
+  - 39401292261 (`07936ec`): all four variants red — the tour waited for the task *title* after
+    returning to a scrolled task screen (the lazy list keeps its position, so the title is not
+    composed) and typed into the operator field without scrolling at 2.0. Fixed in `70aee28`.
+  - 39402883317 (`70aee28`): light 1.0, dark 1.0, light 1.3 green (23 screens each, `OK (6 tests)`);
+    light 2.0 crashed once *inside Compose's slot table while the test activity was being torn down*
+    (`ArrayIndexOutOfBoundsException` in `SlotWriter.moveSlotGapTo` during `CompositionImpl.dispose`,
+    reached from `Activity.performDestroy`), right after the progress screenshot. The crash swallowed
+    whatever ended the test.
+  - 39403993768 (`63cf33a`, 2.0 only, with an uncaught-exception recorder in the tour): green, 23
+    screens, no exception recorded. The Robolectric flow at 2.0 (`ResearchFlowLargeTextUiTest`) also
+    passes. The one-off crash could not be reproduced; the recorder stays in the tour so a recurrence
+    leaves its cause in the artifact. It is listed under known limits as an unexplained single
+    occurrence rather than claimed fixed.
+
+### Final CI
+
+_Updated after the final head's runs complete._
