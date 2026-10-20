@@ -61,8 +61,10 @@ concepts, 30-state gallery, components, spec), `M3_DESIGN_INTEGRATION_HANDOFF.md
   findings A–D verified first, then fixed with regression tests — citation counting once per cited
   block; *Official* only for government domains; task edit + research bookkeeping in one
   transaction (apply and undo); delete-all / delete-for-task cancel and await a running request.
-  Cached API client dropped when the key is deleted. Details and test names in
-  `docs/M3_RESEARCH_REPORT.md` → "Post-implementation hardening".
+  Cached API client dropped when the key is deleted. Validation: local and CI 415 unit tests /
+  14 instrumented / lint clean on `721f008`; screenshots 4/4 on `c915b30`; signed APK artifact
+  12276594576. Details and test names in `docs/M3_RESEARCH_REPORT.md` → "Post-implementation
+  hardening" and "Hardening pass — validation and delivery".
 
 ## Deliberate scope notes
 

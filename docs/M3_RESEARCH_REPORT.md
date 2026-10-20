@@ -205,6 +205,27 @@ nothing is clipped; the preflight header pill moves under the title at ≥ 1.3×
 The committed `docs/screenshots/m3` set comes from run 39402883317 (`70aee28`); the only UI change
 after it is the preflight pill position at ≥ 1.3×, which does not affect the 1.0 set.
 
+### Hardening pass — validation and delivery
+
+- Branch head after the hardening commits: `a9f5bf0` (A+B), `922c14a` (C+D + review), `721f008`
+  (docs), `c915b30` (screenshot request); final docs/screenshot refresh commit is the branch tip
+  recorded in `docs/M3_PROGRESS.md`. PR #4 base: **`main`** (confirmed via the GitHub API; `main` =
+  `90151a9`, the former base, so the diff is unchanged and conflict-free).
+- Local on `721f008`: `./gradlew lintDebug testDebugUnitTest` → **415 tests, 0 failures**, lint 0
+  errors / 0 warnings (18 new tests over the 397 of the first delivery).
+- Android CI on `721f008` (push run [39448117948](https://github.com/HassanJaveed84/autopilot/actions/runs/39448117948)):
+  lint, **415 unit/Robolectric tests, 0 failures**; `assembleDebug assembleRelease assembleDebugAndroidTest`;
+  **14 instrumented tests on the API 34 emulator, 0 failures**. APK artifact `apks` = 12276594576
+  (`app-debug.apk` 28.9 MB, `app-release.apk` 4.2 MB); the debug APK's signer is the personal key
+  (SHA-256 `A5:C5:6F:43…21:46`, verified with `apksigner`), so it installs over the current build.
+  The pull_request run for the same commit was superseded by the next push; the pull_request run on
+  `c915b30` (same code plus the screenshot request file) is linked from the PR checks.
+- Screenshots on `c915b30` (run [39448170400](https://github.com/HassanJaveed84/autopilot/actions/runs/39448170400)):
+  4/4 variants green, 23 research screens each, `OK (6 tests)`; the committed `docs/screenshots/m3`
+  light and dark sets were refreshed from this run (they now show the hardened source-sheet copy).
+- The earlier emulator job failure on `d45ed30` was the emulator package download returning HTTP 502
+  before any test ran (infrastructure); the same job is green on every code head since.
+
 ### Still pending (needs the user)
 
 - Live BYOK run against the real API (see "Known limits"): a first real question on a task, then

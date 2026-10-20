@@ -1,6 +1,6 @@
 # M3 research screens
 
-Captured by `ScreenshotTourResearch` on the CI emulator (API 34, 411 dp phone) with a scripted provider;
+Captured by `ScreenshotTourResearch` on the CI emulator (API 34, 411 dp phone, run 39448170400 on the hardened head) with a scripted provider;
 all sources are fictional `.example` pages. Light and dark at font 1.0 are committed here; the font 1.3 and 2.0 sets are CI artifacts
 (see `docs/M3_RESEARCH_REPORT.md`).
 
