@@ -48,8 +48,27 @@ data class Requirement(
     val origin: RequirementOrigin = RequirementOrigin.EXTRACTED,
     /** False when the local extractor was unsure; the preflight says so. */
     val confident: Boolean = true,
+    /**
+     * A preference the person allows exceptions to ("brand preference", "ideally under $150"). A
+     * violation of a soft constraint is shown as an exception for the person to decide on; a violation
+     * of a strict one keeps the research from being complete. See [CompletionPolicy].
+     */
+    val soft: Boolean = false,
 )
 
+/**
+ * Completion semantics (validated in code by [CompletionPolicy], never taken from the model alone):
+ *
+ * | status            | investigated | evidence supports an answer | satisfied for "Complete" |
+ * |-------------------|--------------|-----------------------------|--------------------------|
+ * | PENDING           | no           | —                           | no (a gap)               |
+ * | NOT_FOUND         | yes          | nothing found               | no (a gap)               |
+ * | PARTLY            | yes          | only part of it             | no (a gap)               |
+ * | NEEDS_CHECK       | yes          | not enough to rely on       | no (a gap)               |
+ * | YOUR_CALL         | yes          | options established         | yes — the person decides |
+ * | ANSWERED          | yes          | yes, cited                  | yes                      |
+ * | RESOLVED_CONFLICT | yes          | yes, conflict resolved      | yes                      |
+ */
 @Serializable
 enum class RequirementStatus(val label: String) {
     PENDING("Not researched yet"),
@@ -61,12 +80,25 @@ enum class RequirementStatus(val label: String) {
     RESOLVED_CONFLICT("Resolved conflict"),
     ;
 
-    /** Counts as covered for the completeness rule (d3). */
-    val covered: Boolean get() = this != PENDING && this != NOT_FOUND
+    /** Satisfied for the completeness rule: answered, a resolved conflict, or a decision with its options on the table. */
+    val covered: Boolean get() = this == ANSWERED || this == RESOLVED_CONFLICT || this == YOUR_CALL
+
+    /** Still a research gap: another search could change it. */
+    val open: Boolean get() = this == PENDING || this == NOT_FOUND || this == PARTLY || this == NEEDS_CHECK
+
+    /** The research reported on it (even if it found nothing). */
+    val investigated: Boolean get() = this != PENDING
+
+    /** Shown as "needs you" on the coverage line. */
+    val needsUser: Boolean get() = this == YOUR_CALL || this == NEEDS_CHECK
 }
 
+/**
+ * [refs] are sources the provider cited on this requirement's line; [reusedRefs] are source ids the
+ * model typed itself (`src=sN`) that point at sources cited earlier — a pointer, not verification.
+ */
 @Serializable
-data class Coverage(val requirementId: String, val status: RequirementStatus, val summary: String = "", val refs: List<Int> = emptyList())
+data class Coverage(val requirementId: String, val status: RequirementStatus, val summary: String = "", val refs: List<Int> = emptyList(), val reusedRefs: List<Int> = emptyList())
 
 /** What a claim rests on. Decided by the parser: a sourced tag without a provider citation becomes UNKNOWN. */
 @Serializable
@@ -77,6 +109,12 @@ enum class ProvenanceTag(val label: String, val short: String) {
     JUDGMENT("Claude's judgment", "Judgment"),
     CALC("Calculated", "Calc"),
     UNKNOWN("Unconfirmed", "Unknown"),
+
+    /**
+     * Written by the model with a `src=` pointer to a source the provider cited earlier, but this
+     * particular sentence was not itself cited and does not match the evidence held. Restated, not verified.
+     */
+    SYNTHESIS("Restated from earlier evidence, not verified", "Restated"),
     ;
 
     /** Tags that assert something about the world and therefore need a citation. */
@@ -89,7 +127,11 @@ data class Attribute(
     val value: String,
     val tag: ProvenanceTag,
     val refs: List<Int> = emptyList(),
-)
+    val reusedRefs: List<Int> = emptyList(),
+) {
+    /** Backed by a provider citation (or a validated restatement of cited evidence). */
+    val verified: Boolean get() = refs.isNotEmpty() && tag.needsSource
+}
 
 @Serializable
 enum class PriceStatus(val label: String) {
@@ -132,6 +174,7 @@ data class Candidate(
     val refs: List<Int> = emptyList(),
     /** True when the model named it as the pick for someone whose taste is unknown. */
     val hero: Boolean = false,
+    val reusedRefs: List<Int> = emptyList(),
 )
 
 /** Template C: what was found for one requested item. */
@@ -149,19 +192,20 @@ data class ItemPick(
     val why: String? = null,
     val price: Price? = null,
     val refs: List<Int> = emptyList(),
+    val reusedRefs: List<Int> = emptyList(),
 )
 
 @Serializable
-data class Claim(val text: String, val tag: ProvenanceTag, val refs: List<Int> = emptyList())
+data class Claim(val text: String, val tag: ProvenanceTag, val refs: List<Int> = emptyList(), val reusedRefs: List<Int> = emptyList())
 
 @Serializable
-data class ConflictSide(val says: String, val refs: List<Int> = emptyList())
+data class ConflictSide(val says: String, val refs: List<Int> = emptyList(), val reusedRefs: List<Int> = emptyList())
 
 @Serializable
 data class Conflict(val topic: String, val sides: List<ConflictSide>, val resolution: String? = null)
 
 @Serializable
-data class StepLine(val text: String, val tag: ProvenanceTag = ProvenanceTag.JUDGMENT, val refs: List<Int> = emptyList(), val optional: Boolean = false)
+data class StepLine(val text: String, val tag: ProvenanceTag = ProvenanceTag.JUDGMENT, val refs: List<Int> = emptyList(), val optional: Boolean = false, val reusedRefs: List<Int> = emptyList())
 
 @Serializable
 enum class CalloutKind { HEALTH, CROSS_ITEM, UNKNOWN_RECIPIENT, BUDGET, INFO }
@@ -172,9 +216,12 @@ data class Callout(val kind: CalloutKind, val text: String)
 @Serializable
 data class Unresolved(val topic: String, val why: String, val requirementId: String? = null)
 
-/** A run of answer text with the registry numbers of the sources the provider attached to it. */
+/**
+ * A run of answer text with the registry numbers of the sources the provider attached to it.
+ * [reusedRefs] are model-typed pointers to earlier-cited sources (shown as restatements, never as verification).
+ */
 @Serializable
-data class CitedSegment(val text: String, val refs: List<Int> = emptyList())
+data class CitedSegment(val text: String, val refs: List<Int> = emptyList(), val reusedRefs: List<Int> = emptyList())
 
 @Serializable
 enum class ProposalKind(val label: String, val verb: String) {
@@ -203,6 +250,7 @@ data class Proposal(
     val selectedByDefault: Boolean = true,
     /** Proposals the model wrote vs. ones the app added so every requested item is represented. */
     val generated: Boolean = false,
+    val reusedRefs: List<Int> = emptyList(),
 )
 
 @Serializable
@@ -330,7 +378,8 @@ data class SessionContent(
     fun source(n: Int): SourceRef2? = sources.firstOrNull { it.n == n }
 
     companion object {
-        const val CONTRACT_VERSION = 1
+        /** 2: statuses validated by [CompletionPolicy]; model-typed `src=` pointers kept apart from provider citations. */
+        const val CONTRACT_VERSION = 2
     }
 }
 

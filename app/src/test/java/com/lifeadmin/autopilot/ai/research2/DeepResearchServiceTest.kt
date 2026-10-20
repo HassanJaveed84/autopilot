@@ -36,6 +36,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
@@ -105,6 +106,7 @@ class DeepResearchServiceTest {
         online = true
         assertTrue(provider.calls.isEmpty())
         assertEquals(0, service.requestsToday())
+        assertTrue("a request that never left the phone has no ledger row", ledger.getAll().isEmpty())
     }
 
     @Test fun thoroughRunGathersThenFillsGapsAndRecordsEachCall() {
@@ -120,7 +122,8 @@ class DeepResearchServiceTest {
         val finished = awaitFinished()
         assertEquals(started.runId, finished.runId)
         val session = saved(finished)
-        assertEquals(SessionOutcome.COMPLETE, session.outcome)
+        assertEquals("glucosamine is only partly covered, so the run is Partially complete, not Complete", SessionOutcome.PARTIAL, session.outcome)
+        assertEquals("the off-brand glucosamine is an exception for the person to decide on", RequirementStatus.YOUR_CALL, session.content.coverageOf("r-c0").status)
         assertEquals(2, provider.calls.size)
         assertEquals("gather gets 60% of 10", 6, provider.calls[0].maxSearches)
         assertTrue("second call is a gap-fill naming the open requirement", provider.calls[1].user.contains("r-i3") && provider.calls[1].user.contains("Still open"))
@@ -223,7 +226,77 @@ class DeepResearchServiceTest {
         val all = runBlocking { ledger.getAll() }
         assertEquals(CallOutcome.FAILED_NOT_BILLED, all.first { it.runId == f2.runId }.outcome)
         assertEquals(0L, all.first { it.runId == f2.runId }.estimatedMicros)
+        assertNull("a rejected request carries no usage at all", all.first { it.runId == f2.runId }.usage)
         assertEquals("nothing saved for a failed run", 1, runBlocking { store.getAll() }.size)
+    }
+
+    @Test fun failureAfterObservedSearchesKeepsThemAsACostFloor() {
+        // First call dies after the provider ran two searches: the run fails, the $0.02 floor is kept, tokens stay unknown.
+        provider.enqueue(CallResult.Failed(ResearchError.ServerError(529), searchesSeen = 2, usage = null, elapsedMs = 3_000))
+        start()
+        val f = awaitFinished()
+        assertTrue(f.result is RunResult.Failed)
+        val rec = runBlocking { ledger.getAll() }.single()
+        assertEquals(CallOutcome.FAILED_UNKNOWN, rec.outcome)
+        assertEquals(UsageStatus.PARTIAL, rec.usageStatus)
+        assertEquals(2, rec.usage!!.webSearches); assertNull(rec.usage!!.inputTokens)
+        assertEquals(20_000L, rec.estimatedMicros)
+        assertTrue(rec.isFloor && rec.tokensUnknown)
+        service.dismiss(f.runId)
+        // After a good first pass the same failure is Partial and the run usage says it is a floor.
+        provider.enqueue(Research2Fixtures.supplementsGather())
+        provider.enqueue(CallResult.Failed(ResearchError.Timeout, searchesSeen = 1, usage = null, elapsedMs = 180_000))
+        start()
+        val s = saved(awaitFinished())
+        assertEquals(SessionOutcome.PARTIAL, s.outcome)
+        val run = s.content.latestRun!!
+        assertEquals("5 from the good call + 1 seen before the timeout", 6, run.usage.webSearches)
+        assertFalse(run.usage.complete)
+        val recs = runBlocking { ledger.forSession(s.id) }
+        assertEquals(listOf(UsageStatus.COMPLETE, UsageStatus.PARTIAL), recs.map { it.usageStatus })
+        assertEquals(10_000L, recs[1].estimatedMicros)
+        // A failed call whose usage the provider did report is priced in full.
+        service.dismiss((service.state.value as DeepRunState.Finished).runId)
+        provider.enqueue(CallResult.Failed(ResearchError.Malformed("bad shape"), searchesSeen = 1, usage = MeasuredUsage(5_000, 100, 0, 0, 0, 1), elapsedMs = 2_000))
+        start()
+        val lastRun = awaitFinished().runId
+        val full = runBlocking { ledger.getAll() }.single { it.runId == lastRun }
+        assertEquals(UsageStatus.COMPLETE, full.usageStatus)
+        assertEquals((5_000 * 2.0 + 100 * 10.0 + 10_000).toLong(), full.estimatedMicros)
+    }
+
+    @Test fun stopDuringAPauseTurnContinuationKeepsTheFirstCallsSearches() {
+        val paused = Research2Fixtures.supplementsGather().copy(stop = CallStop.PAUSE_TURN, paused = "prior", usage = MeasuredUsage(20_000, 500, 0, 0, 0, 2))
+        provider.enqueue(paused)
+        provider.gate = CompletableDeferred(); provider.gateCall = 2
+        val started = start(draft(mode = ResearchMode.QUICK)) as StartResult2.Started
+        awaitCalls(2)
+        val running = service.state.value as DeepRunState.Running
+        assertEquals(2, running.searchesRun)
+        service.stop(started.runId, keepPartial = true)
+        val s = saved(awaitFinished())
+        assertEquals(SessionOutcome.STOPPED, s.outcome)
+        assertEquals(2, s.content.latestRun!!.usage.webSearches)
+        assertFalse("the continuation's usage is unknown: the run total is a floor", s.content.latestRun!!.usage.complete)
+        assertEquals(listOf(CallOutcome.COMPLETE, CallOutcome.STOPPED), runBlocking { ledger.forSession(s.id) }.map { it.outcome })
+    }
+
+    @Test fun twoSimultaneousStartsLaunchOneRunAndReserveOneSession() {
+        provider.gate = CompletableDeferred()
+        val results = runBlocking {
+            val a = async(Dispatchers.Default) { service.start(taskId, draft()) }
+            val b = async(Dispatchers.Default) { service.start(taskId, draft()) }
+            listOf(a.await(), b.await())
+        }
+        assertEquals(1, results.count { it is StartResult2.Started })
+        assertEquals(StartResult2.Rejected(ResearchError.Busy), results.first { it is StartResult2.Rejected })
+        awaitCalls(1)
+        assertEquals("only one call in flight", 1, provider.calls.size)
+        assertEquals("only one session reserved against the daily cap", 1, runBlocking { service.requestsToday() })
+        val cont = runBlocking { service.continueSession("whatever", ResearchModes.config(ResearchMode.QUICK), emptyList(), null) }
+        assertEquals(StartResult2.Rejected(ResearchError.Busy), cont)
+        service.stop((results.first { it is StartResult2.Started } as StartResult2.Started).runId, keepPartial = false)
+        awaitFinished()
     }
 
     @Test fun refusalAndEmptyAnswersAreReportedNotSaved() {

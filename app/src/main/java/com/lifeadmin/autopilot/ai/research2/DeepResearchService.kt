@@ -36,6 +36,7 @@ import kotlinx.coroutines.NonCancellable
 import java.time.Instant
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** What the preflight assembles before Start. Nothing leaves the device until [DeepResearchService.start]. */
 data class SessionDraft(
@@ -114,6 +115,9 @@ class DeepResearchService(
     private var job: Job? = null
     @Volatile private var keepPartialOnStop = false
 
+    /** Claimed for the whole of start()/continueSession() so two taps can never launch two runs or reserve two sessions. */
+    private val launching = AtomicBoolean(false)
+
     // ------------------------------------------------------------------ gating & local prep
 
     suspend fun gate(s: AppSettings? = null): ResearchGate {
@@ -150,38 +154,52 @@ class DeepResearchService(
         if (request.isEmpty()) return StartResult2.Rejected(ResearchError.EmptyQuestion)
         if (request.length > Research2Config.MAX_REQUEST_CHARS) return StartResult2.Rejected(ResearchError.QuestionTooLong)
         if (draft.requirements.isEmpty()) return StartResult2.Rejected(ResearchError.Unexpected("no requirements"))
-        if (_state.value is DeepRunState.Running) return StartResult2.Rejected(ResearchError.Busy)
-        val gate = gate()
-        gate.blocker?.let { return StartResult2.Rejected(it) }
-        val key = keyStore.get() ?: return StartResult2.Rejected(ResearchError.NoApiKey)
-        val details = tasks.observeDetails(taskId).first() ?: return StartResult2.Rejected(ResearchError.Unexpected("task missing"))
-        if (!reserve()) return StartResult2.Rejected(ResearchError.DailyLimit)
-        val shared = shared(details, draft.scope)
-        val sessionId = ids.newId()
-        val runId = ids.newId()
-        val now = clock.now()
-        val content = SessionContent(
-            title = fallbackTitle(draft.requirements, draft.template), request = request, template = draft.template,
-            requirements = draft.requirements, coverage = draft.requirements.map { Coverage(it.id, RequirementStatus.PENDING) },
-            outcome = SessionOutcome.INTERRUPTED, shared = shared.summary(),
-        )
-        val session = ResearchSession(sessionId, taskId, now, now, content)
-        launch(session, runId, draft.config, key, RunKind.INITIAL, shared, focus = emptyList(), note = null)
-        return StartResult2.Started(runId, sessionId)
+        return claimed {
+            val gate = gate()
+            gate.blocker?.let { return@claimed StartResult2.Rejected(it) }
+            val key = keyStore.get() ?: return@claimed StartResult2.Rejected(ResearchError.NoApiKey)
+            val details = tasks.observeDetails(taskId).first() ?: return@claimed StartResult2.Rejected(ResearchError.Unexpected("task missing"))
+            if (!reserve()) return@claimed StartResult2.Rejected(ResearchError.DailyLimit)
+            val shared = shared(details, draft.scope)
+            val sessionId = ids.newId()
+            val runId = ids.newId()
+            val now = clock.now()
+            val content = SessionContent(
+                title = fallbackTitle(draft.requirements, draft.template), request = request, template = draft.template,
+                requirements = draft.requirements, coverage = draft.requirements.map { Coverage(it.id, RequirementStatus.PENDING) },
+                outcome = SessionOutcome.INTERRUPTED, shared = shared.summary(),
+            )
+            val session = ResearchSession(sessionId, taskId, now, now, content)
+            launch(session, runId, draft.config, key, RunKind.INITIAL, shared, focus = emptyList(), note = null)
+            StartResult2.Started(runId, sessionId)
+        }
     }
 
     /** New run on a saved session with a new approved budget; requirements, findings and source ids are kept. */
-    suspend fun continueSession(sessionId: String, config: RunConfig, focus: List<String>, note: String?): StartResult2 {
-        if (_state.value is DeepRunState.Running) return StartResult2.Rejected(ResearchError.Busy)
+    suspend fun continueSession(sessionId: String, config: RunConfig, focus: List<String>, note: String?): StartResult2 = claimed {
         val gate = gate()
-        gate.blocker?.let { return StartResult2.Rejected(it) }
-        val key = keyStore.get() ?: return StartResult2.Rejected(ResearchError.NoApiKey)
-        val session = store.get(sessionId) ?: return StartResult2.Rejected(ResearchError.Unexpected("session missing"))
-        if (!reserve()) return StartResult2.Rejected(ResearchError.DailyLimit)
+        gate.blocker?.let { return@claimed StartResult2.Rejected(it) }
+        val key = keyStore.get() ?: return@claimed StartResult2.Rejected(ResearchError.NoApiKey)
+        val session = store.get(sessionId) ?: return@claimed StartResult2.Rejected(ResearchError.Unexpected("session missing"))
+        if (!reserve()) return@claimed StartResult2.Rejected(ResearchError.DailyLimit)
         val runId = ids.newId()
         val focusReqs = session.content.requirements.filter { it.id in focus }
         launch(session, runId, config, key, RunKind.CONTINUATION, shared = null, focus = focusReqs, note = note?.take(300))
-        return StartResult2.Started(runId, sessionId)
+        StartResult2.Started(runId, sessionId)
+    }
+
+    /**
+     * One launch at a time: the Busy check and the daily reservation happen under a single claim, so
+     * two simultaneous Start taps (or Start during a run) cannot both reserve a session or both launch.
+     */
+    private suspend inline fun claimed(block: () -> StartResult2): StartResult2 {
+        if (!launching.compareAndSet(false, true)) return StartResult2.Rejected(ResearchError.Busy)
+        try {
+            if (_state.value is DeepRunState.Running) return StartResult2.Rejected(ResearchError.Busy)
+            return block()
+        } finally {
+            launching.set(false)
+        }
     }
 
     /** Stop sheet: keep what was gathered (saved as Stopped) or discard it (nothing saved; usage is still recorded). */
@@ -251,7 +269,8 @@ class DeepResearchService(
         job = scope.launch {
             val result: RunResult = try {
                 runStages(ctx)
-                finish(ctx)
+                // Saving is atomic with respect to Stop/delete: a cancellation that lands here waits for the save.
+                withContext(NonCancellable) { finish(ctx) }
             } catch (e: CancellationException) {
                 withContext(NonCancellable) {
                     ctx.ending = SessionAssembler.Ending.STOPPED
@@ -345,13 +364,35 @@ class DeepResearchService(
             } catch (e: CancellationException) {
                 withContext(NonCancellable) { ledger.record(UsageRecord.priced(record, null, CallOutcome.STOPPED, null)) }
                 ctx.spentFloor = true
+                ctx.usage = ctx.usage.copy(complete = false)
                 throw e
             }
             when (result) {
                 is CallResult.Failed -> {
                     val outcome = if (notBilled(result.error)) CallOutcome.FAILED_NOT_BILLED else CallOutcome.FAILED_UNKNOWN
-                    ledger.record(UsageRecord.priced(record, result.usage, outcome, result.elapsedMs))
+                    // Searches the provider reported before failing are billable (finding C): keep them as a
+                    // floor with the token counts unknown; a rejected request carries no usage at all.
+                    val observed = when {
+                        outcome == CallOutcome.FAILED_NOT_BILLED -> null
+                        result.usage != null -> result.usage
+                        result.searchesSeen > 0 -> MeasuredUsage(null, null, null, null, null, result.searchesSeen)
+                        else -> null
+                    }
+                    ledger.record(UsageRecord.priced(record, observed, outcome, result.elapsedMs))
                     if (outcome == CallOutcome.FAILED_UNKNOWN) ctx.spentFloor = true
+                    if (observed != null) {
+                        val priced = CostCalculator.price(ctx.config.model, observed)
+                        ctx.spentMicros += priced.estimate?.micros ?: 0L
+                        val n = observed.webSearches ?: 0
+                        searchesThisStage += n; ctx.searchesRun += n; ctx.remaining = (ctx.remaining - n).coerceAtLeast(0)
+                        ctx.usage = ctx.usage.copy(
+                            inputTokens = ctx.usage.inputTokens + (observed.inputTokens ?: 0), outputTokens = ctx.usage.outputTokens + (observed.outputTokens ?: 0),
+                            webSearches = ctx.usage.webSearches + n, elapsedMs = ctx.usage.elapsedMs + result.elapsedMs, complete = false,
+                        )
+                        updateRunning(ctx)
+                    } else if (outcome == CallOutcome.FAILED_UNKNOWN) {
+                        ctx.usage = ctx.usage.copy(complete = false)
+                    }
                     ctx.stages += StageRecord(stage, StageResult.FAILED, allowance, searchesThisStage, queries, result.error.technical, calls)
                     ctx.failure = result.error
                     ctx.technical = result.error.technical
@@ -381,7 +422,10 @@ class DeepResearchService(
                         event(ctx.runId, RunEventKind.FAILED, "${stage.label}: Claude declined this request")
                         return false
                     }
-                    val out = ContractParser.parse(result.segments, result.searches, ctx.registry, ctx.session.content.requirements, clock.now().toEpochMilli(), ctx.session.content.body.candidates)
+                    val out = ContractParser.parse(
+                        result.segments, result.searches, ctx.registry, ctx.session.content.requirements, clock.now().toEpochMilli(),
+                        ctx.session.content.body.candidates, SessionAssembler.evidenceLines(ctx.session.content),
+                    )
                     queries += out.queries
                     ctx.queriesThisRun += out.queries
                     if (out.answer.isNotEmpty() || out.coverage.isNotEmpty() || out.candidates.isNotEmpty() || out.picks.isNotEmpty() || out.claims.isNotEmpty() || out.steps.isNotEmpty()) ctx.merged = true
@@ -431,6 +475,12 @@ class DeepResearchService(
         _state.update { s -> if (s is DeepRunState.Running && s.runId == runId) s.copy(events = (s.events + RunEvent(clock.now().toEpochMilli(), kind, text)).takeLast(40)) else s }
     }
 
+    /**
+     * Rejected before processing: authentication, permission, credit, rate-limit and request-validation
+     * errors return no usage, and the prompt is never run. Anthropic's docs do not state a billing rule
+     * for errored requests, so the ledger records these as "$0 assumed · nothing reported" rather than
+     * as a provider-confirmed figure. Server errors, timeouts and transport failures stay unknown.
+     */
     private fun notBilled(e: ResearchError): Boolean = when (e) {
         ResearchError.Unauthorized, ResearchError.Forbidden, ResearchError.WebSearchNotEnabled, ResearchError.OutOfCredit, is ResearchError.BadRequest, is ResearchError.RateLimited, ResearchError.Offline -> true
         else -> false

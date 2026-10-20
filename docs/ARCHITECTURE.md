@@ -98,13 +98,26 @@ ReconcileWorker (WorkManager, 1 h) ── engine.reconcileAll + ledger prune
   coverage statuses, candidates/attributes/prices with provenance tags, proposals, `SessionContent`
   with per-run records and honest `SessionOutcome`), `RequirementExtractor` (deterministic, offline),
   `Research2Prompt` (line-based `## REQ / ## CAND / ## ATTR / ## PICK / ## CLAIM / ## PROPOSE` contract),
-  `ContractParser` + `SourceRegistry2` (provenance only from provider citations; `src=sN` tokens
-  resolve only to sources the app already holds; source numbers stable across runs), `SessionAssembler`
-  (merge, coverage assessment in code, outcome rules: budget exhausted is never Complete),
+  `ContractParser` + `SourceRegistry2` (fresh provenance only from provider citations on a block's own
+  lines; the registry keeps *cited* and merely *discovered* pages apart; a model-typed `src=sN` resolves
+  only to a cited source and only as a pointer (`reusedRefs`) — it verifies nothing unless the line is a
+  validated restatement of evidence already held, otherwise the line is tagged Restated; prices are
+  confirmed only by a citation; source numbers stable across runs), `CompletionPolicy` (validates every
+  requirement status against the structured result after each merge: items need cited evidence,
+  budgets/brands/exclusions are checked against the candidates and picks themselves with soft vs strict
+  constraints, output wishes are verified for real; Partly / Needs a check / Not found are never covered),
+  `SessionAssembler` (merge with confirmed-beats-unconfirmed, coverage via the policy, outcome rules:
+  Complete only when every requirement incl. constraints is covered; budget exhausted is never Complete),
   `ProposalBuilder` (one reviewable proposal per requested item), `DeepResearchService` (planned
   stages GATHER → FILL_GAPS → CROSS_CHECK → SYNTHESIZE, budget check before each HTTP call, soft dollar
   limit, `pause_turn` as a separate billed call, Stop keep/discard, continuation on a saved session),
   `Research2Actions` (edited proposals → one transactional, idempotent `TaskEditCommand`; Undo).
+  Start/continue run under one atomic launch claim (no double launch, no double daily reservation);
+  the final save runs non-cancellable.
+- `ai/usage`: a failed call keeps whatever the provider reported (full usage priced in full; searches
+  seen as a floor with tokens unknown; nothing → unknown, never $0); a request rejected before
+  processing is "Rejected · $0 assumed" and counted as such; `UsageGrouping` is the pure grouping the
+  dashboard reconciles against the ledger; restores never duplicate a provider message id.
 - `ai/usage`: `PricingCatalog` (versioned, from the official pricing page), `CostCalculator` (pure),
   `UsageRecord`/`UsageLedger` (one row per API call, inserted in flight and finalised; unknown usage
   is never priced as $0; provider message ids de-duplicate). Planning (M2) calls record here too.

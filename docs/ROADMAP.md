@@ -113,7 +113,7 @@ Optional sharing, identity, task ownership, member permissions, cross-device con
 
 | Topic | Status |
 | --- | --- |
-| Deep research with actionable outputs and usage/cost ledger | **Implemented 2026-10-20 as M3A.2 (draft PR); awaiting review, live-API and device verification** |
+| Deep research with actionable outputs and usage/cost ledger | **Implemented 2026-10-20 as M3A.2 (draft PR); hardened the same day after an independent code review (completion policy in code, provenance pointers vs citations, failed-call cost floors); awaiting review, live-API and device verification** |
 | Automatic pending-task review | **Captured 2026-10-20; prioritized as M3B after M3A.2** |
 | Focused M3B design | Planned after M3A UX exists |
 | Real-device installation and reminder/keyboard checks | Verification outstanding |

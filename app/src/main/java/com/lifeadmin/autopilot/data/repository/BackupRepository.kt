@@ -331,7 +331,8 @@ class BackupRepository(
         for (brief in v.research) if (brief.taskId in present) db.researchDao().upsert(brief)
         for (session in v.sessions) if (session.taskId in present) db.researchSessionDao().upsert(session)
         // The ledger is append-only: rows already present are never overwritten by a backup.
-        for (u in v.usage) if (db.usageDao().get(u.id) == null) db.usageDao().upsert(u)
+        // Append-only, and never the same provider response twice under two local ids.
+        for (u in v.usage) if (db.usageDao().get(u.id) == null && (u.providerMessageId == null || db.usageDao().byProviderMessage(u.providerMessageId).isEmpty())) db.usageDao().upsert(u)
         return ImportResult(created, updated, skipped)
     }
 

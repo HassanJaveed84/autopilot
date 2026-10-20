@@ -112,10 +112,9 @@ class UsageViewModel(
         val todayRows = all.filter { it.startedAt.atZone(zone).toLocalDate() == today }
         val monthRows = all.filter { YearMonth.from(it.startedAt.atZone(zone)) == month }
         val research = monthRows.filter { it.feature != UsageFeature.PLANNING }
-        val groups = all.groupBy { it.runId ?: it.id }.map { (k, rows) ->
-            val first = rows.minBy { it.startedAt }
-            RunGroup(k, first.sessionId, first.sessionId?.let { tt[it] } ?: if (first.feature == UsageFeature.PLANNING) "Task planning" else "Research", rows.sortedBy { it.startedAt }, UsageTotals.of(rows), first.startedAt, first.feature, first.feature == UsageFeature.RESEARCH_CONTINUATION)
-        }.sortedByDescending { it.startedAt }
+        val groups = com.lifeadmin.autopilot.ai.usage.UsageGrouping.groups(all).map { g ->
+            RunGroup(g.key, g.sessionId, g.sessionId?.let { tt[it] } ?: if (g.feature == UsageFeature.PLANNING) "Task planning" else "Research", g.records, g.totals, g.startedAt, g.feature, g.continuation)
+        }
         UsageUi(
             loading = false, today = UsageTotals.of(todayRows), month = UsageTotals.of(monthRows), monthResearch = UsageTotals.of(research), monthPlanning = UsageTotals.of(monthRows.filter { it.feature == UsageFeature.PLANNING }),
             monthSearchMicros = research.sumOf { (it.usage?.webSearches ?: 0) * 10_000L },
@@ -174,7 +173,8 @@ fun UsageScreen(viewModel: UsageViewModel, zone: ZoneId, onBack: () -> Unit) {
                 }
             }
             item { SectionTitle("Recent runs", Modifier.padding(top = 18.dp, bottom = 8.dp)) }
-            if (s.groups.isEmpty()) item { Text("No AI calls recorded on this phone yet.", style = MaterialTheme.typography.bodyMedium, color = c.ink2) }
+            if (s.loading) item { Text("Loading…", style = MaterialTheme.typography.bodyMedium, color = c.ink3, modifier = Modifier.testTag("usage_loading")) }
+            else if (s.groups.isEmpty()) item { Text("No AI calls recorded on this phone yet.", style = MaterialTheme.typography.bodyMedium, color = c.ink2) }
             else item {
                 SurfaceCard(radius = 18.dp, contentPadding = PaddingValues(0.dp), modifier = Modifier.testTag("usage_runs")) {
                     s.groups.forEachIndexed { i, g -> UsageRunRow(g, s.now, zone, highlighted = g.sessionId != null && g.sessionId == s.focusSession, onClick = { viewModel.open(g) }, divider = i > 0) }
@@ -234,7 +234,7 @@ fun UsageRunRow(g: RunGroup, now: Instant, zone: ZoneId, highlighted: Boolean, o
             CallOutcome.FAILED_UNKNOWN in o -> "failed · usage unknown"
             CallOutcome.STOPPED in o -> "stopped · tokens unknown"
             CallOutcome.TRUNCATED in o -> "cut short"
-            CallOutcome.FAILED_NOT_BILLED in o && o.all { it == CallOutcome.FAILED_NOT_BILLED } -> "failed · not billed"
+            CallOutcome.FAILED_NOT_BILLED in o && o.all { it == CallOutcome.FAILED_NOT_BILLED } -> "rejected · $0 assumed"
             else -> "complete"
         }
     }
@@ -261,7 +261,7 @@ private fun BreakdownSheet(g: RunGroup, zone: ZoneId, onDismiss: () -> Unit) {
                 val p = PricingCatalog.price(r.model)
                 Text("${r.stage ?: r.feature.label} · ${AiConfig.label(r.model)} · ${r.outcome.label}" + (r.durationMs?.let { " · ${it / 1000} s" } ?: ""), style = MaterialTheme.typography.titleSmall, color = c.ink)
                 val u = r.usage
-                if (r.outcome == CallOutcome.FAILED_NOT_BILLED) Text("$0.00 · not billed — rejected before processing.", style = MaterialTheme.typography.bodySmall, color = c.ink2)
+                if (r.outcome == CallOutcome.FAILED_NOT_BILLED) Text("$0.00 assumed — rejected before processing, so Anthropic reported no usage. Not a confirmed figure; check the Console if in doubt.", style = MaterialTheme.typography.bodySmall, color = c.ink2)
                 else if (u == null) Text("Usage unknown — the response never arrived. Anthropic may still bill the request; the app shows no number rather than a wrong one.", style = MaterialTheme.typography.bodySmall, color = c.onSignalSoft)
                 else {
                     Line("Input tokens", u.inputTokens, p?.input)
@@ -270,7 +270,11 @@ private fun BreakdownSheet(g: RunGroup, zone: ZoneId, onDismiss: () -> Unit) {
                     if ((u.cacheWrite1hTokens ?: 0) > 0) Line("Cache write (1 h)", u.cacheWrite1hTokens, p?.cacheWrite1h)
                     if ((u.cacheReadTokens ?: 0) > 0) Line("Cache read", u.cacheReadTokens, p?.cacheRead)
                     Row(Modifier.fillMaxWidth()) { Text("Web searches", style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.weight(1f)); Text("${u.webSearches ?: "?"} × $0.01", style = MaterialTheme.typography.bodySmall, color = c.ink2); Text("  ${UsdEstimate.format((u.webSearches ?: 0) * 0.01)}", style = TimeTextStyle.copy(fontSize = 13.sp), color = c.ink) }
-                    Text((if (r.usageStatus == UsageStatus.COMPLETE) "Estimated total ~" else "Estimated floor ≥ ") + UsdEstimate.format((r.estimatedMicros ?: 0) / 1_000_000.0) + if (r.usageStatus != UsageStatus.COMPLETE) " (some counts unknown)" else "", style = MaterialTheme.typography.bodyMedium, color = c.ink)
+                    Text(
+                        (if (r.usageStatus == UsageStatus.COMPLETE) "Estimated total ~" else "Known floor ≥ ") + UsdEstimate.format((r.estimatedMicros ?: 0) / 1_000_000.0) +
+                            when { r.usageStatus == UsageStatus.COMPLETE -> ""; r.tokensUnknown -> " · searches known, token cost unknown on top"; else -> " (some counts unknown)" },
+                        style = MaterialTheme.typography.bodyMedium, color = c.ink,
+                    )
                 }
             }
             Text("Price table ${g.records.first().priceVersion}. Anthropic's Console is the authoritative bill; the app never reads it.", style = MaterialTheme.typography.bodySmall, color = c.ink3)

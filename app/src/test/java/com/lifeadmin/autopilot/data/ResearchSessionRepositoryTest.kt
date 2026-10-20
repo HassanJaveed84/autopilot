@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -142,9 +143,20 @@ class ResearchSessionRepositoryTest {
         assertEquals(2, ledger.observeAll().first().size)
         assertEquals(1, ledger.deleteOlderThan(now.plusSeconds(30)))
         assertEquals(listOf("c2"), ledger.getAll().map { it.id })
-        ledger.restoreIfAbsent(UsageRecord("c2", UsageFeature.RESEARCH, "x", now))
+        assertFalse(ledger.restoreIfAbsent(UsageRecord("c2", UsageFeature.RESEARCH, "x", now)))
         assertEquals("append-only: an existing row is never overwritten by a restore", UsageFeature.PLANNING, ledger.get("c2")!!.feature)
         ledger.deleteAll()
         assertEquals(0, ledger.getAll().size)
+    }
+
+    @Test fun restoreNeverDuplicatesAProviderResponseUnderANewId() = runTest {
+        val base = UsageRecord("u1", UsageFeature.RESEARCH, "claude-sonnet-5-5", now, runId = "r1", sessionId = "s1")
+        ledger.record(UsageRecord.priced(base, MeasuredUsage(1_000, 100, 0, 0, 0, 1), CallOutcome.COMPLETE, 1_000, "msg_same"))
+        // A backup made on another phone holds the same provider response under a different local id.
+        assertFalse(ledger.restoreIfAbsent(UsageRecord.priced(base.copy(id = "u1-from-backup"), MeasuredUsage(1_000, 100, 0, 0, 0, 1), CallOutcome.COMPLETE, 1_000, "msg_same")))
+        assertEquals(listOf("u1"), ledger.getAll().map { it.id })
+        assertTrue(ledger.restoreIfAbsent(UsageRecord.priced(base.copy(id = "u2"), MeasuredUsage(500, 50, 0, 0, 0, 0), CallOutcome.COMPLETE, 800, "msg_other")))
+        assertEquals(2, ledger.getAll().size)
+        assertEquals("totals count each provider response once", 2, com.lifeadmin.autopilot.ai.usage.UsageTotals.of(ledger.getAll()).calls)
     }
 }

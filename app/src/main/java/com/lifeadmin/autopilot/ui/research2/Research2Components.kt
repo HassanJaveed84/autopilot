@@ -185,6 +185,8 @@ fun ProvenanceTagChip(tag: ProvenanceTag, modifier: Modifier = Modifier) {
         ProvenanceTag.JUDGMENT -> Modifier.dashedRoute(c.route, 6.dp)
         ProvenanceTag.CALC -> Modifier.background(c.sunken, shape)
         ProvenanceTag.UNKNOWN -> Modifier.dottedBorder(c.lineStrong, 6.dp)
+        // Restated from earlier evidence by the model, not verified for this line: dashed like a judgment, in ink.
+        ProvenanceTag.SYNTHESIS -> Modifier.dashedRoute(c.lineStrong, 6.dp)
     }
     Text(
         tag.short, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, letterSpacing = 0.4.sp), color = if (tag == ProvenanceTag.JUDGMENT) c.route else c.ink2,

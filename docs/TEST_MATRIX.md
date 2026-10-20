@@ -140,6 +140,10 @@ All provider tests use fakes or a local MockWebServer. **No test calls the live 
 | Screens in light/dark at 1.0/1.3/2.0 | `ScreenshotTourResearch` (emulator, CI screenshot run 39405082136: 4 variants × 23 screens) | ✅ |
 | Whole flow at 200% text under Robolectric; return to a scrolled task after a long detour | `ResearchFlowLargeTextUiTest`, `ResearchFlowUiTest.returningToTheTaskAfterALongDetourStillShowsIt` | ✅ |
 | Live BYOK research against the real API | — | ⏳ pending (not run by the agent; see report) |
+| **Hardening A** — completion policy: partly / unanswered / over-budget / budget verified by code / unpriced pick / user-permitted exception / brand preference (soft, strict) / exclusion / missing output / your-call with and without options / false Answered / outcome ⇔ gaps / extractor soft flags | `CompletionPolicyTest` (15) | ✅ |
+| **Hardening B** — provenance: discovered-only result; pointer on a cited source (price never confirmed, Restated tag); provider citation confirms; validated restatement vs new fact (claims, answer sentences); unknown ids; citation on a neighbouring heading; evidence preserved across runs, confirmed beats unconfirmed; one identity per page; matcher strictness | `ProvenanceHardeningTest` (9), `ContractParserTest` | ✅ |
+| **Hardening C** — cost: floor from observed searches, failure with complete usage, rejected = $0 assumed, nothing reported = unknown, stopped with searches, dashboard groups reconcile with the ledger; service: failure before dispatch, after observed searches, with full usage, stop during `pause_turn`; Room restore and backup import never duplicate a provider message id | `UsageAccountingTest` (6), `DeepResearchServiceTest`, `ResearchSessionRepositoryTest`, `BackupRepositoryTest` | ✅ |
+| Review fixes: simultaneous Start → one run, one reservation; proposals inherit evidence only for the product they name; brand label stops at the sentence | `DeepResearchServiceTest`, `SessionAssemblerTest`, `CompletionPolicyTest` | ✅ |
 
 
 ## M3A.2 — deep research, actionable results, cost ledger (2026-10-20)

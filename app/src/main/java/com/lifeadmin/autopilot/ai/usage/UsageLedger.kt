@@ -11,9 +11,13 @@ enum class CallOutcome(val label: String) {
     COMPLETE("Complete"),
     TRUNCATED("Cut short"),
     STOPPED("Stopped"),
-    /** Rejected before processing (4xx): nothing was billed. */
-    FAILED_NOT_BILLED("Failed · not billed"),
-    /** Failed after the request may have been processed: usage unknown. */
+    /**
+     * Rejected before processing (authentication, permission, credit, rate limit, validation): the
+     * provider reported no usage and the prompt never ran. Counted as $0 because nothing was reported,
+     * not because Anthropic confirmed it; the dashboard says so.
+     */
+    FAILED_NOT_BILLED("Rejected · $0 assumed"),
+    /** Failed after the request may have been processed: usage unknown, except any searches seen (a floor). */
     FAILED_UNKNOWN("Failed · usage unknown"),
     /** The app died while the call was in flight: usage unknown. */
     INTERRUPTED("Interrupted · usage unknown"),
@@ -47,13 +51,19 @@ data class UsageRecord(
     /** Floor estimate for unknown usage: the searches seen are certainly billed. */
     val isFloor: Boolean get() = usageStatus != UsageStatus.COMPLETE
 
+    /** Searches are known but token counts are not: the estimate is a floor with unknown extra token cost. */
+    val tokensUnknown: Boolean get() = usage != null && (usage.inputTokens == null || usage.outputTokens == null)
+
     companion object {
         /** Finalises a record from measured usage with the catalog price. */
         fun priced(base: UsageRecord, usage: MeasuredUsage?, outcome: CallOutcome, durationMs: Long?, providerMessageId: String? = null): UsageRecord {
+            // Known counts are known whatever the outcome: a failed call whose usage the provider did report
+            // is priced in full; one with only its searches reported is a floor; one with nothing is unknown.
             val status = when {
                 outcome == CallOutcome.FAILED_NOT_BILLED -> UsageStatus.COMPLETE
                 usage == null || usage.allUnknown -> UsageStatus.UNKNOWN
-                usage.anyUnknown || outcome == CallOutcome.STOPPED || outcome == CallOutcome.FAILED_UNKNOWN || outcome == CallOutcome.INTERRUPTED -> UsageStatus.PARTIAL
+                usage.anyUnknown -> UsageStatus.PARTIAL
+                outcome == CallOutcome.STOPPED || outcome == CallOutcome.INTERRUPTED -> UsageStatus.PARTIAL
                 else -> UsageStatus.COMPLETE
             }
             val micros = when {
@@ -106,18 +116,36 @@ class InMemoryUsageLedger : UsageLedger {
     }
 }
 
-/** Sums for the dashboard; every total says whether some of it is a floor. */
-data class UsageTotals(val estimate: UsdEstimate, val calls: Int, val searches: Int, val partial: Boolean, val unknownCalls: Int) {
+/**
+ * Sums for the dashboard; every total says whether some of it is a floor. [assumedZero] counts calls
+ * rejected before processing (no usage reported, $0 assumed), so a total can say so.
+ */
+data class UsageTotals(val estimate: UsdEstimate, val calls: Int, val searches: Int, val partial: Boolean, val unknownCalls: Int, val assumedZero: Int = 0) {
     companion object {
         fun of(records: List<UsageRecord>): UsageTotals {
-            var micros = 0L; var searches = 0; var partial = false; var unknown = 0
+            var micros = 0L; var searches = 0; var partial = false; var unknown = 0; var assumed = 0
             for (r in records) {
                 if (r.outcome == CallOutcome.IN_FLIGHT) { partial = true; continue }
                 micros += r.estimatedMicros ?: 0L
                 searches += r.usage?.webSearches ?: 0
+                if (r.outcome == CallOutcome.FAILED_NOT_BILLED) assumed++
                 if (r.isFloor && r.outcome != CallOutcome.FAILED_NOT_BILLED) { partial = true; if (r.usageStatus == UsageStatus.UNKNOWN) unknown++ }
             }
-            return UsageTotals(UsdEstimate(micros), records.size, searches, partial, unknown)
+            return UsageTotals(UsdEstimate(micros), records.size, searches, partial, unknown, assumed)
         }
     }
+}
+
+/** One dashboard row: all calls of one run (or one planning request). Pure, so the totals can be reconciled in tests. */
+data class RunTotals(val key: String, val sessionId: String?, val feature: UsageFeature, val continuation: Boolean, val records: List<UsageRecord>, val totals: UsageTotals) {
+    val startedAt: Instant get() = records.first().startedAt
+}
+
+object UsageGrouping {
+    /** Groups by run id (a call without one is its own group), newest first; every record lands in exactly one group. */
+    fun groups(records: List<UsageRecord>): List<RunTotals> = records.groupBy { it.runId ?: it.id }.map { (k, rows) ->
+        val sorted = rows.sortedBy { it.startedAt }
+        val first = sorted.first()
+        RunTotals(k, first.sessionId, first.feature, first.feature == UsageFeature.RESEARCH_CONTINUATION, sorted, UsageTotals.of(sorted))
+    }.sortedByDescending { it.startedAt }
 }

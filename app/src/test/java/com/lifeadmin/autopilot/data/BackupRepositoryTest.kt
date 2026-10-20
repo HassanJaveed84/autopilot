@@ -204,6 +204,12 @@ class BackupRepositoryTest {
         backup(target).importJson(altered)
         assertEquals(158_000L, tl.get("u1")!!.estimatedMicros)
         assertEquals(2, tl.getAll().size)
+        // The same provider response under a new local id (a backup from another phone) is not imported twice.
+        val renamed = json.replace("\"id\": \"u1\"", "\"id\": \"u1-other-phone\"")
+        assertTrue(renamed != json)
+        backup(target).importJson(renamed)
+        assertEquals("msg_1 is still one row", 2, tl.getAll().size)
+        assertEquals(1, tl.getAll().count { it.providerMessageId == "msg_1" })
 
         // A session pointing at a missing task rejects the whole import.
         val at = json.indexOf("\"sessions\"")

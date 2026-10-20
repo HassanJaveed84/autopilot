@@ -24,13 +24,16 @@ object RequirementExtractor {
     private val SEPARATE_STEP = Regex("""\b(each|every)\b.{0,40}\b(separate|own|its own|individual)\b.{0,20}\b(step|task|item|line)s?\b|\b(separate|individual) (steps?|tasks?)\b|\bone step (per|for each)\b|\badd(ed)? (them |each )?(as|to) (steps|my task)\b""", RegexOption.IGNORE_CASE)
     private val LIST_WORDS = Regex("""\b(produce|make|give me|write|create)\s+(a\s+)?(list|shortlist|comparison|table)\b""", RegexOption.IGNORE_CASE)
     private val SPLIT = Regex("""\s*(?:,|;|\band\b|\bplus\b|&)\s*""", RegexOption.IGNORE_CASE)
+    private val STRICT_BRAND = Regex("""\b(only|must be|strictly|exclusively)\b""", RegexOption.IGNORE_CASE)
+    private val SOFT_BUDGET = Regex("""\b(a bit over is (?:ok|fine)|can go over|flexible on (?:price|budget)|not a hard limit)\b""", RegexOption.IGNORE_CASE)
     private val STOP_ITEMS = setOf("a", "an", "the", "some", "it", "them", "this", "that", "me", "list", "recommendations", "recommendation", "options", "help")
 
     fun extract(request: String): Result {
         val text = request.trim().replace(Regex("\\s+"), " ")
         if (text.isEmpty()) return Result(DeliverableTemplate.QUICK_ANSWER, emptyList(), confident = false)
         val items = ArrayList<String>()
-        val constraints = ArrayList<String>()
+        // label → soft (a preference the person allows exceptions to)
+        val constraints = ArrayList<Pair<String, Boolean>>()
         val outputs = ArrayList<String>()
         var confident = true
 
@@ -44,17 +47,24 @@ object RequirementExtractor {
             if (parts.size in 1..Research2Config.MAX_REQUIREMENTS) items += parts.distinct()
         }
         // Brand preference → constraint (case-sensitive so ordinary words aren't taken as brands).
-        BRAND.find(text)?.groupValues?.get(1)?.trim()?.let { brands -> constraints += "Brand preference: ${brands.trimEnd('.', ',')}" }
+        // A "preference" is soft by nature: a pick from another brand is shown as an exception to decide on.
+        BRAND.find(text)?.groupValues?.get(1)?.trim()?.let { raw ->
+            // Stop at the end of the sentence: "Thorne and Pure Encapsulations. Need a…" must not swallow "Need".
+            val brands = raw.split(Regex("""\.\s+(?=[A-Z])"""))[0].trimEnd('.', ',')
+            if (brands.isNotBlank()) constraints += "Brand preference: $brands" to !STRICT_BRAND.containsMatchIn(text)
+        }
         BUDGET.find(text)?.let { m ->
             val sym = m.groupValues[1].ifEmpty { m.groupValues[3] }
             val amount = m.groupValues[2].ifEmpty { m.groupValues[4] }.trim(',', '.')
-            if (amount.isNotEmpty()) constraints += "Budget: up to $sym$amount"
+            // "around $150" / "about £50" is a soft bound; "up to", "under", "max" are strict.
+            val soft = Regex("""\b(around|about|roughly|approx(?:imately)?|ideally|preferably|or so)\b""", RegexOption.IGNORE_CASE).containsMatchIn(m.value) || SOFT_BUDGET.containsMatchIn(text)
+            if (amount.isNotEmpty()) constraints += (if (soft) "Budget: around $sym$amount" else "Budget: up to $sym$amount") to soft
         }
-        REGION.find(text)?.groupValues?.get(2)?.let { constraints += "Region: ${normalizeRegion(it)}" }
-        if (GIFT.containsMatchIn(text)) constraints += "For a gift (recipient's taste unknown unless you add it)"
+        REGION.find(text)?.groupValues?.get(2)?.let { constraints += "Region: ${normalizeRegion(it)}" to false }
+        if (GIFT.containsMatchIn(text)) constraints += "For a gift (recipient's taste unknown unless you add it)" to false
         for (m in EXCLUDE.findAll(text)) {
             val what = m.groupValues[1].trim()
-            if (what.length in 3..40 && !what.startsWith("more than", true) && !what.startsWith("sure", true) && !Regex("""^(a|an|the|my|me|it|only)\b""", RegexOption.IGNORE_CASE).containsMatchIn(what)) constraints += "Exclude: $what"
+            if (what.length in 3..40 && !what.startsWith("more than", true) && !what.startsWith("sure", true) && !Regex("""^(a|an|the|my|me|it|only)\b""", RegexOption.IGNORE_CASE).containsMatchIn(what)) constraints += "Exclude: $what" to false
         }
 
         // Template.
@@ -86,7 +96,7 @@ object RequirementExtractor {
         }
         val reqs = ArrayList<Requirement>()
         items.take(Research2Config.MAX_REQUIREMENTS).forEachIndexed { i, s -> reqs += Requirement("r-i$i", RequirementType.ITEM, s.take(Research2Config.MAX_REQUIREMENT_CHARS), confident = confident) }
-        constraints.distinct().forEachIndexed { i, s -> reqs += Requirement("r-c$i", RequirementType.CONSTRAINT, s.take(Research2Config.MAX_REQUIREMENT_CHARS)) }
+        constraints.distinctBy { it.first }.forEachIndexed { i, (label, soft) -> reqs += Requirement("r-c$i", RequirementType.CONSTRAINT, label.take(Research2Config.MAX_REQUIREMENT_CHARS), soft = soft) }
         outputs.distinct().forEachIndexed { i, s -> reqs += Requirement("r-o$i", RequirementType.OUTPUT, s.take(Research2Config.MAX_REQUIREMENT_CHARS)) }
         return Result(template, reqs, confident)
     }

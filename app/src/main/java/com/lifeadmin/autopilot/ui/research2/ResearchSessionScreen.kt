@@ -305,7 +305,7 @@ private fun LazyListScope.shortlistItems(s: Session2Ui, viewModel: Session2ViewM
         val c = AutopilotTheme.colors
         BriefSectionTitle("Compare")
         FlowRow(Modifier.padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            listOf(com.lifeadmin.autopilot.ai.research2.ProvenanceTag.FACT, com.lifeadmin.autopilot.ai.research2.ProvenanceTag.REVIEWS, com.lifeadmin.autopilot.ai.research2.ProvenanceTag.JUDGMENT, com.lifeadmin.autopilot.ai.research2.ProvenanceTag.CALC).forEach { t ->
+            listOf(com.lifeadmin.autopilot.ai.research2.ProvenanceTag.FACT, com.lifeadmin.autopilot.ai.research2.ProvenanceTag.REVIEWS, com.lifeadmin.autopilot.ai.research2.ProvenanceTag.JUDGMENT, com.lifeadmin.autopilot.ai.research2.ProvenanceTag.CALC, com.lifeadmin.autopilot.ai.research2.ProvenanceTag.SYNTHESIS).forEach { t ->
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) { ProvenanceTagChip(t); Text(t.label, style = MaterialTheme.typography.labelSmall, color = c.ink2) }
             }
         }

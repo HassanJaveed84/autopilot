@@ -280,3 +280,13 @@ lint clean. CI on head `8876815`: lint + unit + APKs ✅ (both runs), instrument
 the pull_request run's emulator job died on a corrupt system-image download before any test ran),
 screenshot tour ✅ 4/4 variants (light/dark 1.0 committed under `docs/screenshots/m3a2/`). Draft PR #5.
 Not done: live paid API runs, phone install, Console price reconciliation.
+
+**Hardening pass (same day, second session)** on the same branch after an independent review:
+(A) completion is decided by `CompletionPolicy` in code — items need cited evidence, constraints
+(budget, brand, exclusion) are checked against the picks, output wishes verified, Partly/Needs a check
+never covered; (B) model-typed `src=` ids are pointers to cited sources only, never verification, with
+validated restatements keeping their evidence and a new Restated tag; (C) failed calls keep observed
+searches as a cost floor, rejected requests are "$0 assumed" and counted as such, dashboard groups
+reconcile with the ledger. Also: atomic launch claim, non-cancellable save, proposal evidence only for
+the product named, backup/restore dedupe by provider message id, brand-label sentence overrun fixed.
+Details, reproduction and tests in `docs/M3A2_IMPLEMENTATION_REPORT.md` ("Hardening pass").

@@ -128,6 +128,141 @@ so it shows the code in the PR head.
 - APKs: the `apks` artifact of each Android CI run (`app-debug.apk` ≈ 29.8 MB, `app-release.apk` ≈ 4.3 MB,
   `app-debug-androidTest.apk`); nothing was installed on a phone by the agent.
 
+## Hardening pass (2026-10-20, second session): findings A–C and a focused review
+
+An independent source-code review raised three correctness findings. Each was reproduced first with a
+temporary test against head `7562009` (all six assertions failed on the unfixed code), then fixed with
+permanent regression tests. Numbers in this section are from the final head; see "Validation (hardening)".
+
+### Finding A — requirements counted as complete without being satisfied
+
+- **Reproduced.** `RequirementStatus.covered` was true for everything but Pending/Not found, so Partly
+  counted as covered; `SessionAssembler.covered()` skipped Constraint requirements; every status came
+  from the model's `status=` token. A $210 shortlist pick with `status=answered` on the $150 budget was
+  Complete; a `status=answered` with no citation anywhere was Complete.
+- **Root cause.** Completeness was a property of the model's words, not of the structured result.
+- **Fix.** `ai/research2/CompletionPolicy.kt` validates every status in code after each merge (called
+  from `SessionAssembler.merge`), with explicit semantics documented on `RequirementStatus`:
+  Answered / Resolved conflict / Your call are covered; Partly, Needs a check, Not found and Not
+  researched are open. Items marked Answered or Your call need cited evidence (coverage line, pick,
+  shortlist candidate, step or claim) or become Needs a check. Constraints take part: budgets are
+  checked against every included candidate and pick that has a price (strict → Partly, soft → Your
+  call with the exceptions named, no price seen → Needs a check); brand preferences are checked
+  against every pick's name, variant and label facts (a preference is soft, so an off-brand pick is a
+  named exception; "only"/"must" makes it strict); exclusions are checked against names and reasons.
+  Output wishes are verified for real ("one step per item" counts items with a step or a pick; a
+  shortlist needs ≥ 2 candidates and a recommendation; how-to/checklist need steps). Constraints the
+  app cannot check keep the model's status, except Answered needs some cited evidence in the session.
+  `Requirement.soft` is set by the extractor ("Brand preference", "around $150") and can be worded in
+  by the person ("(exceptions ok)", "hard limit"). Outcome: Complete only when every requirement is
+  covered; a normal ending with something Not found is "Incomplete · not enough evidence", with
+  everything investigated but some Partly / Needs a check it is "Partially complete"; budget stops are
+  never Complete. Gaps (the banner, the fill-gaps prompt) now include constraints.
+- **Regression tests.** `CompletionPolicyTest` (15): partly, unanswered, over-budget shortlist, budget
+  verified by code, unpriced pick, user-permitted exception, brand preference broken (soft) and strict,
+  exclusion present, requested output missing/partial, your-call with and without options, false
+  Answered, outcome ⇔ on-screen gaps agreement, extractor soft/strict flags. Existing expectations that
+  encoded the bug were corrected: the Thorough run whose second pass finds glucosamine "partly" is now
+  Partially complete, not Complete (`DeepResearchServiceTest`); the supplements gaps include the
+  "one step per item" wish (`SessionAssemblerTest`).
+- **Side finding fixed.** The extractor's brand regex swallowed the next sentence's first word
+  ("…Pure Encapsulations. Need" was the brand list shown on the preflight); it now stops at the sentence.
+- **Limitations.** Region and gift constraints cannot be checked deterministically; they keep the
+  model's status (capped by the evidence rule). Budget checks compare amounts in the same currency
+  only. Sessions saved before this change keep their stored outcome; they are not re-judged on read.
+
+### Finding B — model-written source ids could appear to verify unsupported claims
+
+- **Reproduced.** `src=sN` resolved to any registry entry, including pages merely returned by a search
+  and never cited; a model-typed `src=s1` made a claim a Fact and a price Confirmed.
+- **Root cause.** One registry held discovered and cited pages alike, and a pointer counted as a citation.
+- **Fix.** `SourceRegistry2` keeps the two kinds apart (`isCited`); `src=` resolves only to sources the
+  provider cited (now or in an earlier run) and only as a pointer (`reusedRefs`, kept separately from
+  `refs` on every evidence-bearing type). Fresh verification comes only from provider citations that
+  overlap a block's own lines (a citation on a neighbouring heading no longer leaks). The one accepted
+  reuse is a validated restatement: the line repeats a cited line the session already holds
+  (`SessionAssembler.evidenceLines`, matched by `ContractParser.restates`) and points at one of its
+  sources — then it keeps that evidence; a new statement with an old id is tagged **Restated**
+  (`ProvenanceTag.SYNTHESIS`, a new chip) and never Fact, and a model-typed price is never Confirmed.
+  Uncited answer sentences with pointers are judged sentence by sentence. `SessionAssembler.merge`
+  never lets an unconfirmed price or an unverified attribute replace a confirmed/cited one.
+- **Regression tests.** `ProvenanceHardeningTest` (9): discovered-only result, pointer on a cited
+  source (price, reviews, claim), provider citation still confirms, validated restatement vs new fact
+  (claims and answer sentences), unknown ids, citation on a neighbouring heading, evidence preserved
+  across runs with confirmed-beats-unconfirmed, one identity per page (fragment/slash), restatement
+  matcher strictness. `ContractParserTest` updated to the pointer semantics.
+- **UI.** Restated chip (dashed, ink) in cards and the compare legend. Pointers are not drawn as citation
+  chips in answer text: a chip means a provider citation.
+- **Limitations.** Restatement matching is textual (normalised equality/containment or ≥ 0.6 word
+  overlap with ≥ 4 shared words); a heavy paraphrase of real evidence becomes Restated rather than
+  Fact — the conservative side.
+
+### Finding C — failed requests lost known search costs
+
+- **Reproduced.** `CallResult.Failed.searchesSeen` was ignored: a failure after two observed searches
+  was recorded with no usage and no estimate (unknown), understating the floor by $0.02.
+- **Fix.** `DeepResearchService.runStage` keeps observed usage on failure: full provider usage when
+  reported (priced in full, status Complete), otherwise the searches seen as a floor with token counts
+  unknown (status Partial, `tokensUnknown`); the run usage, remaining search budget and the in-flight
+  spend floor follow. A rejected request (401/402/403/429, invalid request incl. web search disabled,
+  offline) carries no usage and is recorded as "Rejected · $0 assumed": Anthropic's docs state only that
+  errored *web searches* are not billed, not a rule for errored requests, so the dashboard names it an
+  assumption and counts such calls (`UsageTotals.assumedZero`) instead of presenting $0 as confirmed.
+  Server errors, timeouts and transport failures stay "usage unknown", never $0. `UsageRecord.priced`
+  now derives the status from the counts, not the outcome. Grouping moved to a pure
+  `UsageGrouping.groups` so dashboard totals can be reconciled with the ledger in a test.
+- **Regression tests.** `UsageAccountingTest` (6): floor from observed searches, failure with complete
+  usage, rejected = assumed zero, nothing reported = unknown, stopped with searches, dashboard groups
+  reconcile with the ledger (micros, searches, calls, unknown and assumed counts, partial flags, cache
+  tokens priced once). `DeepResearchServiceTest`: failure before dispatch leaves no row, failure after
+  observed searches (first call and after a good pass), failure with full usage, stop during a
+  `pause_turn` continuation keeps the first call's searches, rejected request has no usage.
+  `ResearchSessionRepositoryTest`: Room restore never duplicates a provider message id;
+  `BackupRepositoryTest`: an import with the same response under a new id is skipped.
+- **Limitations.** With the non-streaming SDK call a failed HTTP request yields no partial message, so
+  `searchesSeen > 0` on failure can only come from a provider that reports it; the path is exercised by
+  the scripted provider. The 4xx classification is the app's assumption, labelled as such.
+
+### Focused review (section 5 of the brief)
+
+| Item | Result |
+|---|---|
+| Simultaneous Start / quota reservation | **Fixed.** `start()` and `continueSession()` run under one atomic claim (`AtomicBoolean`): the Busy check and the daily reservation cannot interleave; test `twoSimultaneousStartsLaunchOneRunAndReserveOneSession`. |
+| Delete-all vs active run | Reviewed, no change: `deleteAll`/`deleteForTask` cancel and **join** the job before deleting, so a save cannot land after the delete. |
+| Cancellation during persistence | **Fixed.** `finish()` (settle, proposals, save) runs under `NonCancellable`, so Stop/delete during the save cannot leave a half-saved session or re-enter `finish`. |
+| `pause_turn` and remaining budget | Reviewed: the continuation gets the stage's remaining allowance after the first call's measured searches; not continued when nothing remains. New test covers Stop during the continuation. |
+| Search budgets across calls | Reviewed: `remaining` is decremented by measured searches (provider count, else result blocks), coerced at 0; failed calls now decrement too. |
+| Source identity / citation counts | **Fixed:** fragments and trailing slashes no longer create duplicate sources; citation counts stay per cited block. |
+| Requirement extraction and manual edits | **Fixed** the brand-sentence overrun; softness can be edited in by wording. |
+| Proposals inheriting evidence | **Fixed.** A model proposal borrows citations only when its title/note names the requirement's pick or a shortlist candidate; otherwise it stays uncited and unselected (`modelProposalsInheritEvidenceOnlyForTheProductTheyName`). |
+| Apply/Undo idempotency | Reviewed, existing tests hold (`Research2ActionsTest`). |
+| Ledger dedupe and backup restore | **Fixed** restore by provider message id (Room ledger and backup import). |
+| Migration 4→5 with user data | Reviewed: `MigrationTest.migrateV4ToV5…` seeds a v4 database with a task and a brief and checks both survive and new tables work; unchanged. |
+| Long runs, network loss, process death | Reviewed: network loss → "usage unknown" (never $0); process death → in-flight rows settled as Interrupted on app start; nothing is re-sent. |
+| Prompt cache accuracy | Reviewed: cache write 5 m / 1 h and cache read tokens priced at their own rates, once (`UsageAccountingTest` checks the arithmetic). |
+
+Not changed, documented for a later pass: the Deep mode write-up stage still cannot cite new pages
+(by design); sessions saved before this pass keep their stored outcomes; pointers in answer text are
+not shown as chips.
+
+### Validation (hardening)
+
+Local, this container (no device, no live API, no personal key), final hardening head:
+
+```
+./gradlew --offline lintDebug testDebugUnitTest            → BUILD SUCCESSFUL (4 m 13 s): lint "No issues found"; 509 tests, 0 failures (474 before the pass)
+./gradlew --offline assembleDebug assembleRelease assembleDebugAndroidTest → BUILD SUCCESSFUL (6 m 23 s): app-debug.apk 29.9 MB, app-release.apk 4.3 MB, app-debug-androidTest.apk 1.2 MB
+```
+
+Reproduction evidence: a temporary `HardeningReproTest` (6 assertions of the correct behaviour) was run
+against the unfixed code first — all 6 failed ("PARTLY must not count as covered", "expected:<[]> but
+was:<[1]>" for the uncited search result, "expected:<NOT_CONFIRMED> but was:<CONFIRMED>" for the
+model-typed price, "the floor is $0.02, not unknown", and the two false-Complete cases) — then deleted
+once the permanent tests covered the same ground.
+
+CI results for the hardening head are listed under "CI (GitHub Actions, draft PR #5)" below once the
+runs complete.
+
 ## Cost rules, assumptions and limitations
 
 - Estimates use Anthropic's **reported** `usage` (input, output, cache creation 5m/1h, cache read,

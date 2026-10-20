@@ -38,7 +38,8 @@ class SessionAssemblerTest {
         // Nothing resembling a dose was chosen for the person.
         assertTrue(s.body.picks.mapNotNull { it.forYou }.all { it.startsWith("Ask your") })
         assertEquals(listOf("r-i0", "r-i1", "r-i2"), SessionAssembler.gaps(s).let { gaps -> s.requirements.filter { r -> r.type == RequirementType.ITEM && gaps.none { it.id == r.id } }.map { it.id } })
-        assertEquals(listOf("r-i3"), SessionAssembler.gaps(s).map { it.id })
+        assertEquals("glucosamine is missing and the 'step per item' wish is therefore only partly met", listOf("r-i3", "r-o0"), SessionAssembler.gaps(s).map { it.id })
+        assertEquals(RequirementStatus.ANSWERED, s.coverageOf("r-c0").status)
     }
 
     @Test fun fragranceBenchmarkMergesSecondPassAndBecomesComplete() {
@@ -81,6 +82,20 @@ class SessionAssemblerTest {
         val settled = SessionAssembler.settlePending(s)
         assertTrue(settled.coverage.all { it.status == RequirementStatus.NOT_FOUND })
         assertEquals("0 of 4 ready · 4 not found", SessionAssembler.coverageLine(settled))
+    }
+
+    @Test fun modelProposalsInheritEvidenceOnlyForTheProductTheyName() {
+        val s = SessionAssembler.settlePending(merged(Research2Fixtures.SUPPLEMENTS_REQUEST, Research2Fixtures.supplementsGather()))
+        val stray = Proposal("p-stray", ProposalKind.STEP, "Buy magnesium: Some Other Magnesium Citrate", null, "r-i2", emptyList(), now)
+        val named = Proposal("p-named", ProposalKind.STEP, "Order Pure Encapsulations Magnesium", "90 capsules", "r-i2", emptyList(), now)
+        val out = ProposalBuilder.complete(s.copy(proposals = listOf(stray, named)), now)
+        val strayOut = out.first { it.id == "p-stray" }
+        assertEquals("a proposal for a product the research never cited gets no borrowed evidence", emptyList<Int>(), strayOut.refs)
+        assertFalse("and is not pre-selected", strayOut.selectedByDefault)
+        val namedOut = out.first { it.id == "p-named" }
+        assertTrue("a proposal naming the requirement's pick rests on that pick's citations", namedOut.refs.isNotEmpty())
+        assertTrue(namedOut.selectedByDefault)
+        assertEquals("the pick's own sources, nothing else", s.body.picks.first { it.requirementId == "r-i2" }.labelFacts.flatMap { it.refs }.distinct(), namedOut.refs)
     }
 
     @Test fun howToStepsBecomeStepProposalsWhenTheModelGaveNone() {

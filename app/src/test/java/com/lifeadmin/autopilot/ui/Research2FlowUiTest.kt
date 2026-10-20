@@ -242,6 +242,8 @@ class Research2FlowUiTest {
         compose.onNodeWithTag("cost_chip").assertIsDisplayed().performClick()
         waitFor("usage_list")
         compose.onNodeWithTag("usage_month").assertIsDisplayed()
+        // The ledger flow lands a moment after the screen opens; the runs card exists only once it has.
+        compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("usage_loading")).fetchSemanticsNodes().isEmpty() }
         listScrollTo("usage_list", "usage_runs")
         compose.onAllNodes(tagPrefix("usage_run_"))[0].performClick()
         waitFor("usage_breakdown")
@@ -329,8 +331,14 @@ class Research2FlowUiTest {
     @Test fun continueResearchingRunsANewRunOnTheSameSession() {
         provider.enqueue(
             CallResult.Done(
-                listOf(RawSegment("## REQ r-i3 · status=answered\nFound a glucosamine product.\n## PICK r-i3 · status=answered\nPick: Thorne Glucosamine & Chondroitin\nWhy: preferred brand\n## PROPOSE step · req=r-i3\nBuy glucosamine: Thorne Glucosamine & Chondroitin\n", emptyList())),
-                emptyList(), MeasuredUsage(12_000, 400, 0, 0, 0, 2), CallStop.END, 6_000, "msg_c",
+                listOf(
+                    RawSegment("## REQ r-i3 · status=answered\n", emptyList()),
+                    RawSegment("Thorne lists a glucosamine and chondroitin product.", listOf(com.lifeadmin.autopilot.ai.research.RawCitation("https://www.thorne.example/products/glucosamine", "Glucosamine & Chondroitin | Thorne", "Glucosamine sulfate 500 mg"))),
+                    RawSegment("\n## PICK r-i3 · status=answered\nPick: Thorne Glucosamine & Chondroitin\nLabel: ", emptyList()),
+                    RawSegment("Glucosamine sulfate 500 mg per capsule.", listOf(com.lifeadmin.autopilot.ai.research.RawCitation("https://www.thorne.example/products/glucosamine", "Glucosamine & Chondroitin | Thorne", "Glucosamine sulfate 500 mg"))),
+                    RawSegment("\nWhy: preferred brand\n## PROPOSE step · req=r-i3\nBuy glucosamine: Thorne Glucosamine & Chondroitin\n", emptyList()),
+                ),
+                listOf(com.lifeadmin.autopilot.ai.research.RawSearch("Thorne glucosamine", emptyList())), MeasuredUsage(12_000, 400, 0, 0, 0, 2), CallStop.END, 6_000, "msg_c",
             ),
         )
         launch(seedSession = true)

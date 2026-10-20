@@ -4,8 +4,9 @@ import java.util.Locale
 
 /**
  * Merges stage outputs into the session, assesses coverage (code, not a prompt) and decides the
- * outcome. The completeness rule is design d3: Complete only when every Item and Output wish is
- * covered and the run ended on its own; running out of searches or money is never success.
+ * outcome. The completeness rule is design d3 as hardened by [CompletionPolicy]: Complete only when
+ * every requirement — items, constraints and output wishes — is covered after validation and the run
+ * ended on its own; running out of searches or money is never success.
  */
 object SessionAssembler {
     fun merge(session: SessionContent, out: StageOutput, sources: List<SourceRef2>): SessionContent {
@@ -17,7 +18,8 @@ object SessionAssembler {
             val old = cands[c.id]
             cands[c.id] = if (old == null) c else old.copy(
                 name = c.name.ifBlank { old.name }, variant = c.variant ?: old.variant, style = c.style ?: old.style, reason = c.reason.ifBlank { old.reason },
-                attrs = (old.attrs.filter { a -> c.attrs.none { it.key == a.key } } + c.attrs), price = c.price ?: old.price, refs = (old.refs + c.refs).distinct(), hero = c.hero || old.hero,
+                attrs = mergeAttrs(old.attrs, c.attrs), price = betterPrice(old.price, c.price), refs = (old.refs + c.refs).distinct(), hero = c.hero || old.hero,
+                reusedRefs = (old.reusedRefs + c.reusedRefs).distinct(),
             )
         }
         out.excluded.forEach { cands.remove(it.id) }
@@ -26,7 +28,7 @@ object SessionAssembler {
         val steps = if (out.steps.isNotEmpty()) out.steps else session.body.steps
         val answer = if (out.answer.isNotEmpty()) out.answer else session.answer
         val proposals = mergeProposals(session.proposals, out.proposals)
-        return session.copy(
+        val merged = session.copy(
             title = out.title?.takeIf { it.isNotBlank() } ?: session.title,
             answer = answer,
             coverage = session.requirements.map { r -> coverage[r.id] ?: Coverage(r.id, RequirementStatus.PENDING) },
@@ -40,6 +42,38 @@ object SessionAssembler {
             proposals = proposals,
             injectionNoticed = session.injectionNoticed || out.injectionNoticed,
         )
+        // Statuses are validated against the structured result every time, never taken from the model alone.
+        return CompletionPolicy.validate(merged)
+    }
+
+    /** A later, unverified value never replaces a cited one for the same attribute. */
+    private fun mergeAttrs(old: List<Attribute>, new: List<Attribute>): List<Attribute> {
+        val kept = old.filter { o -> new.none { it.key == o.key } || (o.verified && new.first { it.key == o.key }.let { n -> !n.verified }) }
+        val keptKeys = kept.map { it.key }.toSet()
+        return kept + new.filter { it.key !in keptKeys }
+    }
+
+    /** A later, unconfirmed price never replaces a confirmed one. */
+    private fun betterPrice(old: Price?, new: Price?): Price? = when {
+        new == null -> old
+        old == null -> new
+        new.status == PriceStatus.CONFIRMED -> new
+        old.status == PriceStatus.CONFIRMED || old.status == PriceStatus.CONFLICT_RESOLVED -> old
+        else -> new
+    }
+
+    /** Every cited line the session holds, for validating model-typed `src=` restatements in later stages. */
+    fun evidenceLines(s: SessionContent): List<EvidenceLine> = buildList {
+        s.answer.forEach { if (it.refs.isNotEmpty()) add(EvidenceLine(it.text, it.refs)) }
+        s.coverage.forEach { if (it.refs.isNotEmpty() && it.summary.isNotBlank()) add(EvidenceLine(it.summary, it.refs)) }
+        s.claims.forEach { if (it.refs.isNotEmpty()) add(EvidenceLine(it.text, it.refs)) }
+        s.body.candidates.forEach { c ->
+            c.attrs.forEach { if (it.refs.isNotEmpty()) add(EvidenceLine(it.value, it.refs)) }
+            if (c.refs.isNotEmpty() && c.reason.isNotBlank()) add(EvidenceLine(c.reason, c.refs))
+        }
+        s.body.picks.forEach { p -> p.labelFacts.forEach { if (it.refs.isNotEmpty()) add(EvidenceLine(it.value, it.refs)) } }
+        s.body.steps.forEach { if (it.refs.isNotEmpty()) add(EvidenceLine(it.text, it.refs)) }
+        s.conflicts.forEach { c -> c.sides.forEach { if (it.refs.isNotEmpty()) add(EvidenceLine(it.says, it.refs)) } }
     }
 
     /** Later stages refine; applied proposals are never replaced or dropped. */
@@ -57,31 +91,32 @@ object SessionAssembler {
         return order.filter { it in present } + (present - order.toSet()).sorted()
     }
 
-    /** Requirements still worth another call: Items and Output wishes not covered, plus Partly ones. */
-    fun gaps(session: SessionContent): List<Requirement> = session.requirements.filter { r ->
-        val st = session.coverageOf(r.id).status
-        (r.type == RequirementType.ITEM || r.type == RequirementType.OUTPUT || r.type == RequirementType.USER_ADDED) && (st == RequirementStatus.NOT_FOUND || st == RequirementStatus.PENDING || st == RequirementStatus.PARTLY)
-    }
+    /** Requirements still worth another call: anything (item, constraint or output wish) whose status is open. */
+    fun gaps(session: SessionContent): List<Requirement> = CompletionPolicy.gaps(session)
 
     fun priceGaps(session: SessionContent): List<Candidate> = session.body.candidates.filter { it.included && (it.price == null || it.price.status == PriceStatus.NOT_CONFIRMED) }
 
-    /** True when every Item/Output requirement is covered (not Pending/Not found). */
-    fun covered(session: SessionContent): Boolean = session.requirements
-        .filter { it.type == RequirementType.ITEM || it.type == RequirementType.OUTPUT || it.type == RequirementType.USER_ADDED }
-        .all { session.coverageOf(it.id).status.covered }
+    /** True when every requirement, constraints included, is covered after validation. */
+    fun covered(session: SessionContent): Boolean = CompletionPolicy.covered(session)
 
     /** Why the run ended, as the orchestrator saw it. */
     enum class Ending { NORMAL, BUDGET_SEARCHES, BUDGET_SPEND, STOPPED, FAILED_AFTER_PARTIAL, FAILED, TRUNCATED, INTERRUPTED }
 
+    /**
+     * Complete only when every requirement is covered. A normal ending with something Not found is
+     * "not enough evidence"; with everything investigated but some of it Partly / Needs a check it is
+     * "Partially complete". A budget stop with open requirements is never Complete.
+     */
     fun outcome(session: SessionContent, ending: Ending): SessionOutcome {
         val covered = covered(session)
+        val missing = session.requirements.any { session.coverageOf(it.id).status.let { st -> st == RequirementStatus.NOT_FOUND || st == RequirementStatus.PENDING } }
         return when (ending) {
             Ending.STOPPED -> SessionOutcome.STOPPED
             Ending.INTERRUPTED -> SessionOutcome.INTERRUPTED
             Ending.FAILED -> SessionOutcome.FAILED
             Ending.FAILED_AFTER_PARTIAL, Ending.TRUNCATED -> SessionOutcome.PARTIAL
             Ending.BUDGET_SEARCHES, Ending.BUDGET_SPEND -> if (covered) SessionOutcome.COMPLETE else SessionOutcome.INCOMPLETE_BUDGET
-            Ending.NORMAL -> if (covered) SessionOutcome.COMPLETE else SessionOutcome.INCOMPLETE_EVIDENCE
+            Ending.NORMAL -> when { covered -> SessionOutcome.COMPLETE; missing -> SessionOutcome.INCOMPLETE_EVIDENCE; else -> SessionOutcome.PARTIAL }
         }
     }
 
@@ -96,7 +131,7 @@ object SessionAssembler {
         if (items.isEmpty()) return ""
         val st = items.map { session.coverageOf(it.id).status }
         val ready = st.count { it == RequirementStatus.ANSWERED || it == RequirementStatus.RESOLVED_CONFLICT }
-        val you = st.count { it == RequirementStatus.YOUR_CALL || it == RequirementStatus.NEEDS_CHECK }
+        val you = st.count { it.needsUser }
         val missing = st.count { it == RequirementStatus.NOT_FOUND || it == RequirementStatus.PENDING }
         val partly = st.count { it == RequirementStatus.PARTLY }
         return buildList {
@@ -115,18 +150,21 @@ object SessionAssembler {
  */
 object ProposalBuilder {
     fun complete(session: SessionContent, nowEpochMs: Long): List<Proposal> {
-        // A model proposal without its own citations inherits the evidence of the requirement it serves.
+        // A model proposal without its own citations inherits evidence only from the product it actually
+        // names (the requirement's pick or a shortlist candidate); a proposal for something else stays uncited
+        // and is not pre-selected.
         val out = session.proposals.map { p ->
             when {
                 p.refs.isNotEmpty() -> p
-                p.requirementId != null -> {
-                    val pick = session.body.picks.firstOrNull { it.requirementId == p.requirementId }
-                    p.copy(refs = ((pick?.refs ?: emptyList()) + (pick?.labelFacts?.flatMap { it.refs } ?: emptyList()) + session.coverageOf(p.requirementId).refs).distinct())
-                }
                 else -> {
-                    // A shortlist proposal names a candidate: it rests on that candidate's cited evidence.
-                    val cand = session.body.candidates.firstOrNull { it.name.length >= 3 && p.title.contains(it.name, ignoreCase = true) }
-                    if (cand == null) p else p.copy(refs = (cand.refs + (cand.price?.refs ?: emptyList()) + cand.attrs.flatMap { it.refs }).distinct())
+                    val pick = p.requirementId?.let { id -> session.body.picks.firstOrNull { it.requirementId == id } }
+                    val names = p.title + " " + p.note.orEmpty()
+                    val pickRefs = if (pick?.pick != null && pick.pick.length >= 3 && names.contains(pick.pick, ignoreCase = true))
+                        (pick.refs + pick.labelFacts.flatMap { it.refs } + (pick.price?.refs ?: emptyList())).distinct() else emptyList()
+                    val cand = session.body.candidates.firstOrNull { it.name.length >= 3 && names.contains(it.name, ignoreCase = true) }
+                    val candRefs = if (cand == null) emptyList() else (cand.refs + (cand.price?.refs ?: emptyList()) + cand.attrs.flatMap { it.refs }).distinct()
+                    val refs = (pickRefs + candRefs).distinct()
+                    if (refs.isNotEmpty()) p.copy(refs = refs) else p.copy(selectedByDefault = p.selectedByDefault && p.kind != ProposalKind.STEP)
                 }
             }
         }.toMutableList()

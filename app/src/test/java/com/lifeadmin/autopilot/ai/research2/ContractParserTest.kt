@@ -82,19 +82,24 @@ class ContractParserTest {
         assertTrue(out.proposals[1].selectedByDefault)
     }
 
-    @Test fun srcTokensResolveOnlyKnownSourcesAndAreStrippedFromText() {
-        val seed = listOf(SourceRef2(1, "https://a.example/page", "A page", "a.example", false), SourceRef2(2, "https://b.example/page", "B page", "b.example", false))
+    @Test fun srcTokensArePointersToCitedSourcesOnlyAndAreStrippedFromText() {
+        // s1 was only discovered by a search; s2 was cited by the provider in an earlier run.
+        val seed = listOf(SourceRef2(1, "https://a.example/page", "A page", "a.example", false, citedCount = 0), SourceRef2(2, "https://b.example/page", "B page", "b.example", false, citedCount = 1))
         val registry = SourceRegistry2(seed)
         val out = ContractParser.parse(
-            listOf(RawSegment("## ANSWER\nThe fee is 20 dollars. src=s2\n## CLAIM · tag=Fact\nThe fee is 20 dollars src=s2, s9\n## CLAIM · tag=Fact\nMade up without any source src=s7\n", emptyList())),
+            listOf(RawSegment("## ANSWER\nThe fee is 20 dollars. src=s2\n## CLAIM · tag=Fact\nThe fee is 20 dollars src=s2, s9\n## CLAIM · tag=Fact\nMade up without any source src=s7\n## CLAIM · tag=Fact\nOnly discovered, never cited src=s1\n", emptyList())),
             emptyList(), registry, emptyList(), now,
         )
-        assertEquals(listOf(2), out.claims[0].refs)
-        assertEquals(ProvenanceTag.FACT, out.claims[0].tag)
+        assertEquals("a pointer, not verification", emptyList<Int>(), out.claims[0].refs)
+        assertEquals(listOf(2), out.claims[0].reusedRefs)
+        assertEquals(ProvenanceTag.SYNTHESIS, out.claims[0].tag)
         assertFalse(out.claims[0].text.contains("src="))
         assertEquals(emptyList<Int>(), out.claims[1].refs)
         assertEquals(ProvenanceTag.UNKNOWN, out.claims[1].tag)
-        assertEquals(listOf(2), out.answer.flatMap { it.refs })
+        assertEquals("a discovered-only source never resolves", emptyList<Int>(), out.claims[2].reusedRefs)
+        assertEquals(ProvenanceTag.UNKNOWN, out.claims[2].tag)
+        assertEquals(emptyList<Int>(), out.answer.flatMap { it.refs })
+        assertEquals(listOf(2), out.answer.flatMap { it.reusedRefs })
         assertEquals(2, registry.sources().size)
     }
 

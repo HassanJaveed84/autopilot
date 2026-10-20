@@ -33,8 +33,12 @@ class RoomUsageLedger(private val db: AppDatabase) : UsageLedger {
     override suspend fun deleteAll() = dao.deleteAll()
     override suspend fun deleteOlderThan(cutoff: Instant): Int = dao.deleteOlderThan(cutoff.toEpochMilli())
 
-    /** Restores a row from a backup only when absent (the ledger is append-only). */
-    suspend fun restoreIfAbsent(record: UsageRecord) { if (dao.get(record.id) == null) dao.upsert(record.toEntity()) }
+    /** Restores a row from a backup only when absent by id AND by provider message id (the ledger is append-only and never double counts). */
+    suspend fun restoreIfAbsent(record: UsageRecord): Boolean {
+        if (dao.get(record.id) != null) return false
+        if (record.providerMessageId != null && dao.byProviderMessage(record.providerMessageId).isNotEmpty()) return false
+        dao.upsert(record.toEntity()); return true
+    }
 
     companion object {
         fun UsageRecord.toEntity() = UsageRecordEntity(

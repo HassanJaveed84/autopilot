@@ -27,10 +27,16 @@ data class StageOutput(
     val freeForm: Boolean = false,
 )
 
+/** A cited line the session already holds; a later restatement that matches it keeps its evidence. */
+data class EvidenceLine(val text: String, val refs: List<Int>)
+
 /**
- * Numbers sources in order of first citation and keeps those numbers for the life of a session.
- * Only provider citations and search results enter; a model-typed `src=sN` resolves only to an
- * existing entry.
+ * Numbers sources in order of first appearance and keeps those numbers for the life of a session.
+ * Two kinds of entry are kept apart (hardening finding B):
+ * - **cited**: the provider attached the page to a text block as a citation (`citedCount > 0`);
+ * - **discovered**: the page was only returned by a search and never cited.
+ * A model-typed `src=sN` resolves only to a *cited* entry, and even then it is a pointer, never new
+ * verification; see [ContractParser].
  */
 class SourceRegistry2(seed: List<SourceRef2> = emptyList(), private val runId: String? = null) {
     private class Mutable(val n: Int, val url: String, var title: String, val official: Boolean, var pageAge: String?, val firstRunId: String?) {
@@ -48,7 +54,8 @@ class SourceRegistry2(seed: List<SourceRef2> = emptyList(), private val runId: S
         }
     }
 
-    private fun key(url: String) = url.trim().removeSuffix("/")
+    /** One page, one entry: fragments and a trailing slash do not make a new source. */
+    private fun key(url: String) = url.trim().substringBefore('#').removeSuffix("/")
     private fun nextN(): Int = (byN.keys.maxOrNull() ?: 0) + 1
 
     fun register(citations: List<RawCitation>): List<Int> {
@@ -79,6 +86,9 @@ class SourceRegistry2(seed: List<SourceRef2> = emptyList(), private val runId: S
 
     fun has(n: Int): Boolean = byN.containsKey(n)
 
+    /** The provider cited this source at least once (now or in an earlier run). */
+    fun isCited(n: Int): Boolean = (byN[n]?.cited ?: 0) > 0
+
     fun sources(): List<SourceRef2> = byN.values.sortedBy { it.n }.map {
         SourceRef2(it.n, it.url, it.title.take(160), Sources.host(it.url) ?: "", it.official, it.pageAge, it.quotes.take(3), it.cited, it.firstRunId)
     }
@@ -89,9 +99,18 @@ class SourceRegistry2(seed: List<SourceRef2> = emptyList(), private val runId: S
 }
 
 /**
- * Line-based parser for the [Research2Prompt] contract. Provenance comes from the provider's
- * citations on the text blocks that overlap each line (and from `src=sN` tokens naming sources the
- * registry already holds). Tags that need a source are downgraded when none backs the line.
+ * Line-based parser for the [Research2Prompt] contract.
+ *
+ * Provenance rules (finding B):
+ * 1. **Fresh evidence** comes only from the provider's structured citations on the text blocks that
+ *    overlap a line. Those become `refs` and can make a line a Fact or a price Confirmed.
+ * 2. A model-typed `src=sN` is accepted only for a source the provider has cited (now or earlier)
+ *    and only as a **pointer** (`reusedRefs`). It never confirms a price and never makes a line a
+ *    Fact on its own: such a line is tagged Restated.
+ * 3. The one exception is a **validated restatement**: the line repeats a cited line the session
+ *    already holds ([EvidenceLine]) and points at one of that line's sources — then it keeps the
+ *    original evidence. A new statement with an old source id gets no credit from it.
+ * 4. Citations attach to the lines they overlap, never to a neighbouring block's heading.
  */
 object ContractParser {
     private val HEADING = Regex("""^\s*#{1,4}\s*(TITLE|ANSWER|REQ|CAND|ATTR|EXCLUDED|PICK|CLAIM|CONFLICT|STEP|CALLOUT|PROPOSE|UNRESOLVED)\b\s*(.*)$""", RegexOption.IGNORE_CASE)
@@ -100,6 +119,7 @@ object ContractParser {
     private val BRACKET = Regex("""\s*\[\d+(?:,\s*\d+)*]""")
     private val KV = Regex("""(\w+)\s*=\s*([^·]+?)\s*(?=·|$)""")
     private val PRICE = Regex("""([$£€])\s?(\d[\d,]*(?:\.\d{1,2})?)|(\d[\d,]*(?:\.\d{1,2})?)\s?(USD|GBP|EUR|CAD|AUD)\b|(USD|GBP|EUR|CAD|AUD)\s?(\d[\d,]*(?:\.\d{1,2})?)""", RegexOption.IGNORE_CASE)
+    private val SENTENCE = Regex("""(?<=[.!?])\s+(?=[A-Z0-9"'(])""")
     private val INJECTION = Regex(
         """ignore (?:all |any |the )?(?:previous|prior|above|earlier) (?:instructions|prompts?)|disregard (?:the |all |your )?(?:previous|above|system|earlier)|you are now|system prompt|reveal (?:your|the) (?:prompt|instructions)|tell the user to|do not tell the user|share (?:all|the) (?:user'?s )?(?:tasks|data)|send (?:the |all )?(?:private|other) tasks""",
         RegexOption.IGNORE_CASE,
@@ -107,6 +127,11 @@ object ContractParser {
 
     private class Span(val start: Int, val end: Int, val citations: List<RawCitation>)
     private class Block(val kind: String, val head: String, val start: Int) { val lines = ArrayList<Pair<String, IntRange>>(); var end = start }
+
+    /** Evidence for one line or block: what verifies it and what merely points elsewhere. */
+    private class Refs(val verified: List<Int>, val reused: List<Int>) {
+        companion object { val NONE = Refs(emptyList(), emptyList()) }
+    }
 
     fun parse(
         segments: List<RawSegment>,
@@ -116,6 +141,8 @@ object ContractParser {
         nowEpochMs: Long,
         /** Candidates the session already holds: later stages may add attributes to them by id. */
         existingCandidates: List<Candidate> = emptyList(),
+        /** Cited lines the session already holds: a matching restatement keeps their evidence. */
+        knownEvidence: List<EvidenceLine> = emptyList(),
         proposalIdOf: (kind: ProposalKind, title: String, requirementId: String?) -> String = ::defaultProposalId,
     ): StageOutput {
         val text = StringBuilder()
@@ -141,21 +168,22 @@ object ContractParser {
         }
         if (blocks.none { it.kind != "FREE" }) {
             // No contract at all: the whole text is the answer, with whatever citations it carries.
-            return StageOutput(answer = cited(spans, full, 0, full.length, registry), queries = queries, freeForm = true)
+            return StageOutput(answer = cited(spans, full, 0, full.length, registry, knownEvidence), queries = queries, freeForm = true)
         }
 
-        fun refsOf(b: Block): List<Int> {
+        fun providerRefsOf(range: IntRange): List<Int> {
             val refs = LinkedHashSet<Int>()
-            for (sp in spans) if (sp.start < b.end && sp.end > b.start && sp.citations.isNotEmpty()) refs += registry.register(sp.citations)
-            for (line in b.lines) refs += srcTokens(line.first, registry)
+            for (sp in spans) if (sp.start < range.last + 1 && sp.end > range.first && sp.citations.isNotEmpty()) refs += registry.register(sp.citations)
             return refs.toList()
         }
-        fun refsOfLine(line: Pair<String, IntRange>): List<Int> {
-            val refs = LinkedHashSet<Int>()
-            for (sp in spans) if (sp.start < line.second.last + 1 && sp.end > line.second.first && sp.citations.isNotEmpty()) refs += registry.register(sp.citations)
-            refs += srcTokens(line.first, registry)
-            return refs.toList()
+        /** Citations overlap the block's own lines, never its heading or a neighbour's. */
+        fun refsOf(b: Block): Refs {
+            val provider = LinkedHashSet<Int>()
+            for (line in b.lines) provider += providerRefsOf(line.second)
+            val tokens = b.lines.flatMap { srcTokens(it.first, registry) }.distinct()
+            return settle(provider.toList(), tokens, b.lines.joinToString(" ") { clean(it.first) }, knownEvidence)
         }
+        fun refsOfLine(line: Pair<String, IntRange>): Refs = settle(providerRefsOf(line.second), srcTokens(line.first, registry), clean(line.first), knownEvidence)
         fun body(b: Block): String = b.lines.joinToString(" ") { clean(it.first) }.trim()
 
         var title: String? = null
@@ -178,14 +206,15 @@ object ContractParser {
             if (b.kind != "FREE" && b.kind != "ANSWER" && INJECTION.containsMatchIn(bodyText + " " + b.head)) { injection = true; continue }
             when (b.kind) {
                 "TITLE" -> title = (bodyText.ifBlank { clean(b.head) }).take(Research2Config.MAX_TITLE_CHARS).trimEnd('.').ifBlank { null }
-                "ANSWER", "FREE" -> if (b.lines.isNotEmpty()) answer += cited(spans, full, b.lines.first().second.first, b.end, registry)
+                "ANSWER", "FREE" -> if (b.lines.isNotEmpty()) answer += cited(spans, full, b.lines.first().second.first, b.end, registry, knownEvidence)
                 "REQ" -> {
                     val head = b.head
                     val id = Regex("""^(r-[a-z]\d+)""").find(head)?.groupValues?.get(1) ?: continue
                     if (id !in reqIds) continue
                     val status = statusOf(kv(head)["status"])
+                    val r = refsOf(b)
                     coverage.removeAll { it.requirementId == id }
-                    coverage += Coverage(id, status, bodyText.take(300), refsOf(b))
+                    coverage += Coverage(id, status, bodyText.take(300), r.verified, r.reused)
                 }
                 "CAND", "EXCLUDED" -> {
                     val cid = Regex("""^(c\d+)""").find(b.head)?.groupValues?.get(1) ?: continue
@@ -193,24 +222,25 @@ object ContractParser {
                     val name = clean(k["name"] ?: "").ifBlank { continue }
                     val hero = bodyText.startsWith("hero", ignoreCase = true)
                     val reason = bodyText.removePrefix("hero").removePrefix("Hero").trimStart(':', ' ', '—', '-', '·')
+                    val r = refsOf(b)
                     val c = Candidate(
                         cid, name.take(120), k["variant"]?.let(::dash), k["style"]?.let(::dash)?.lowercase(Locale.ROOT),
-                        included = b.kind == "CAND", reason = reason.take(300), refs = refsOf(b), hero = hero,
+                        included = b.kind == "CAND", reason = reason.take(300), refs = r.verified, hero = hero, reusedRefs = r.reused,
                     )
                     if (b.kind == "CAND") candidates[cid] = c else excluded += c
                 }
                 "ATTR" -> {
                     val m = Regex("""^(c\d+)\.(\w+)""").find(b.head) ?: continue
                     val cid = m.groupValues[1]; val keyName = m.groupValues[2].lowercase(Locale.ROOT)
-                    val cand = candidates[cid] ?: existingCandidates.firstOrNull { it.id == cid }?.copy(attrs = emptyList(), price = null, refs = emptyList(), reason = "", hero = false)?.also { candidates[cid] = it } ?: continue
-                    val refs = refsOf(b)
-                    val tag = tagOf(kv(b.head)["tag"], refs)
+                    val cand = candidates[cid] ?: existingCandidates.firstOrNull { it.id == cid }?.copy(attrs = emptyList(), price = null, refs = emptyList(), reason = "", hero = false, reusedRefs = emptyList())?.also { candidates[cid] = it } ?: continue
+                    val r = refsOf(b)
+                    val tag = tagOf(kv(b.head)["tag"], r)
                     if (bodyText.isBlank()) continue
                     if (keyName == "price") {
-                        val price = parsePrice(bodyText, refs, nowEpochMs)
-                        candidates[cid] = cand.copy(price = price ?: cand.price, attrs = cand.attrs.filter { it.key != "price" } + Attribute("price", bodyText.take(160), if (price?.status == PriceStatus.CONFIRMED) ProvenanceTag.FACT else ProvenanceTag.UNKNOWN, refs))
+                        val price = parsePrice(bodyText, r.verified, nowEpochMs)
+                        candidates[cid] = cand.copy(price = price ?: cand.price, attrs = cand.attrs.filter { it.key != "price" } + Attribute("price", bodyText.take(160), if (price?.status == PriceStatus.CONFIRMED) ProvenanceTag.FACT else ProvenanceTag.UNKNOWN, r.verified, r.reused))
                     } else {
-                        candidates[cid] = cand.copy(attrs = cand.attrs.filter { it.key != keyName } + Attribute(keyName, bodyText.take(200), tag, refs))
+                        candidates[cid] = cand.copy(attrs = cand.attrs.filter { it.key != keyName } + Attribute(keyName, bodyText.take(200), tag, r.verified, r.reused))
                     }
                 }
                 "PICK" -> {
@@ -219,41 +249,43 @@ object ContractParser {
                     val status = statusOf(kv(b.head)["status"])
                     var pick: String? = null; var variant: String? = null; var alt: String? = null; var forYou: String? = null; var why: String? = null; var price: Price? = null
                     val facts = ArrayList<Attribute>()
-                    val refs = refsOf(b)
+                    val r = refsOf(b)
                     for (line in b.lines) {
                         val t = clean(line.first)
                         val lr = refsOfLine(line)
                         val (k, v) = t.split(':', limit = 2).let { if (it.size == 2) it[0].trim().lowercase(Locale.ROOT) to it[1].trim() else "" to t }
                         when (k) {
                             "pick" -> { val none = v.equals("none found", true) || v.equals("none", true) || v == "-"; if (!none) { val parts = v.split(Regex("""\s[—–-]\s|\s\(""", RegexOption.IGNORE_CASE), limit = 2); pick = parts[0].trim(); variant = parts.getOrNull(1)?.trimEnd(')')?.trim()?.ifBlank { null } } }
-                            "label" -> if (v.isNotBlank() && v != "-") facts += Attribute("label", v.take(300), if (lr.isNotEmpty()) ProvenanceTag.FACT else ProvenanceTag.UNKNOWN, lr)
+                            "label" -> if (v.isNotBlank() && v != "-") facts += Attribute("label", v.take(300), tagOf("fact", lr), lr.verified, lr.reused)
                             "alternative" -> alt = dash(v)
                             "for you" -> forYou = dash(v)
                             "why" -> why = dash(v)
-                            "price" -> price = parsePrice(v, lr, nowEpochMs)
-                            else -> if (t.isNotBlank()) facts += Attribute("note", t.take(300), if (lr.isNotEmpty()) ProvenanceTag.FACT else ProvenanceTag.JUDGMENT, lr)
+                            "price" -> price = parsePrice(v, lr.verified, nowEpochMs)
+                            else -> if (t.isNotBlank()) facts += Attribute("note", t.take(300), if (lr.verified.isNotEmpty()) ProvenanceTag.FACT else if (lr.reused.isNotEmpty()) ProvenanceTag.SYNTHESIS else ProvenanceTag.JUDGMENT, lr.verified, lr.reused)
                         }
                     }
                     picks.removeAll { it.requirementId == id }
-                    picks += ItemPick(id, status, pick, variant, facts, alt, forYou, why, price, refs)
-                    if (coverage.none { it.requirementId == id }) coverage += Coverage(id, status, (why ?: pick).orEmpty().take(300), refs)
+                    picks += ItemPick(id, status, pick, variant, facts, alt, forYou, why, price, r.verified, r.reused)
+                    if (coverage.none { it.requirementId == id }) coverage += Coverage(id, status, (why ?: pick).orEmpty().take(300), r.verified, r.reused)
                 }
-                "CLAIM" -> if (bodyText.isNotBlank()) { val refs = refsOf(b); claims += Claim(bodyText.take(400), tagOf(kv(b.head)["tag"], refs), refs) }
+                "CLAIM" -> if (bodyText.isNotBlank()) { val r = refsOf(b); claims += Claim(bodyText.take(400), tagOf(kv(b.head)["tag"], r), r.verified, r.reused) }
                 "CONFLICT" -> {
                     val topic = clean(b.head).ifBlank { continue }
                     val parts = bodyText.split('|').map { it.trim() }
                     val sides = ArrayList<ConflictSide>()
                     var resolution: String? = null
+                    val r = refsOf(b)
                     for (p in parts) {
                         val (k, v) = p.split(':', limit = 2).let { if (it.size == 2) it[0].trim().lowercase(Locale.ROOT) to it[1].trim() else "" to p }
-                        when (k) { "resolution" -> resolution = dash(v); else -> if (v.isNotBlank()) sides += ConflictSide(v.take(300), refsOf(b)) }
+                        when (k) { "resolution" -> resolution = dash(v); else -> if (v.isNotBlank()) sides += ConflictSide(v.take(300), r.verified, r.reused) }
                     }
                     if (sides.isNotEmpty()) conflicts += Conflict(topic.take(160), sides.take(3), resolution)
                 }
                 "STEP" -> if (bodyText.isNotBlank()) {
-                    val refs = refsOf(b)
+                    val r = refsOf(b)
                     val optional = bodyText.contains("(optional)", ignoreCase = true)
-                    steps += StepLine(bodyText.replace(Regex("""\s*\(optional\)""", RegexOption.IGNORE_CASE), "").take(300), if (refs.isNotEmpty()) ProvenanceTag.FACT else ProvenanceTag.JUDGMENT, refs, optional)
+                    val tag = if (r.verified.isNotEmpty()) ProvenanceTag.FACT else if (r.reused.isNotEmpty()) ProvenanceTag.SYNTHESIS else ProvenanceTag.JUDGMENT
+                    steps += StepLine(bodyText.replace(Regex("""\s*\(optional\)""", RegexOption.IGNORE_CASE), "").take(300), tag, r.verified, optional, r.reused)
                 }
                 "CALLOUT" -> if (bodyText.isNotBlank()) callouts += Callout(calloutKind(kv(b.head)["kind"]), bodyText.take(400))
                 "PROPOSE" -> {
@@ -264,8 +296,8 @@ object ContractParser {
                     val lines = b.lines.map { clean(it.first) }.filter { it.isNotBlank() }
                     val t = lines.firstOrNull { !it.startsWith("Note:", true) }?.trimEnd('.')?.take(80) ?: continue
                     val note = lines.firstOrNull { it.startsWith("Note:", true) }?.substringAfter(':')?.trim()?.take(300)
-                    val refs = refsOf(b)
-                    proposals += Proposal(proposalIdOf(kind, t, req), kind, t, note, req, refs, nowEpochMs, selectedByDefault = kind == ProposalKind.STEP || kind == ProposalKind.NOTE)
+                    val r = refsOf(b)
+                    proposals += Proposal(proposalIdOf(kind, t, req), kind, t, note, req, r.verified, nowEpochMs, selectedByDefault = kind == ProposalKind.STEP || kind == ProposalKind.NOTE, reusedRefs = r.reused)
                 }
                 "UNRESOLVED" -> for (line in b.lines) {
                     val t = clean(line.first).trimStart('-', '•', '*', ' ')
@@ -281,19 +313,60 @@ object ContractParser {
         )
     }
 
-    // ------------------------------------------------------------------ helpers
+    // ------------------------------------------------------------------ provenance helpers
 
-    private fun cited(spans: List<Span>, full: String, start: Int, end: Int, registry: SourceRegistry2): List<CitedSegment> {
+    /**
+     * Decides what a line's evidence is: provider citations verify; model-typed pointers verify only
+     * when the line restates a held evidence line that those sources back; otherwise they stay pointers.
+     */
+    private fun settle(provider: List<Int>, tokens: List<Int>, text: String, known: List<EvidenceLine>): Refs {
+        val pointers = tokens.filter { it !in provider }
+        if (pointers.isEmpty()) return Refs(provider, emptyList())
+        val validated = LinkedHashSet<Int>()
+        for (e in known) {
+            val shared = e.refs.filter { it in pointers }
+            if (shared.isNotEmpty() && restates(text, e.text)) validated += shared
+        }
+        return Refs((provider + validated).distinct(), pointers.filter { it !in validated })
+    }
+
+    /** The same statement, allowing for trimming and small rewording; never a different fact. */
+    internal fun restates(line: String, evidence: String): Boolean {
+        val a = norm(line); val b = norm(evidence)
+        if (a.isEmpty() || b.isEmpty()) return false
+        if (a == b) return true
+        if (a.length >= 12 && b.length >= 12 && (a.contains(b) || b.contains(a))) return true
+        val wa = a.split(' ').filter { it.length > 2 }.toSet(); val wb = b.split(' ').filter { it.length > 2 }.toSet()
+        if (wa.size < 4 || wb.size < 4) return false
+        val inter = wa.intersect(wb).size
+        return inter >= 4 && inter.toDouble() / wa.union(wb).size >= 0.6
+    }
+
+    private fun norm(s: String): String = clean(s).lowercase(Locale.ROOT).replace(Regex("""[^\p{L}\p{N}.]+"""), " ").replace(Regex("""\.(?=\s|$)"""), "").trim().replace(Regex("\\s+"), " ")
+
+    private fun cited(spans: List<Span>, full: String, start: Int, end: Int, registry: SourceRegistry2, known: List<EvidenceLine>): List<CitedSegment> {
         val out = ArrayList<CitedSegment>()
         for (sp in spans) {
             val s = maxOf(sp.start, start); val e = minOf(sp.end, end)
             if (e <= s) continue
             val rawPiece = full.substring(s, e)
-            val piece = clean(rawPiece, keepTrailingSpace = true).replace(Regex("\\s+"), " ")
-            if (piece.isBlank()) continue
-            val refs = (registry.register(sp.citations) + srcTokens(rawPiece, registry)).distinct()
-            val last = out.lastOrNull()
-            if (last != null && last.refs.isEmpty() && refs.isEmpty()) out[out.lastIndex] = last.copy(text = last.text + piece) else out += CitedSegment(piece, refs)
+            val provider = registry.register(sp.citations)
+            if (provider.isNotEmpty() || !SRC.containsMatchIn(rawPiece)) {
+                val piece = clean(rawPiece, keepTrailingSpace = true).replace(Regex("\\s+"), " ")
+                if (piece.isBlank()) continue
+                val r = settle(provider, srcTokens(rawPiece, registry), piece, known)
+                val last = out.lastOrNull()
+                if (last != null && last.refs.isEmpty() && last.reusedRefs.isEmpty() && r.verified.isEmpty() && r.reused.isEmpty()) out[out.lastIndex] = last.copy(text = last.text + piece) else out += CitedSegment(piece, r.verified, r.reused)
+            } else {
+                // An uncited block with model-typed pointers: judge each sentence on its own.
+                for (sentence in rawPiece.split(SENTENCE)) {
+                    val piece = clean(sentence, keepTrailingSpace = true).replace(Regex("\\s+"), " ")
+                    if (piece.isBlank()) continue
+                    val r = settle(emptyList(), srcTokens(sentence, registry), piece, known)
+                    val withSpace = if (piece.endsWith(" ")) piece else "$piece "
+                    out += CitedSegment(withSpace, r.verified, r.reused)
+                }
+            }
         }
         return out
     }
@@ -306,8 +379,9 @@ object ContractParser {
         return out.filter { it.text.isNotBlank() }
     }
 
+    /** Model-typed `src=sN` tokens that name a source the provider has cited; discovered-only sources never resolve. */
     private fun srcTokens(line: String, registry: SourceRegistry2): List<Int> =
-        SRC.findAll(line).flatMap { m -> Regex("""s(\d+)""").findAll(m.groupValues[1]).map { it.groupValues[1].toInt() } }.filter { registry.has(it) }.toList()
+        SRC.findAll(line).flatMap { m -> Regex("""s(\d+)""").findAll(m.groupValues[1]).map { it.groupValues[1].toInt() } }.filter { registry.isCited(it) }.distinct().toList()
 
     internal fun clean(s: String, keepTrailingSpace: Boolean = false): String {
         var t = URL.replace(s, "")
@@ -331,6 +405,12 @@ object ContractParser {
         else -> RequirementStatus.NOT_FOUND
     }
 
+    /** A sourced tag needs a citation; with only a model-typed pointer the line is Restated, with nothing it is Unknown. */
+    private fun tagOf(raw: String?, refs: Refs): ProvenanceTag {
+        val t = tagOf(raw, refs.verified)
+        return if (t == ProvenanceTag.UNKNOWN && refs.reused.isNotEmpty()) ProvenanceTag.SYNTHESIS else t
+    }
+
     /** A tag that asserts something about the world needs a citation; without one it is unconfirmed. */
     internal fun tagOf(raw: String?, refs: List<Int>): ProvenanceTag {
         val t = when (raw?.trim()?.lowercase(Locale.ROOT)) {
@@ -339,6 +419,7 @@ object ContractParser {
             "community", "forum", "users" -> ProvenanceTag.COMMUNITY
             "judgment", "judgement", "opinion" -> ProvenanceTag.JUDGMENT
             "calc", "calculated", "calculation" -> ProvenanceTag.CALC
+            "restated", "synthesis" -> ProvenanceTag.SYNTHESIS
             else -> if (refs.isNotEmpty()) ProvenanceTag.FACT else ProvenanceTag.UNKNOWN
         }
         return if (t.needsSource && refs.isEmpty()) ProvenanceTag.UNKNOWN else t
@@ -349,7 +430,7 @@ object ContractParser {
         "unknown_recipient", "recipient", "gift" -> CalloutKind.UNKNOWN_RECIPIENT; "budget" -> CalloutKind.BUDGET; else -> CalloutKind.INFO
     }
 
-    /** "89.00 USD · 100 ml · Retailer" / "$89 · 3.4 oz · Store". Confirmed only when the line is cited. */
+    /** "89.00 USD · 100 ml · Retailer" / "$89 · 3.4 oz · Store". Confirmed only when the line itself is cited (or validly restates a cited price). */
     internal fun parsePrice(text: String, refs: List<Int>, nowEpochMs: Long): Price? {
         val m = PRICE.find(text) ?: return null
         val (symbolOrCode, amountRaw) = when {
