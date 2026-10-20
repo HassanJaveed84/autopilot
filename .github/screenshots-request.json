@@ -1,5 +1,5 @@
 {
-  "reason": "Full-coverage tour for external review: every screen, sheet, dialog and state, light and dark",
+  "reason": "Flight Plan stabilization: after shots, light/dark at 1.0x and 1.3x",
   "variants": [
     {
       "display": "phone",
@@ -10,6 +10,16 @@
       "display": "phone",
       "theme": "dark",
       "font_scale": "1.0"
+    },
+    {
+      "display": "phone",
+      "theme": "light",
+      "font_scale": "1.3"
+    },
+    {
+      "display": "phone",
+      "theme": "dark",
+      "font_scale": "1.3"
     }
   ],
   "tests": ""
