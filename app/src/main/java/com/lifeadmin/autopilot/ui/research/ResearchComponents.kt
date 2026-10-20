@@ -367,8 +367,8 @@ fun SourceSheet(source: SourceRef, usedFor: List<String>, researchedLine: String
             Text(source.title, style = MaterialTheme.typography.titleLarge, color = c.ink, modifier = Modifier.semantics { heading() })
             Text(source.domain, style = MaterialTheme.typography.bodyMedium, color = c.ink2)
             Text(
-                if (source.tier == SourceTier.OFFICIAL) "Official: a government domain, or the site of the operator or service you named."
-                else "Web page: the app can't confirm who runs this site. Treat it as a lead, not an authority.",
+                if (source.tier == SourceTier.OFFICIAL) "Official: a recognized government domain. The app never infers ownership from a name in the address."
+                else "Web page: the app can't confirm who runs this site, even if the address carries a familiar name. Treat it as a lead, not an authority.",
                 style = MaterialTheme.typography.bodySmall, color = c.ink2,
             )
             if (source.quotes.isNotEmpty()) {

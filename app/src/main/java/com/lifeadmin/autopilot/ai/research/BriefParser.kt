@@ -25,7 +25,6 @@ object BriefParser {
     fun parse(
         segments: List<RawSegment>,
         searches: List<RawSearch>,
-        details: Map<DetailField, String>,
         usage: ResearchUsage,
         truncated: Boolean,
         shared: List<String>,
@@ -40,7 +39,10 @@ object BriefParser {
             spans += Span(start, text.length, s.citations)
         }
         val full = text.toString()
-        val registry = SourceRegistry(details)
+        // Sources are numbered in order of first structured citation and counted once per cited text
+        // block, whatever section or line split it lands in. Only provider citations reach the registry.
+        val registry = SourceRegistry()
+        for (s in spans) if (s.citations.isNotEmpty()) registry.countBlock(s.citations)
 
         // Section ranges by line.
         var section = Section.NONE
@@ -171,7 +173,7 @@ object BriefParser {
     }
 
     /** Numbers sources in order of first citation; search results are appended uncited. */
-    private class SourceRegistry(private val details: Map<DetailField, String>) {
+    private class SourceRegistry {
         private val byUrl = LinkedHashMap<String, MutableSource>()
 
         private class MutableSource(val n: Int, val url: String, var title: String, val tier: SourceTier, var pageAge: String?) {
@@ -185,7 +187,7 @@ object BriefParser {
             val refs = LinkedHashSet<Int>()
             for (c in citations) {
                 val url = Sources.safeExternalUrl(c.url) ?: continue
-                val src = byUrl.getOrPut(key(url)) { MutableSource(byUrl.size + 1, url, c.title?.ifBlank { null } ?: Sources.host(url) ?: url, Sources.tier(url, details), null) }
+                val src = byUrl.getOrPut(key(url)) { MutableSource(byUrl.size + 1, url, c.title?.ifBlank { null } ?: Sources.host(url) ?: url, Sources.tier(url), null) }
                 if (c.title?.isNotBlank() == true && src.title == Sources.host(url)) src.title = c.title
                 c.citedText.trim().takeIf { it.isNotEmpty() }?.let { src.quotes += it.take(ResearchConfig.MAX_QUOTE_CHARS) }
                 refs += src.n
@@ -193,11 +195,15 @@ object BriefParser {
             return refs.toList()
         }
 
-        /** Registers and counts one citing sentence per source. */
+        /** One cited text block: registers its sources and counts each distinct one once. */
+        fun countBlock(citations: List<RawCitation>) {
+            for (n in register(citations)) byUrl.values.firstOrNull { it.n == n }?.let { it.cited++ }
+        }
+
+        /** The sources cited by the blocks overlapping [start, end). Resolves only; counting happened per block. */
         fun refsFor(spans: List<Span>, start: Int, end: Int): List<Int> {
             val refs = LinkedHashSet<Int>()
             for (sp in spans) if (sp.start < end && sp.end > start && sp.citations.isNotEmpty()) refs += register(sp.citations)
-            refs.forEach { n -> byUrl.values.firstOrNull { it.n == n }?.let { it.cited++ } }
             return refs.toList()
         }
 
@@ -206,7 +212,7 @@ object BriefParser {
             val existing = byUrl[key(url)]
             if (existing != null) { if (existing.pageAge == null) existing.pageAge = r.pageAge; return }
             if (byUrl.size >= 12) return
-            byUrl[key(url)] = MutableSource(byUrl.size + 1, url, r.title.ifBlank { Sources.host(url) ?: url }, Sources.tier(url, details), r.pageAge)
+            byUrl[key(url)] = MutableSource(byUrl.size + 1, url, r.title.ifBlank { Sources.host(url) ?: url }, Sources.tier(url), r.pageAge)
         }
 
         fun bestTier(refs: List<Int>): SourceTier =

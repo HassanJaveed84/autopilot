@@ -2,29 +2,39 @@ package com.lifeadmin.autopilot.ai.research
 
 import java.net.URI
 
-/** Conservative source tiering and URL safety for citations and search results. */
+/**
+ * Conservative source tiering and URL safety for citations and search results.
+ *
+ * A host name is not evidence of who runs a site: look-alike domains, user-controlled subdomains
+ * and brand words in a domain are all cheap. The only tier claim the app makes is *Official* for
+ * recognized government domains, matched on whole host labels; everything else is *Web page*.
+ */
 object Sources {
+    /** Public government suffixes, matched on label boundaries (`gov.uk` or `*.gov.uk`, never `*gov.uk`). */
     private val governmentSuffixes = listOf(
-        ".gov", ".gov.uk", ".gov.au", ".gov.ie", ".gov.in", ".gov.sg", ".gov.za", ".gov.br", ".gov.scot", ".gov.wales",
-        ".gc.ca", ".canada.ca", ".govt.nz", ".gouv.fr", ".bund.de", ".europa.eu", ".go.jp", ".gob.es", ".gob.mx", ".nhs.uk", ".mil",
+        "gov", "mil",
+        "gov.uk", "gov.scot", "gov.wales", "nhs.uk",
+        "gov.au", "gov.ie", "gov.in", "gov.sg", "gov.za", "gov.br",
+        "gc.ca", "canada.ca", "govt.nz", "gouv.fr", "bund.de", "europa.eu", "go.jp", "gob.es", "gob.mx",
     )
 
     /** Host name of a URL in lower case, or null when it cannot be parsed. */
     fun host(url: String): String? = runCatching { URI(url.trim()).host?.lowercase()?.removePrefix("www.") }.getOrNull()?.takeIf { it.isNotBlank() }
 
     /**
-     * OFFICIAL only when it can be determined conservatively: a government domain, or a domain that
-     * contains the operator/service the user typed (at least 4 letters). Everything else is WEB.
+     * OFFICIAL only for a recognized government domain on a label boundary; otherwise WEB. Operator
+     * or brand names appearing in a host never qualify — a look-alike can carry any name.
      */
-    fun tier(url: String, details: Map<DetailField, String>): SourceTier {
+    fun tier(url: String): SourceTier {
         val h = host(url) ?: return SourceTier.WEB
-        if (governmentSuffixes.any { h == it.removePrefix(".") || h.endsWith(it) }) return SourceTier.OFFICIAL
-        val operator = details[DetailField.OPERATOR]?.let(::compact).orEmpty()
-        if (operator.length >= 4 && compact(h.substringBeforeLast('.')).contains(operator)) return SourceTier.OFFICIAL
-        return SourceTier.WEB
+        if (h.startsWith("[") || isIpLiteral(h)) return SourceTier.WEB
+        return if (isGovernmentHost(h)) SourceTier.OFFICIAL else SourceTier.WEB
     }
 
-    private fun compact(s: String) = s.lowercase().filter { it.isLetterOrDigit() }
+    private fun isGovernmentHost(host: String): Boolean = governmentSuffixes.any { suffix ->
+        val multiLabel = suffix.contains('.')
+        (multiLabel && host == suffix) || host.endsWith(".$suffix")
+    }
 
     /**
      * Only `http`/`https` URLs with a public host may be handed to the browser. Returns the trimmed

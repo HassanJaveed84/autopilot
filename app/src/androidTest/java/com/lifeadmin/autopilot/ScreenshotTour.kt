@@ -951,7 +951,7 @@ class ScreenshotTourResearch {
             taskId = c.taskRepository.createTask(NewTask("Book family train ride", notes = "Need tickets and parking details", status = TaskStatus.ACTIONABLE, preset = ReminderPreset.PERSISTENT))
             c.taskRepository.addStep(taskId, "Check train times and prices")
             if (seedBrief) {
-                val content = com.lifeadmin.autopilot.ai.research.BriefParser.parse(sampleResponse.segments, sampleResponse.searches, mapOf(com.lifeadmin.autopilot.ai.research.DetailField.OPERATOR to "Northline Rail"), sampleResponse.usage, false, listOf("Task title", "Your question and details", "Notes", "Date and language"), c.ids::newId)
+                val content = com.lifeadmin.autopilot.ai.research.BriefParser.parse(sampleResponse.segments, sampleResponse.searches, sampleResponse.usage, false, listOf("Task title", "Your question and details", "Notes", "Date and language"), c.ids::newId)
                 c.researchRepository.save(taskId, "When do advance tickets go on sale, and can I pre-book parking?", content)
             }
         }

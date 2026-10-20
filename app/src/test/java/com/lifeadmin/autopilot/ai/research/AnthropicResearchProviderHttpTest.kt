@@ -151,11 +151,12 @@ class AnthropicResearchProviderHttpTest {
         assertEquals(ResearchUsage(1200, 480, 1, AiConfig.DEFAULT_MODEL, result.usage.elapsedMs, false), result.usage)
 
         // And the parser turns it into a verified brief with the prose URL removed.
-        val brief = BriefParser.parse(result.segments, result.searches, request.details, result.usage, result.truncated, request.sharedSummary()) { "m" }
+        val brief = BriefParser.parse(result.segments, result.searches, result.usage, result.truncated, request.sharedSummary()) { "m" }
         assertTrue(brief.verified)
         assertEquals(listOf(railUrl, govUrl, "https://travelblog.example/tips"), brief.sources.map { it.url })
         assertTrue(brief.quickAnswer.none { it.text.contains("notacitation") })
-        assertEquals(SourceTier.OFFICIAL, brief.sources[0].tier)
+        assertEquals(SourceTier.WEB, brief.sources[0].tier) // operator-named host, not a government domain
+        assertEquals(SourceTier.OFFICIAL, brief.sources[1].tier) // gov.uk
     }
 
     @Test fun pauseTurnIsContinuedOnceWithinTheSearchBudget() {

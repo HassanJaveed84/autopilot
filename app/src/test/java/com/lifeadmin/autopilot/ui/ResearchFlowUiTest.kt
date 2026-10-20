@@ -106,7 +106,7 @@ class ResearchFlowUiTest {
             taskId = container.taskRepository.createTask(NewTask("Book train ride", notes = "Window seat", status = TaskStatus.ACTIONABLE))
             container.taskRepository.addStep(taskId, "Find dates")
             if (seedBrief) {
-                val content = com.lifeadmin.autopilot.ai.research.BriefParser.parse(goodResponse.segments, goodResponse.searches, emptyMap(), goodResponse.usage, false, listOf("Task title", "Your question"), container.ids::newId)
+                val content = com.lifeadmin.autopilot.ai.research.BriefParser.parse(goodResponse.segments, goodResponse.searches, goodResponse.usage, false, listOf("Task title", "Your question"), container.ids::newId)
                 container.researchRepository.save(taskId, "When do advance tickets go on sale?", content)
             }
         }

@@ -16,8 +16,8 @@ class BriefParserTest {
     private val rail = RawCitation("https://www.northlinerail.example/tickets", "Tickets | Northline Rail", "Advance tickets go on sale 12 weeks ahead.")
     private val blog = RawCitation("https://travelblog.example/tips", "Cheap train tips", "Book 10 weeks ahead for the best fares.")
 
-    private fun parse(segments: List<RawSegment>, searches: List<RawSearch> = emptyList(), details: Map<DetailField, String> = emptyMap(), truncated: Boolean = false) =
-        BriefParser.parse(segments, searches, details, usage, truncated, listOf("Task title", "Your question"), ::newId)
+    private fun parse(segments: List<RawSegment>, searches: List<RawSearch> = emptyList(), truncated: Boolean = false) =
+        BriefParser.parse(segments, searches, usage, truncated, listOf("Task title", "Your question"), ::newId)
 
     @Test fun citedSentencesBecomeSourcedAndNumberedInCitationOrder() {
         val brief = parse(
@@ -32,12 +32,11 @@ class BriefParserTest {
                 RawSegment("\n- Fares are usually cheapest at release.\n\n## UNCONFIRMED\n- Whether child fares are discounted — I searched but no page said", emptyList()),
             ),
             searches = listOf(RawSearch("northline rail advance tickets release", listOf(RawSearchResult("https://www.northlinerail.example/tickets", "Tickets | Northline Rail", "September 2026"), RawSearchResult("https://travelblog.example/tips", "Cheap train tips", null)))),
-            details = mapOf(DetailField.OPERATOR to "Northline Rail"),
         )
         assertTrue(brief.verified)
         assertEquals(listOf(1, 2, 3), brief.sources.map { it.n })
         assertEquals("northlinerail.example", brief.sources[0].domain)
-        assertEquals(SourceTier.OFFICIAL, brief.sources[0].tier) // operator name matches the host
+        assertEquals(SourceTier.WEB, brief.sources[0].tier) // an operator name in the host never proves ownership
         assertEquals(SourceTier.OFFICIAL, brief.sources[1].tier) // government domain
         assertEquals(SourceTier.WEB, brief.sources[2].tier)
         assertEquals(0, brief.sources[2].citedCount) // read while searching, never cited
@@ -59,7 +58,7 @@ class BriefParserTest {
         // Findings: one sourced, one suggestion, one unconfirmed
         val sourced = brief.findings.filterIsInstance<Finding.Sourced>()
         assertEquals(1, sourced.size)
-        assertEquals(SourceTier.OFFICIAL, sourced[0].tier)
+        assertEquals(SourceTier.OFFICIAL, sourced[0].tier) // cites the gov.uk source
         assertEquals(listOf(2), sourced[0].refs)
         val suggestion = brief.findings.filterIsInstance<Finding.Suggestion>().single()
         assertEquals("Fares are usually cheapest at release.", suggestion.text)
@@ -155,13 +154,12 @@ class BriefParserTest {
     }
 
     @Test fun sourceTieringIsConservative() {
-        assertEquals(SourceTier.OFFICIAL, Sources.tier("https://www.gov.uk/x", emptyMap()))
-        assertEquals(SourceTier.OFFICIAL, Sources.tier("https://travel.state.gov/passports", emptyMap()))
-        assertEquals(SourceTier.OFFICIAL, Sources.tier("https://www.nhs.uk/x", emptyMap()))
-        assertEquals(SourceTier.WEB, Sources.tier("https://www.governor-blog.com/x", emptyMap())) // not a .gov suffix
-        assertEquals(SourceTier.WEB, Sources.tier("https://reddit.com/r/trains", mapOf(DetailField.OPERATOR to "Northline Rail")))
-        assertEquals(SourceTier.OFFICIAL, Sources.tier("https://buy.northlinerail.com/", mapOf(DetailField.OPERATOR to "Northline Rail")))
-        assertEquals(SourceTier.WEB, Sources.tier("https://buy.northlinerail.com/", mapOf(DetailField.OPERATOR to "NR"))) // too short to match
+        assertEquals(SourceTier.OFFICIAL, Sources.tier("https://www.gov.uk/x"))
+        assertEquals(SourceTier.OFFICIAL, Sources.tier("https://travel.state.gov/passports"))
+        assertEquals(SourceTier.OFFICIAL, Sources.tier("https://www.nhs.uk/x"))
+        assertEquals(SourceTier.WEB, Sources.tier("https://www.governor-blog.com/x")) // not a .gov suffix
+        assertEquals(SourceTier.WEB, Sources.tier("https://reddit.com/r/trains"))
+        assertEquals(SourceTier.WEB, Sources.tier("https://buy.northlinerail.com/")) // operator name in the host is not evidence
         assertNull(Sources.safeExternalUrl("ftp://files.example/x"))
         assertNull(Sources.safeExternalUrl("https://localhost/x"))
         assertNull(Sources.safeExternalUrl("not a url"))
