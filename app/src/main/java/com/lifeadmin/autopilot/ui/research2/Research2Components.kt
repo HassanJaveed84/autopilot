@@ -467,7 +467,7 @@ fun ItemCard(req: Requirement, pick: ItemPick?, cov: Coverage, sources: List<Sou
         modifier.fillMaxWidth().clip(shape).background(c.surface).let { if (status == RequirementStatus.NOT_FOUND) it.dottedBorder(c.lineStrong, 18.dp) else it.border(1.dp, c.line, shape) }.testTag("item_${req.id}"),
     ) {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 64.dp).clickable(role = Role.Button) { expanded = !expanded }.semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" }.padding(14.dp),
+            Modifier.fillMaxWidth().heightIn(min = 64.dp).clickable(role = Role.Button) { expanded = !expanded }.semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" }.padding(14.dp).testTag("item_header_${req.id}"),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             StatusGlyph(status, size = 22.dp)

@@ -1150,7 +1150,7 @@ class ScreenshotTourResearch2 {
         compose.scrollTo("brief_list", "item_r-i1")
         screenshot("s11-result-c-item-cards")
         compose.scrollTo("brief_list", "item_r-i3")
-        compose.onNodeWithTag("item_r-i3").tap()
+        compose.onNodeWithTag("item_header_r-i3", useUnmergedTree = true).tap()
         screenshot("s12-result-c-not-found")
         compose.scrollTo("brief_list", "continue_card")
         screenshot("s13-result-continue-card")
