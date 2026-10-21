@@ -77,7 +77,8 @@ class ResearchTimeoutHttpTest {
         val f = runBlocking { legacy.research(legacyRequest, FAKE_KEY, AiConfig.DEFAULT_MODEL) {} }
         assertTrue(f.toString(), f is ResearchResponse.Failure && (f as ResearchResponse.Failure).error is ResearchError.Timeout)
         server.takeRequest(2, TimeUnit.SECONDS)
-        // The same base provider (same cached client) still serves a longer M3A.2 call afterwards: client reuse must not pin the short timeout.
+        // The same base provider still serves a longer M3A.2 call afterwards: client reuse must not pin the short
+        // timeout, and the socket the timed-out request left behind is never reused (the client is rebuilt).
         val calls = AnthropicResearchCalls(legacy, timeout = Duration.ofSeconds(5))
         enqueueDelayed(1_500)
         val ok = runBlocking { calls.call(ModelCall("claude-opus-5-5", "SYS", "USER", 1_000, 0, timeout = Duration.ofSeconds(5)), FAKE_KEY) }

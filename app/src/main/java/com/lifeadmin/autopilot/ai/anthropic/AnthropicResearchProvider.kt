@@ -68,6 +68,11 @@ class AnthropicResearchProvider(
     /** Shared client for the M3A.2 call adapter (same key handling and connection pool). */
     internal fun clientFor(apiKey: String): AnthropicClientAsync = client(apiKey)
 
+    /**
+     * Drops the cached client (and its connection pool). Called on key change, and after a timeout or
+     * a dropped connection so the next request never reuses a pooled socket left half-open by the
+     * failure — the next request opens a fresh connection instead of failing instantly.
+     */
     fun reset() = synchronized(this) {
         cached?.second?.let { runCatching { it.close() } }
         cached = null
@@ -112,11 +117,14 @@ class AnthropicResearchProvider(
             onProgress(ResearchProgress.Writing)
             return interpret(message, absorbed, model, elapsedMs(started), continued)
         } catch (e: TimeoutCancellationException) {
+            reset()
             return ResearchResponse.Failure(ResearchError.Timeout(timeout.seconds.toInt()), absorbed.searchCount)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            return ResearchResponse.Failure(mapError(e).let { if (it is ResearchError.Timeout) ResearchError.Timeout(timeout.seconds.toInt()) else it }, absorbed.searchCount)
+            val mapped = mapError(e).let { if (it is ResearchError.Timeout) ResearchError.Timeout(timeout.seconds.toInt()) else it }
+            if (mapped is ResearchError.Timeout || mapped == ResearchError.Network) reset()
+            return ResearchResponse.Failure(mapped, absorbed.searchCount)
         }
     }
 
@@ -299,11 +307,14 @@ class AnthropicResearchCalls(
                 paused = if (stop == com.lifeadmin.autopilot.ai.research2.CallStop.PAUSE_TURN) message else null, refusalCategory = category,
             )
         } catch (e: TimeoutCancellationException) {
+            base.reset()
             return com.lifeadmin.autopilot.ai.research2.CallResult.Failed(timedOut, absorbed.searchCount, null, elapsed())
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             val mapped = base.mapError(e).let { if (it is ResearchError.Timeout) timedOut else it }
+            // A timed-out or dropped connection must not be reused by the next request.
+            if (mapped is ResearchError.Timeout || mapped == ResearchError.Network) base.reset()
             return com.lifeadmin.autopilot.ai.research2.CallResult.Failed(mapped, absorbed.searchCount, null, elapsed())
         }
     }
