@@ -1,5 +1,5 @@
 {
-  "reason": "M3A.2 Deep Research, run 7 (P0: searches-reported counter, waiting line with configured limit): preflight, investigation, result templates, proposals, usage (light/dark 1.0, light 1.3 and 2.0)",
+  "reason": "M3A.2 Deep Research, run 8 (continuation fix: follow-up card, cut-off-before-text failure screen with technical record, call log): preflight, investigation, result templates, proposals, usage (light/dark 1.0, light 1.3 and 2.0)",
   "variants": [
     { "display": "phone", "theme": "light", "font_scale": "1.0" },
     { "display": "phone", "theme": "dark", "font_scale": "1.0" },

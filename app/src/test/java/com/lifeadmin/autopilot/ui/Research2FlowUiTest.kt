@@ -26,6 +26,7 @@ import com.lifeadmin.autopilot.ai.research2.CallStop
 import com.lifeadmin.autopilot.ai.research2.ContractParser
 import com.lifeadmin.autopilot.ai.research2.ProposalBuilder
 import com.lifeadmin.autopilot.ai.research2.RequirementExtractor
+import com.lifeadmin.autopilot.ai.research2.RequirementStatus
 import com.lifeadmin.autopilot.ai.research2.ResearchSession
 import com.lifeadmin.autopilot.ai.research2.SessionAssembler
 import com.lifeadmin.autopilot.ai.research2.SessionContent
@@ -357,6 +358,88 @@ class Research2FlowUiTest {
         assertEquals(SessionOutcome.COMPLETE, s.outcome)
         assertTrue(provider.calls.single().user.contains("Continue earlier research"))
         assertFalse(compose.onAllNodes(hasTestTag("continue_card")).fetchSemanticsNodes().isNotEmpty())
+    }
+
+    @Test fun aTypedFollowUpIsAnsweredNextToTheOriginalAnswerNotOverIt() {
+        val page = com.lifeadmin.autopilot.ai.research.RawCitation("https://www.thorne.example/products/glucosamine", "Glucosamine & Chondroitin | Thorne", "Glucosamine sulfate 500 mg")
+        provider.enqueue(
+            CallResult.Done(
+                listOf(
+                    RawSegment("## REQ r-f1 · status=answered\n", emptyList()),
+                    RawSegment("Thorne's own site lists Glucosamine & Chondroitin at 500 mg per capsule.", listOf(page)),
+                    RawSegment("\n## ANSWER\n", emptyList()),
+                    RawSegment("Yes: Thorne sells Glucosamine & Chondroitin directly, 500 mg glucosamine sulfate per capsule.", listOf(page)),
+                    RawSegment("\n## REQ r-i3 · status=answered\n", emptyList()),
+                    RawSegment("Found on the brand site.", listOf(page)),
+                    RawSegment("\n## PICK r-i3 · status=answered\nPick: Thorne Glucosamine & Chondroitin\nLabel: ", emptyList()),
+                    RawSegment("Glucosamine sulfate 500 mg per capsule.", listOf(page)),
+                    RawSegment("\nWhy: preferred brand\n", emptyList()),
+                ),
+                listOf(com.lifeadmin.autopilot.ai.research.RawSearch("Thorne glucosamine", emptyList())), MeasuredUsage(9_000, 600, 0, 0, 0, 1), CallStop.END, 6_000, "msg_fu",
+            ),
+        )
+        launch(seedSession = true)
+        val before = runBlocking { container.sessionRepository.get("seed") }!!
+        detailScrollTo("detail_research_latest")
+        compose.onNodeWithTag("detail_research_latest").performClick()
+        waitFor("brief_list")
+        compose.onNodeWithTag("banner_continue").performClick()
+        waitFor("continue_sheet")
+        compose.onNodeWithTag("continue_note").performTextInput("Does Thorne sell glucosamine directly?")
+        compose.onNodeWithTag("continue_go").performClick()
+        waitFor("brief_list")
+        compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("brief_followup")).fetchSemanticsNodes().isNotEmpty() }
+        listScrollTo("brief_list", "brief_followup")
+        compose.onNodeWithTag("brief_followup").assertIsDisplayed()
+        // The question shows on the follow-up card and as a row in "point by point".
+        assertTrue(compose.onAllNodes(hasText("Does Thorne sell glucosamine directly?", substring = true)).fetchSemanticsNodes().size >= 1)
+        compose.onNode(hasText("Thorne sells Glucosamine & Chondroitin directly", substring = true)).assertIsDisplayed()
+        val prompt = provider.calls.single().user
+        assertTrue(prompt.contains("\"Does Thorne sell glucosamine directly?\"") && prompt.contains("main objective") && prompt.contains("REQ r-f1"))
+        val s = runBlocking { container.sessionRepository.get("seed") }!!
+        assertEquals("the original answer is untouched", before.content.answer, s.content.answer)
+        assertEquals(RequirementStatus.ANSWERED, s.content.followUps.single().status)
+        assertEquals(SessionOutcome.COMPLETE, s.outcome)
+        // The follow-up is a row in "point by point" too.
+        listScrollTo("brief_list", "cov_r-f1")
+        compose.onNodeWithTag("cov_r-f1", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test fun aContinuationCutOffBeforeAnyTextShowsWhatHappenedAndLeavesTheSavedResultAlone() {
+        // The real-device shape: thinking + one search used the whole output budget; no text block at all.
+        provider.enqueue(CallResult.Done(emptyList(), listOf(com.lifeadmin.autopilot.ai.research.RawSearch("Thorne glucosamine", emptyList())), MeasuredUsage(9_000, 1_500, 0, 0, 0, 1), CallStop.MAX_TOKENS, 12_000, "msg_cut", shape = com.lifeadmin.autopilot.ai.research2.ReplyShape(mapOf("thinking" to 2, "server_tool_use" to 1, "web_search_tool_result" to 1), 0, 0)))
+        launch(seedSession = true)
+        val before = runBlocking { container.sessionRepository.get("seed") }!!
+        detailScrollTo("detail_research_latest")
+        compose.onNodeWithTag("detail_research_latest").performClick()
+        waitFor("brief_list")
+        compose.onNodeWithTag("banner_continue").performClick()
+        waitFor("continue_sheet")
+        compose.onNodeWithTag("continue_note").performTextInput("Any Thorne options?")
+        compose.onNodeWithTag("continue_go").performClick()
+        waitFor("result_headline")
+        compose.onNode(hasText("The reply hit its output limit before any answer")).assertIsDisplayed()
+        compose.onNode(hasText("No new findings were saved. Your previous research is unchanged.", substring = true)).assertIsDisplayed()
+        assertFalse("never the generic malformed error", compose.onAllNodes(hasText("MALFORMED", substring = true)).fetchSemanticsNodes().isNotEmpty())
+        compose.onNodeWithTag("result_diagnostics_toggle").performClick()
+        waitFor("result_diagnostics")
+        compose.onNode(hasText("stop=max_tokens", substring = true)).assertIsDisplayed()
+        compose.onNode(hasText("thinking 2", substring = true)).assertIsDisplayed()
+        assertFalse("the shareable record never shows the question", compose.onAllNodes(hasText("Thorne options", substring = true)).fetchSemanticsNodes().isNotEmpty())
+        // Back to the saved result: unchanged, with the attempt on its log.
+        compose.onNodeWithTag("result_open_session").performClick()
+        waitFor("brief_list")
+        val s = runBlocking { container.sessionRepository.get("seed") }!!
+        assertEquals(before.content.answer, s.content.answer)
+        assertEquals(before.content.body, s.content.body)
+        assertEquals(before.content.requirements.map { it.id }, s.content.requirements.map { it.id })
+        assertEquals(2, s.content.runs.size)
+        assertEquals(SessionOutcome.FAILED, s.content.latestRun!!.outcome)
+        assertEquals(com.lifeadmin.autopilot.ai.research2.CallClass.TRUNCATED_BEFORE_TEXT, s.content.latestRun!!.stages.single().callLog.single().classification)
+        assertEquals(com.lifeadmin.autopilot.ai.usage.CallOutcome.TRUNCATED, runBlocking { container.usageLedger.getAll() }.single().outcome)
+        listScrollTo("brief_list", "brief_log_toggle")
+        compose.onNodeWithTag("brief_log_toggle").performClick()
+        waitFor("brief_log_call")
     }
 }
 

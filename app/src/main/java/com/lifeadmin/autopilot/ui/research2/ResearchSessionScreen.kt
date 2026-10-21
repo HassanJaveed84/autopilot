@@ -66,6 +66,7 @@ import com.lifeadmin.autopilot.ui.research.BriefSectionTitle
 import com.lifeadmin.autopilot.ui.research.CitationChip
 import com.lifeadmin.autopilot.ui.research.ResearchBanner
 import com.lifeadmin.autopilot.ui.research.ResearchStamp
+import com.lifeadmin.autopilot.ui.theme.TimeTextStyle
 import com.lifeadmin.autopilot.ui.research.SourceRow
 import com.lifeadmin.autopilot.ui.research.SourceSheet
 import com.lifeadmin.autopilot.ui.theme.AutopilotTheme
@@ -147,7 +148,7 @@ fun ResearchSessionScreen(
             else -> {
                 val content = session.content
                 val sources = content.sources
-                val items = content.requirements.filter { it.type == RequirementType.ITEM || it.type == RequirementType.USER_ADDED }
+                val items = content.requirements.filter { (it.type == RequirementType.ITEM || it.type == RequirementType.USER_ADDED) && !it.followUp }
                 val open = SessionAssembler.gaps(content)
                 val affected = open.map { it.label }
                 val cite = viewModel::openSource
@@ -170,6 +171,23 @@ fun ResearchSessionScreen(
                     if (content.answer.isNotEmpty() && (content.template == DeliverableTemplate.QUICK_ANSWER || content.template == DeliverableTemplate.HOW_TO || content.template == DeliverableTemplate.SHORTLIST)) item {
                         BriefSectionTitle(if (content.template == DeliverableTemplate.SHORTLIST) "Recommendation" else "Answer")
                         SurfaceCard(radius = 18.dp, contentPadding = PaddingValues(16.dp), modifier = Modifier.testTag("brief_answer")) { CitedText2(content.answer, sources, cite) }
+                    }
+                    if (content.followUps.isNotEmpty()) {
+                        // Follow-up questions from continuations, answered next to the original answer, never over it.
+                        item { BriefSectionTitle("Follow-ups", count = content.followUps.size) }
+                        itemsIndexed(content.followUps, key = { _, f -> "fu_" + f.runId }) { i, f ->
+                            SurfaceCard(radius = 18.dp, contentPadding = PaddingValues(16.dp), modifier = Modifier.padding(bottom = 10.dp).testTag(if (i == 0) "brief_followup" else "brief_followup_$i")) {
+                                Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    StatusGlyph(f.status, Modifier.padding(top = 2.dp))
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text("“${f.question}”", style = MaterialTheme.typography.titleSmall, color = c.ink)
+                                        Text(f.status.label, style = MaterialTheme.typography.labelSmall, color = when (f.status) { RequirementStatus.ANSWERED, RequirementStatus.RESOLVED_CONFLICT -> c.onDoneSoft; RequirementStatus.NOT_FOUND, RequirementStatus.PENDING -> c.ink3; else -> c.onSignalSoft })
+                                        if (f.answer.isNotEmpty()) CitedText2(f.answer, sources, cite)
+                                        if (f.summary.isNotBlank() && (f.answer.isEmpty() || f.status != RequirementStatus.ANSWERED)) Text(f.summary, style = MaterialTheme.typography.bodySmall, color = c.ink2)
+                                    }
+                                }
+                            }
+                        }
                     }
                     item {
                         BriefSectionTitle("Your request, point by point")
@@ -248,7 +266,10 @@ fun ResearchSessionScreen(
                                 run.stages.forEach { st ->
                                     Text("${st.kind.label}: ${st.result.name.lowercase()}" + (if (st.result == StageResult.DONE) " · ${st.searchesRun} of ${st.searchesAllowed} searches" + (if (st.calls > 1) " · ${st.calls} calls" else "") else "") + (st.note?.let { " — $it" } ?: ""), style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(top = 4.dp))
                                     st.queries.forEach { q -> Text("   “$q”", style = MaterialTheme.typography.bodySmall, color = c.ink) }
+                                    // What each reply amounted to, in counts and kinds only (never its text).
+                                    st.callLog.forEach { d -> Text("   " + d.line(), style = TimeTextStyle.copy(fontSize = 10.sp, lineHeight = 14.sp), color = c.ink3, modifier = Modifier.padding(top = 2.dp).testTag("brief_log_call")) }
                                 }
+                                if (!run.outcome.success && run.technical != null && run.stages.none { it.result == StageResult.DONE }) Text(run.technical, style = TimeTextStyle.copy(fontSize = 11.sp), color = c.ink3, modifier = Modifier.padding(top = 4.dp))
                                 Text("${run.usage.inputTokens} in · ${run.usage.outputTokens} out" + (if (run.usage.cacheReadTokens > 0) " · ${run.usage.cacheReadTokens} cached" else "") + " · ${run.usage.webSearches} searches · ${run.usage.elapsedMs / 1000} s" + (if (!run.usage.complete) " · usage incomplete" else ""), style = MaterialTheme.typography.labelSmall, color = c.ink3, modifier = Modifier.padding(top = 4.dp))
                             }
                             Text("Shared: ${content.shared.joinToString(", ").lowercase()}.", style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(top = 8.dp))

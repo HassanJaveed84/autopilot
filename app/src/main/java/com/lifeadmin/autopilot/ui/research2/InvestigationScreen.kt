@@ -30,7 +30,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,13 +49,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lifeadmin.autopilot.ai.research.ResearchError
+import com.lifeadmin.autopilot.ai.research2.CallClass
+import com.lifeadmin.autopilot.ai.research2.CallDiagnostic
 import com.lifeadmin.autopilot.ai.research2.DeepRunState
 import com.lifeadmin.autopilot.ai.research2.RunEventKind
+import com.lifeadmin.autopilot.ai.research2.ResearchModes
 import com.lifeadmin.autopilot.ai.research2.RunResult
 import com.lifeadmin.autopilot.ai.research2.StageKind
 import com.lifeadmin.autopilot.ai.usage.UsdEstimate
 import com.lifeadmin.autopilot.ui.components.AutopilotIcons
 import com.lifeadmin.autopilot.ui.components.DraftPill
+import com.lifeadmin.autopilot.ui.components.LinkButton
 import com.lifeadmin.autopilot.ui.components.PrimaryButton
 import com.lifeadmin.autopilot.ui.components.RoundIconButton
 import com.lifeadmin.autopilot.ui.components.SecondaryButton
@@ -60,6 +68,7 @@ import com.lifeadmin.autopilot.ui.components.TimeText
 import com.lifeadmin.autopilot.ui.research.ResearchResultState
 import com.lifeadmin.autopilot.ui.research.ResearchStamp
 import com.lifeadmin.autopilot.ui.theme.AutopilotTheme
+import com.lifeadmin.autopilot.ui.theme.TimeTextStyle
 import com.lifeadmin.autopilot.ui.theme.rememberReducedMotion
 import kotlinx.coroutines.delay
 import java.time.Duration
@@ -125,17 +134,26 @@ fun InvestigationScreen(
                 running != null -> RunningContent(running, elapsedMs, reduced)
                 finished != null && finished.result is RunResult.Failed -> {
                     val error = finished.result.error
+                    val continuation = finished.continuation
                     ResearchResultState(
                         error, null,
                         primary = {
-                            when (error) {
-                                ResearchError.Disabled, ResearchError.NoApiKey, ResearchError.NoConsent, ResearchError.Unauthorized, ResearchError.WebSearchNotEnabled, ResearchError.OutOfCredit, ResearchError.Forbidden ->
+                            when {
+                                error == ResearchError.Disabled || error == ResearchError.NoApiKey || error == ResearchError.NoConsent || error == ResearchError.Unauthorized || error == ResearchError.WebSearchNotEnabled || error == ResearchError.OutOfCredit || error == ResearchError.Forbidden ->
                                     PrimaryButton("Open AI settings", onClick = onOpenAiSettings, modifier = Modifier.fillMaxWidth().testTag("result_settings"))
+                                // A failed continuation: the saved result is still there, unchanged; that is where to go.
+                                continuation -> PrimaryButton("Back to your research", onClick = { viewModel.dismiss(); onOpenSession(finished.sessionId) }, modifier = Modifier.fillMaxWidth().testTag("result_open_session"))
                                 else -> PrimaryButton(if (error.retryable) "Try again" else "Edit request", onClick = { viewModel.dismiss(); onTryAgain() }, modifier = Modifier.fillMaxWidth().testTag("result_retry"))
                             }
                         },
                         secondary = { SecondaryButton("Back to task", onClick = { viewModel.dismiss(); onBack() }, modifier = Modifier.fillMaxWidth().testTag("result_back"), minHeight = 48.dp) },
                         fixes = when (error) {
+                            is ResearchError.NoFindings -> when (error.why) {
+                                CallClass.TRUNCATED_BEFORE_TEXT -> listOf("Claude used the reply's whole output room on thinking and searches before writing", "Quick now allows ${ResearchModes.QUICK_OUTPUT_TOKENS} output tokens per call; Thorough and Deep more. Trying again sends a new request and is billed again", if (continuation) "Your saved research is exactly as it was" else "Nothing was saved")
+                                CallClass.PAUSED_BEFORE_TEXT -> listOf("Anthropic paused the turn after the searches you authorized; the app never continues past that budget", "Continue again with a larger search budget to let the answer finish", if (continuation) "Your saved research is exactly as it was" else "Nothing was saved")
+                                CallClass.TOOL_ONLY -> listOf("The searches ran and are billed, but the reply ended without text", "Trying again sends a new request", if (continuation) "Your saved research is exactly as it was" else "Nothing was saved")
+                                else -> listOf("Anthropic returned a reply with no content", "Trying again sends a new request", if (continuation) "Your saved research is exactly as it was" else "Nothing was saved")
+                            }
                             ResearchError.WebSearchNotEnabled -> listOf("Open the Anthropic Console for your organization", "Enable the web search tool for your key", "Come back and start the research again")
                             ResearchError.OutOfCredit -> listOf("Add credit in the Anthropic Console", "Start the research again — your request is kept")
                             is ResearchError.RateLimited -> listOf("Wait a moment", "Tap Try again — nothing was retried for you")
@@ -145,6 +163,7 @@ fun InvestigationScreen(
                             else -> emptyList()
                         },
                     )
+                    if (finished.result.diagnostics.isNotEmpty()) TechnicalRecord(finished.runId, finished.result.diagnostics)
                 }
                 finished != null && finished.result is RunResult.Discarded -> ResearchResultState(ResearchError.Stopped(0), null, primary = { PrimaryButton("Back to task", onClick = { viewModel.dismiss(); onBack() }, modifier = Modifier.fillMaxWidth().testTag("result_back")) })
                 finished != null -> Box(Modifier.fillMaxWidth().height(200.dp)) // handing over to the result
@@ -163,6 +182,29 @@ fun InvestigationScreen(
             canKeep = running.sourcesSeen > 0 || running.events.any { it.kind == RunEventKind.STAGE_DONE },
             onKeep = { viewModel.stop(keep = true) }, onDiscard = { viewModel.stop(keep = false) }, onDismiss = viewModel::closeStop,
         )
+    }
+}
+
+/**
+ * The redacted record of the failed run's calls: stop reason, block kinds and counts, text length,
+ * parsed blocks, tokens and duration. Counts only; safe to paste into a bug report.
+ */
+@Composable
+private fun TechnicalRecord(runId: String, diagnostics: List<CallDiagnostic>) {
+    val c = AutopilotTheme.colors
+    val clipboard = LocalClipboardManager.current
+    var open by rememberSaveable { mutableStateOf(false) }
+    val text = buildString {
+        appendLine("run $runId · ${diagnostics.size} ${if (diagnostics.size == 1) "call" else "calls"}")
+        diagnostics.forEach { appendLine(it.line()) }
+        append("Counts and kinds only: no prompt, task text, page content or key.")
+    }
+    Column(Modifier.fillMaxWidth().padding(top = 16.dp)) {
+        LinkButton(if (open) "Hide technical details" else "Technical details (safe to share)", onClick = { open = !open }, modifier = Modifier.testTag("result_diagnostics_toggle"))
+        if (open) SurfaceCard(radius = 14.dp, contentPadding = PaddingValues(12.dp), modifier = Modifier.padding(top = 8.dp).testTag("result_diagnostics")) {
+            Text(text, style = TimeTextStyle.copy(fontSize = 11.sp, lineHeight = 15.sp), color = c.ink2)
+            SecondaryButton("Copy", onClick = { clipboard.setText(AnnotatedString(text)) }, modifier = Modifier.padding(top = 10.dp).testTag("result_diagnostics_copy"), minHeight = 40.dp)
+        }
     }
 }
 

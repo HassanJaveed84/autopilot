@@ -1120,6 +1120,8 @@ class ScreenshotTourResearch2 {
                 emptyList(), com.lifeadmin.autopilot.ai.usage.MeasuredUsage(9_000, 200, 0, 0, 2_000, 2), com.lifeadmin.autopilot.ai.research2.CallStop.END, 5_000, "msg_2",
             ),
         )
+        // Third call: the typed follow-up on the Continue sheet, answered next to the original answer.
+        calls.queue.addLast(followUpAnswered())
         launch(container(calls, explainerAccepted = false), "Supplements", "Monthly order", step = "Buy magnesium: Pure Encapsulations Magnesium (glycinate)")
         openPreflight(com.lifeadmin.autopilot.testing.Research2Fixtures.SUPPLEMENTS_REQUEST)
         compose.scrollTo("preflight_list", "preflight_for")
@@ -1159,9 +1161,15 @@ class ScreenshotTourResearch2 {
         screenshot("s13-result-continue-card")
         compose.onNodeWithTag("continue_button").tap()
         compose.waitForTag("continue_sheet")
+        compose.onNodeWithTag("continue_note").performTextInput(FOLLOW_UP_QUESTION)
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.waitForIdle()
         screenshot("s14-continue-sheet")
-        compose.back()
-        compose.waitForTag("brief_review")
+        compose.onNodeWithTag("continue_go").tap()
+        compose.waitForTag("brief_list")
+        compose.waitForTag("brief_followup")
+        compose.scrollTo("brief_list", "brief_followup")
+        screenshot("s14b-result-follow-up-answered")
         compose.scrollTo("brief_list", "brief_log_toggle")
         compose.onNodeWithTag("brief_log_toggle").tap()
         compose.waitForTag("brief_log")
@@ -1217,6 +1225,69 @@ class ScreenshotTourResearch2 {
         compose.onNodeWithTag("brief_review").tap()
         compose.waitForTag("apply_list")
         screenshot("s28-proposals-gift")
+    }
+
+    private val FOLLOW_UP_QUESTION = "Does Thorne sell glucosamine directly?"
+    private val thornePage = com.lifeadmin.autopilot.ai.research.RawCitation("https://www.thorne.example/products/glucosamine", "Glucosamine & Chondroitin | Thorne", "Glucosamine sulfate 500 mg")
+
+    /** A continuation reply that answers the typed follow-up: REQ for it, a short ANSWER, the item it settles. */
+    private fun followUpAnswered() = com.lifeadmin.autopilot.ai.research2.CallResult.Done(
+        listOf(
+            com.lifeadmin.autopilot.ai.research.RawSegment("## REQ r-f1 · status=answered\n", emptyList()),
+            com.lifeadmin.autopilot.ai.research.RawSegment("Thorne's own site lists Glucosamine & Chondroitin at 500 mg per capsule.", listOf(thornePage)),
+            com.lifeadmin.autopilot.ai.research.RawSegment("\n## ANSWER\n", emptyList()),
+            com.lifeadmin.autopilot.ai.research.RawSegment("Yes: Thorne sells Glucosamine & Chondroitin directly, 500 mg glucosamine sulfate per capsule.", listOf(thornePage)),
+            com.lifeadmin.autopilot.ai.research.RawSegment("\n## REQ r-i3 · status=answered\n", emptyList()),
+            com.lifeadmin.autopilot.ai.research.RawSegment("Found on the brand site.", listOf(thornePage)),
+            com.lifeadmin.autopilot.ai.research.RawSegment("\n## PICK r-i3 · status=answered\nPick: Thorne Glucosamine & Chondroitin\nLabel: ", emptyList()),
+            com.lifeadmin.autopilot.ai.research.RawSegment("Glucosamine sulfate 500 mg per capsule.", listOf(thornePage)),
+            com.lifeadmin.autopilot.ai.research.RawSegment("\nWhy: preferred brand\n## PROPOSE step · req=r-i3\nBuy glucosamine: Thorne Glucosamine & Chondroitin\nNote: 500 mg per capsule.\n", emptyList()),
+        ),
+        listOf(com.lifeadmin.autopilot.ai.research.RawSearch("Thorne glucosamine", emptyList())), com.lifeadmin.autopilot.ai.usage.MeasuredUsage(9_000, 600, 0, 0, 0, 1), com.lifeadmin.autopilot.ai.research2.CallStop.END, 6_000, "msg_follow_up",
+    )
+
+    /** The real-device shape: thinking and one search used the whole output budget before any text block. */
+    @Test fun s6_continuationCutOffBeforeAnyText() {
+        val calls = ScriptedCalls()
+        calls.queue.addLast(com.lifeadmin.autopilot.testing.Research2Fixtures.supplementsGather())
+        calls.queue.addLast(
+            com.lifeadmin.autopilot.ai.research2.CallResult.Done(
+                listOf(com.lifeadmin.autopilot.ai.research.RawSegment("## REQ r-i3 · status=not_found\nStill nothing from the preferred brands.\n", emptyList())),
+                emptyList(), com.lifeadmin.autopilot.ai.usage.MeasuredUsage(9_000, 200, 0, 0, 2_000, 2), com.lifeadmin.autopilot.ai.research2.CallStop.END, 5_000, "msg_2",
+            ),
+        )
+        calls.queue.addLast(
+            com.lifeadmin.autopilot.ai.research2.CallResult.Done(
+                emptyList(), listOf(com.lifeadmin.autopilot.ai.research.RawSearch("Thorne glucosamine", emptyList())), com.lifeadmin.autopilot.ai.usage.MeasuredUsage(9_800, 1_500, 0, 0, 0, 1),
+                com.lifeadmin.autopilot.ai.research2.CallStop.MAX_TOKENS, 12_100, "msg_cut",
+                shape = com.lifeadmin.autopilot.ai.research2.ReplyShape(mapOf("thinking" to 2, "server_tool_use" to 1, "web_search_tool_result" to 1), 0, 0),
+            ),
+        )
+        launch(container(calls), "Supplements", "Monthly order")
+        openPreflight(com.lifeadmin.autopilot.testing.Research2Fixtures.SUPPLEMENTS_REQUEST)
+        compose.scrollTo("preflight_list", "preflight_start")
+        compose.onNodeWithTag("preflight_start").tap()
+        compose.waitForTag("brief_list")
+        compose.scrollTo("brief_list", "continue_card")
+        compose.onNodeWithTag("continue_button").tap()
+        compose.waitForTag("continue_sheet")
+        compose.onNodeWithTag("continue_note").performTextInput(FOLLOW_UP_QUESTION)
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.waitForIdle()
+        compose.onNodeWithTag("continue_go").tap()
+        compose.waitForTag("result_headline")
+        screenshot("s30-continuation-cut-off-before-text")
+        compose.onNodeWithTag("result_diagnostics_toggle").tap()
+        compose.waitForTag("result_diagnostics")
+        compose.onNodeWithTag("research_progress").performScrollToNode(hasTestTag("result_diagnostics"))
+        screenshot("s31-continuation-technical-record")
+        compose.onNodeWithTag("result_open_session").tap()
+        compose.waitForTag("brief_list")
+        compose.scrollTo("brief_list", "brief_log_toggle")
+        compose.onNodeWithTag("brief_log_toggle").tap()
+        compose.waitForTag("brief_log_call")
+        compose.scrollTo("brief_list", "brief_log")
+        screenshot("s32-result-unchanged-with-failed-continuation-on-log")
     }
 
     @Test fun s3_errorAndOffline() {
