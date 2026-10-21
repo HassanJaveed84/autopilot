@@ -72,14 +72,17 @@ class ResearchTimeoutHttpTest {
 
     @Test fun legacyResearchKeepsItsOwnShorterTimeout() {
         val legacy = base(Duration.ofMillis(800))
-        enqueueDelayed(2_000)
+        // The server never answers the legacy request: the legacy flow gives up at its own 800 ms.
+        server.enqueue(MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.NO_RESPONSE))
         val f = runBlocking { legacy.research(legacyRequest, FAKE_KEY, AiConfig.DEFAULT_MODEL) {} }
         assertTrue(f.toString(), f is ResearchResponse.Failure && (f as ResearchResponse.Failure).error is ResearchError.Timeout)
-        // The same base provider still serves a longer M3A.2 call afterwards (client reuse must not pin the short timeout).
+        server.takeRequest(2, TimeUnit.SECONDS)
+        // The same base provider (same cached client) still serves a longer M3A.2 call afterwards: client reuse must not pin the short timeout.
         val calls = AnthropicResearchCalls(legacy, timeout = Duration.ofSeconds(5))
         enqueueDelayed(1_500)
         val ok = runBlocking { calls.call(ModelCall("claude-opus-5-5", "SYS", "USER", 1_000, 0, timeout = Duration.ofSeconds(5)), FAKE_KEY) }
         assertTrue(ok.toString(), ok is CallResult.Done)
+        assertEquals(2, server.requestCount)
     }
 
     @Test fun apiKeyChangeAndResetRebuildTheClientWithoutLosingTheCallTimeout() {
