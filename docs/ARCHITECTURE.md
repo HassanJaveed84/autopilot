@@ -110,7 +110,12 @@ ReconcileWorker (WorkManager, 1 h) ── engine.reconcileAll + ledger prune
   Complete only when every requirement incl. constraints is covered; budget exhausted is never Complete),
   `ProposalBuilder` (one reviewable proposal per requested item), `DeepResearchService` (planned
   stages GATHER → FILL_GAPS → CROSS_CHECK → SYNTHESIZE, budget check before each HTTP call, soft dollar
-  limit, `pause_turn` as a separate billed call, Stop keep/discard, continuation on a saved session),
+  limit, `pause_turn` as a separate billed call — continued only while searches remain, never past the
+  budget — Stop keep/discard, continuation on a saved session where a typed note becomes a follow-up
+  requirement answered next to the saved answer, never over it; every HTTP call leaves a privacy-safe
+  `CallDiagnostic` — block kinds and counts, parsed block counts, stop reason, tokens, searches,
+  duration, classification — on the stage record, and a reply with nothing to save is reported as what
+  it was (cut off before text, paused before text, searches without text, empty) rather than "malformed"),
   `Research2Actions` (edited proposals → one transactional, idempotent `TaskEditCommand`; Undo).
   Start/continue run under one atomic launch claim (no double launch, no double daily reservation);
   the final save runs non-cancellable. Each HTTP call carries its own timeout (`ModelCall.timeout`,

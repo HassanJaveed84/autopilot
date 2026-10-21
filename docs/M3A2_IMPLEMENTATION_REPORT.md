@@ -424,6 +424,136 @@ connection so the next request opens a fresh connection.
 A single batch can still take up to 400–540 s on a slow network; the waiting line now says so. The
 checkpoint shows as "Interrupted" in the task's research list while a run is in flight.
 
+## Real-device bug — continuation returned "MALFORMED RESPONSE" (fixed)
+
+**What happened.** On the Galaxy S24 Ultra, a saved Deep fragrance session (~69 sources, ~$0.89) was
+continued with the note "Any chanel options" in Quick mode (Haiku 5.5, 3 searches). After ~12 s the
+app showed "The answer couldn't be used — The response had no usable text (no usable blocks). Nothing
+was saved. MALFORMED RESPONSE". The saved research was intact.
+
+**Investigation.** `DeepResearchService` set `ctx.merged` only when the parsed reply held an ANSWER,
+REQ, CAND, PICK, CLAIM or STEP block; everything else ended in the same `Malformed("no usable blocks")`
+with no record of what had come back. Replies that land there: (1) `max_tokens` before any text block;
+(2) a tool-only `pause_turn` when no searches were left (`left > 0` blocked the continuation and the
+paused content was dropped); (3) an empty `end_turn`; (4) an UNRESOLVED-only reply (parsed, not counted);
+(5) text whose REQ/CAND headings did not start with the exact id (dropped block by block, nothing kept).
+The likeliest on the phone is (1): Claude Haiku 5.5 runs **adaptive thinking by default** when the
+request omits `thinking`, thinking and tool calls count against `max_tokens`, and Quick allowed only
+**1,500** output tokens for a prompt that carried five requirements, 40 source titles, ~25 earlier
+queries and the new question. Twelve seconds is about what Haiku needs to spend 1,500 tokens on
+thinking plus one search; the adapter ignored thinking blocks, so the orchestrator saw "no blocks".
+The exact outcome on the device cannot be proven after the fact — which is finding A's point: every
+call now leaves a privacy-safe record that would have said so.
+
+**Reproduced first.** `ContinuationRegressionTest` (11 tests) seeds the saved fragrance session and
+continues it with the same note; on the unfixed code all ten behavioural tests failed, five of them
+with exactly `Malformed(detail=no usable blocks)` (cut off before text, empty reply, tool-only pause
+with no budget left, UNRESOLVED-only, misformatted headings), the others on the follow-up prompt, the
+overwritten answer and the missing run record. `ReplyShapeHttpTest` (3) drives the real SDK client
+against MockWebServer with thinking + search + `max_tokens`, a tool-only `pause_turn` and an empty
+`end_turn`.
+
+**A — diagnostics.** The adapter now counts block kinds (`text`, `thinking`, `redacted_thinking`,
+`server_tool_use`, `web_search_tool_result`, `tool_use`, other), text characters and cited text blocks
+(`ReplyShape` on `CallResult.Done`). The orchestrator adds the parsed block counts, stop reason, tokens
+in/out against `max_tokens`, searches run/allowed, duration, stage and a classification (`CallClass`:
+STRUCTURED, FREE_FORM, TEXT_UNPARSED, UNRESOLVED_ONLY, NO_NEW_EVIDENCE, TOOL_ONLY, PAUSED_BEFORE_TEXT,
+TRUNCATED_BEFORE_TEXT, EMPTY, REFUSED, HTTP_FAILED) into a `CallDiagnostic` per HTTP call, stored on
+`StageRecord.callLog` and carried on `RunResult.Failed.diagnostics`. Never recorded: the key, prompt,
+task text, reply text, queries or page content (`diagnosticsNeverCarryTheKeyThePromptTheTaskOrTheAnswer`
+checks the shareable summary against all of them). The failure screen has "Technical details (safe to
+share)" with Copy; "How this was researched" lists each call's line under its stage.
+
+**B — paused turns.** A `pause_turn` is continued with the same tool and the stage's remaining searches
+while any remain (as before); with none left it is **not** continued — the docs require the same tools
+on the continuation, and `max_uses` would re-authorise searches past the budget — and the run says so:
+"Research paused before an answer was written … 3 of 3 searches … not continued (no searches left in
+the budget)", outcome Incomplete · budget used up, never MALFORMED. No hidden billable retry anywhere.
+
+**C — the follow-up is the objective.** A typed note becomes a requirement of its own (`r-f1`,
+`USER_ADDED`, `followUp = true`) for that run, so coverage, the outcome and the Continue sheet account
+for it; it never gets a generated proposal and does not count toward "one step per item".
+`Research2Prompt.continuation` with a note now leads with the exact words in quotes, names it the main
+objective and the REQ id to report, restates the original constraints, keeps the original request
+verbatim, lists existing candidates by id, name, variant and price (so new options are compared and
+merged, numbering continues), refers to **cited sources only, at most 12** (was: 40 titles), the last 10
+queries, and asks for a small contract: REQ for the follow-up, a 2–4 sentence ANSWER, new CAND/ATTR,
+UNRESOLVED for anything unverifiable, "do not rewrite the earlier answer". A continuation's ANSWER and
+TITLE are never merged over the saved ones; they become a `FollowUp` record (question verbatim, status,
+cited answer, summary) shown as a "Follow-ups" card under the answer. Free text about the follow-up is
+shown but marked Needs a check; an UNRESOLVED line settles it as Not found with the reason. A
+focus-only continuation (no note) keeps the previous prompt shape and adds no follow-up requirement.
+
+**Output room.** Quick 1,500 → **6,000**, Thorough 6,000 → 8,000, Deep 10,000 → 12,000 output tokens
+per call (Claude 5.5 models think by default; thinking counts against `max_tokens`). Output tokens are
+the cheap part: 6,000 Haiku 5.5 output tokens ≈ $0.003 against $0.03 for its three searches. The per-call
+timeout follows (`callTimeout`: Quick 3 searches 142 s → 255 s; a Deep batch of 6 → 450 s, still inside
+the 540 s cap).
+
+**D — honest outcomes.** `ResearchError.NoFindings(why, detail, continuation)` replaces the generic
+error on the M3A.2 path: headline per class ("The reply hit its output limit before any answer",
+"Research paused before an answer was written", "Searches ran, but no answer came back", "Claude sent
+back an empty reply"), the detail in plain words ("reached its 6000-token output limit before writing
+any text (2 thinking blocks, 1 search, no text)"), then "No new findings were saved. Your previous
+research is unchanged." for a continuation or "Nothing was saved." for a first run. Text that came back
+is kept: a free-form reply is the follow-up's answer; text whose headings carry no usable id is kept as
+text (heading lines stripped); an UNRESOLVED-only reply is saved as an honest Not found. REQ/CAND/ATTR/
+PICK ids are now matched anywhere in the heading ("REQ · r-i0", "REQ: r-i0"). A failed continuation
+saves the original content **unchanged** plus a FAILED (or Incomplete · budget) run record with the call
+log, so the log and the ledger agree; a failed first run saves nothing. Usage accounting is untouched
+(TRUNCATED / FAILED_UNKNOWN rows, search floors). The failure screen of a continuation leads back to the
+saved result ("Back to your research") instead of the preflight.
+
+**Tests.** `ContinuationRegressionTest` (11): cut off before text (error, message, unchanged findings,
+run record, ledger, diagnostic fields); diagnostics privacy; empty reply; tool-only pause with no budget
+left (one call, Incomplete · budget); tool-only pause with budget left (continued with the remainder,
+answer saved as a follow-up); UNRESOLVED-only (saved, Not found with reason, offered for another
+continuation); free-form cited text (follow-up answer, original untouched, Needs a check); misformatted
+headings kept as text; HTTP 500 continuation (original intact, run recorded, search floor); follow-up as
+the primary objective (verbatim quote, constraints, candidates, ≤ 12 source lines, REQ id, numbering,
+no generated proposal, Complete); first run cut off before text; focus-only continuation unchanged.
+`ReplyShapeHttpTest` (3). `DeepResearchServiceTest`: the continuation test now checks the follow-up
+record and the kept answer; empty reply asserts `NoFindings(EMPTY)` with its diagnostic; timeouts and
+the spend-limit trim follow the new output budgets. `Research2FlowUiTest` +2: typed follow-up answered
+next to the original answer (card, coverage row, prompt, Complete); continuation cut off before text
+(headline, "unchanged" message, no MALFORMED, technical record with `stop=max_tokens` and `thinking 2`,
+question absent from the record, back to the unchanged result with the failed run on its log).
+`ScreenshotTourResearch2`: s1 now types the follow-up and shows the answered card (s14b); new s6 shows
+the cut-off failure screen, the technical record and the unchanged result (s30–s32).
+
+**Validation.** Local: `lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest`
+→ lint clean, **542 tests / 0 failures**, debug + release APKs, instrumentation APK. CI results on the
+pushed head are recorded in the table below once the runs finish.
+
+| Check | Head | Result |
+|---|---|---|
+| Android CI (lint, unit tests, APKs, emulator tests) | _pending_ | _pending_ |
+| Screenshot tour (run 8, 4 variants) | _pending_ | _pending_ |
+
+**Real-device retest (needs the phone and a personal key).**
+1. Install the debug APK over the previous build (same signing key; Room schema unchanged; saved
+   sessions load — new fields default).
+2. Open the saved Deep fragrance session → Continue researching → type "Any chanel options" → Quick ·
+   Haiku 5.5 · 3 searches → Continue.
+3. Expected: either a "Follow-ups" card under the recommendation with a cited Chanel answer (and any
+   Chanel option as a new candidate next to the old ones, numbering continued), or an honest card
+   "Not found" with the reason and the topic under "Still unresolved"; the original recommendation,
+   candidates, sources and coverage unchanged; "Your request, point by point" shows the question as a
+   row; "How this was researched" shows "Continuation 2 · Quick · Haiku 5.5" with one call line
+   (`stop=end_turn · blocks: thinking n, server_tool_use n, text n …`).
+4. If it fails again: the screen must name what came back (output limit / paused / searches without
+   text / empty), say "No new findings were saved. Your previous research is unchanged.", and
+   "Technical details (safe to share)" → Copy gives the redacted record to paste into the bug report.
+   The original session must open unchanged with the failed continuation on its log.
+5. Check the AI usage screen: one `RESEARCH_CONTINUATION` row for the attempt with its tokens and
+   searches (or a "≥" floor).
+
+**Remaining limitations.** The classification is inferred from the reply's shape; thinking depth
+cannot be reduced without an effort setting (`output_config.effort`), which this change does not add
+(a product decision: it changes research quality). The exact cause on the device is a diagnosis, not a
+measurement; the next real run's call log settles it. A paused turn with no searches left still cannot
+be finished without re-authorising searches; the person is told and can continue with a larger budget.
+
 ## Cost rules, assumptions and limitations
 
 - Estimates use Anthropic's **reported** `usage` (input, output, cache creation 5m/1h, cache read,
