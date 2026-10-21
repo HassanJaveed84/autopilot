@@ -531,6 +531,8 @@ heads (code in `42098c8` + `381066a`, docs `81f3172`, tour fix `b088211`):
 | Android CI · PR [39534619532](https://github.com/HassanJaveed84/autopilot/actions/runs/39534619532) | `b088211` | ✅ (same jobs) |
 | Android CI on `81f3172` (runs 39533644509 / 39533648729) | `81f3172` | cancelled by the newer push before finishing (concurrency); code identical to `b088211` apart from the tour |
 | Screenshot tour run 8 [39533644451](https://github.com/HassanJaveed84/autopilot/actions/runs/39533644451) | `81f3172` | ❌ 4/4 variants: two tour-script faults (a lazy-list item waited for by tag instead of scrolled to; Start looked up inside the preflight list) — no product failure; fixed in `b088211` |
+| Android CI · push [39536349043](https://github.com/HassanJaveed84/autopilot/actions/runs/39536349043) and PR [39536353253](https://github.com/HassanJaveed84/autopilot/actions/runs/39536353253) | `0f865a2` (screens + tour renumbering) | ✅ |
+| Screenshot tour run 8c [39536349125](https://github.com/HassanJaveed84/autopilot/actions/runs/39536349125) | `0f865a2` | ✅ 4/4 variants with the renumbered s33–s35 |
 | Screenshot tour run 8b [39534614658](https://github.com/HassanJaveed84/autopilot/actions/runs/39534614658) | `b088211` | ✅ 4/4 variants (light/dark 1.0, light 1.3 and 2.0), 36 screens each incl. the follow-up card (s14b) and the cut-off continuation screens (s33–s35, captured as s30–s32 and renumbered); light/dark 1.0 committed under `docs/screenshots/m3a2/` |
 
 **Real-device retest (needs the phone and a personal key).**
