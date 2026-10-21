@@ -73,6 +73,12 @@ sealed interface DeepRunState {
         val spentIsFloor: Boolean,
         val stopRequested: Boolean = false,
         val continuation: Boolean = false,
+        /** The HTTP call in flight: when it was sent, how long the app will wait for it, and its number in this run. */
+        val callStartedAtEpochMs: Long? = null,
+        val callTimeoutSeconds: Int? = null,
+        val callsSent: Int = 0,
+        /** Evidence from completed calls has been saved; a later failure keeps it. */
+        val checkpointed: Boolean = false,
     ) : DeepRunState
 
     data class Finished(val runId: String, val sessionId: String, val taskId: String, val result: RunResult) : DeepRunState
@@ -235,6 +241,9 @@ class DeepResearchService(
 
     private class RunCtx(
         var session: ResearchSession,
+        /** The session as it was before this run: restored when a continuation is discarded. */
+        val original: ResearchSession,
+        val startedAt: Instant,
         val runId: String,
         val config: RunConfig,
         val key: String,
@@ -256,6 +265,10 @@ class DeepResearchService(
         var technical: String? = null
         var failure: ResearchError? = null
         val queriesThisRun = ArrayList<String>()
+        val priorRuns: List<RunRecord> = session.content.runs
+        /** A checkpoint of the merged evidence has been written to the store. */
+        var checkpointed = false
+        var callsSent = 0
     }
 
     private fun launch(session: ResearchSession, runId: String, config: RunConfig, key: String, kind: RunKind, shared: SharedContext?, focus: List<Requirement>, note: String?) {
@@ -264,7 +277,7 @@ class DeepResearchService(
             runId, session.id, session.taskId, session.content.title, config, startedAt, null, 0, config.stages.size, emptyList(), 0, session.content.sources.size, 0L, false,
             continuation = kind == RunKind.CONTINUATION,
         )
-        val ctx = RunCtx(session, runId, config, key, kind, shared, focus, note, SourceRegistry2(session.content.sources, runId))
+        val ctx = RunCtx(session, session, startedAt, runId, config, key, kind, shared, focus, note, SourceRegistry2(session.content.sources, runId))
         keepPartialOnStop = false
         job = scope.launch {
             val result: RunResult = try {
@@ -276,7 +289,7 @@ class DeepResearchService(
                     ctx.ending = SessionAssembler.Ending.STOPPED
                     ctx.technical = "STOPPED BY YOU"
                     event(runId, RunEventKind.STOPPED, "Stopped. Searches that already ran may be billed.")
-                    if (keepPartialOnStop && ctx.merged) finish(ctx) else RunResult.Failed(ResearchError.Stopped(ctx.searchesRun))
+                    if (keepPartialOnStop && ctx.merged) finish(ctx) else { discardCheckpoint(ctx); RunResult.Failed(ResearchError.Stopped(ctx.searchesRun)) }
                 }
             } catch (e: Exception) {
                 RunResult.Failed(ResearchError.Unexpected(e.javaClass.simpleName))
@@ -346,19 +359,38 @@ class DeepResearchService(
         event(ctx.runId, RunEventKind.BUDGET, "${stage.label}: not started — $why. One in-flight call can still exceed a limit; nothing else is launched.")
     }
 
-    /** One stage = one or two HTTP calls (pause_turn). Returns false when the run must end here. */
+    /**
+     * One stage = one or more bounded HTTP calls. A stage allowed more than
+     * [Research2Config.MAX_SEARCHES_PER_CALL] searches runs them in batches: each call is its own
+     * billed request with its own timeout, its evidence is merged and checkpointed before the next
+     * call, and the next batch is sent only while requirements are still open and the model kept
+     * searching. `pause_turn` is continued once per call within the same batch. Returns false when the
+     * run must end here. Nothing is ever re-sent on its own: a failed call ends the run.
+     */
     private suspend fun runStage(ctx: RunCtx, stage: StageKind, allowance: Int, user: String, cache: Boolean): Boolean {
         var prior: Any? = null
         var calls = 0
+        var continuations = 0
         var searchesThisStage = 0
         var left = allowance
+        var prompt = user
         val queries = ArrayList<String>()
+        val batched = stage != StageKind.SYNTHESIZE && allowance > Research2Config.MAX_SEARCHES_PER_CALL
         while (true) {
-            val call = ModelCall(ctx.config.model, Research2Prompt.SYSTEM, user, ctx.config.outputTokens, left, cacheSystem = cache, prior = prior)
-            event(ctx.runId, RunEventKind.SENT, if (prior == null) "${stage.label}: request sent (up to $left ${plural(left, "search", "searches")})" else "${stage.label}: continued within the same budget")
-            val record = UsageRecord(ids.newId(), if (ctx.kind == RunKind.CONTINUATION) UsageFeature.RESEARCH_CONTINUATION else UsageFeature.RESEARCH, ctx.config.model, clock.now(), ctx.runId, ctx.session.id, ctx.session.taskId, stage.name)
+            val ask = if (stage == StageKind.SYNTHESIZE) 0 else minOf(left, Research2Config.MAX_SEARCHES_PER_CALL)
+            val limit = Research2Config.callTimeout(ask, ctx.config.outputTokens)
+            val call = ModelCall(ctx.config.model, Research2Prompt.SYSTEM, prompt, ctx.config.outputTokens, ask, cacheSystem = cache, prior = prior, timeout = limit)
+            calls++; ctx.callsSent++
+            val which = if (batched || prior != null) " · call $calls" else ""
+            event(
+                ctx.runId, RunEventKind.SENT,
+                if (prior == null) "${stage.label}$which: request sent (up to $ask ${plural(ask, "search", "searches")}; waiting up to ${ResearchError.describe(limit.seconds.toInt())})"
+                else "${stage.label}$which: continued within the same budget (waiting up to ${ResearchError.describe(limit.seconds.toInt())})",
+            )
+            val sentAt = clock.now()
+            _state.update { st -> if (st is DeepRunState.Running && st.runId == ctx.runId) st.copy(callStartedAtEpochMs = sentAt.toEpochMilli(), callTimeoutSeconds = limit.seconds.toInt(), callsSent = ctx.callsSent) else st }
+            val record = UsageRecord(ids.newId(), if (ctx.kind == RunKind.CONTINUATION) UsageFeature.RESEARCH_CONTINUATION else UsageFeature.RESEARCH, ctx.config.model, sentAt, ctx.runId, ctx.session.id, ctx.session.taskId, stage.name)
             ledger.record(record)
-            calls++
             val result = try {
                 provider.call(call, ctx.key)
             } catch (e: CancellationException) {
@@ -367,6 +399,7 @@ class DeepResearchService(
                 ctx.usage = ctx.usage.copy(complete = false)
                 throw e
             }
+            _state.update { st -> if (st is DeepRunState.Running && st.runId == ctx.runId) st.copy(callStartedAtEpochMs = null) else st }
             when (result) {
                 is CallResult.Failed -> {
                     val outcome = if (notBilled(result.error)) CallOutcome.FAILED_NOT_BILLED else CallOutcome.FAILED_UNKNOWN
@@ -397,7 +430,7 @@ class DeepResearchService(
                     ctx.failure = result.error
                     ctx.technical = result.error.technical
                     ctx.ending = if (ctx.merged) SessionAssembler.Ending.FAILED_AFTER_PARTIAL else SessionAssembler.Ending.FAILED
-                    event(ctx.runId, RunEventKind.FAILED, "${stage.label}: ${result.error.headline}")
+                    event(ctx.runId, RunEventKind.FAILED, "${stage.label}$which: ${result.error.headline.lowercase(Locale.ROOT)} — ${result.error.technical.lowercase(Locale.ROOT)}" + if (ctx.merged) ". Evidence from earlier calls is kept." else ". Nothing was re-sent.")
                     return false
                 }
                 is CallResult.Done -> {
@@ -430,19 +463,73 @@ class DeepResearchService(
                     ctx.queriesThisRun += out.queries
                     if (out.answer.isNotEmpty() || out.coverage.isNotEmpty() || out.candidates.isNotEmpty() || out.picks.isNotEmpty() || out.claims.isNotEmpty() || out.steps.isNotEmpty()) ctx.merged = true
                     ctx.session = ctx.session.copy(content = SessionAssembler.merge(ctx.session.content, out, ctx.registry.sources()))
+                    // Evidence survives whatever happens to the next call.
+                    if (ctx.merged) checkpoint(ctx, stage)
                     updateRunning(ctx)
                     if (result.stop == CallStop.MAX_TOKENS) { ctx.truncated = true; ctx.ending = SessionAssembler.Ending.TRUNCATED }
-                    if (result.stop == CallStop.PAUSE_TURN && prior == null && left > 0 && calls <= Research2Config.MAX_PAUSE_CONTINUATIONS) {
-                        prior = result.paused
+                    if (result.stop == CallStop.PAUSE_TURN && continuations < Research2Config.MAX_PAUSE_CONTINUATIONS && left > 0 && calls < Research2Config.MAX_CALLS_PER_STAGE) {
+                        prior = result.paused; continuations++
                         event(ctx.runId, RunEventKind.CONTINUED, "${stage.label}: Anthropic paused the turn; continuing with $left ${plural(left, "search", "searches")} left")
                         continue
                     }
-                    ctx.stages += StageRecord(stage, StageResult.DONE, allowance, searchesThisStage, queries, if (result.stop == CallStop.PAUSE_TURN) "paused by Anthropic; not continued again" else null, calls)
+                    // Next bounded batch of the same stage, only while something is still open and the model kept searching.
+                    if (batched && left > 0 && n > 0 && calls < Research2Config.MAX_CALLS_PER_STAGE && result.stop != CallStop.MAX_TOKENS && stillOpen(ctx.session.content, stage) && spendAllows(ctx, stage, minOf(left, Research2Config.MAX_SEARCHES_PER_CALL))) {
+                        prior = null
+                        val next = minOf(left, Research2Config.MAX_SEARCHES_PER_CALL)
+                        prompt = followUp(ctx.session.content, stage, next)
+                        val open = SessionAssembler.gaps(ctx.session.content)
+                        event(ctx.runId, RunEventKind.CONTINUED, "${stage.label}: $searchesThisStage ${plural(searchesThisStage, "search", "searches")} so far, evidence saved; still open: ${open.take(3).joinToString(", ") { it.label }}${if (open.size > 3) " +${open.size - 3}" else ""} — next batch of up to $next")
+                        continue
+                    }
+                    ctx.stages += StageRecord(stage, StageResult.DONE, allowance, searchesThisStage, queries, if (result.stop == CallStop.PAUSE_TURN) "paused by Anthropic; not continued again" else if (batched) "$calls ${plural(calls, "call", "calls")}" else null, calls)
                     event(ctx.runId, RunEventKind.STAGE_DONE, "${stage.label}: done · $searchesThisStage ${plural(searchesThisStage, "search", "searches")} · ${ctx.registry.sources().size} sources so far")
                     return true
                 }
             }
         }
+    }
+
+    private fun stillOpen(content: SessionContent, stage: StageKind): Boolean = when (stage) {
+        StageKind.GATHER, StageKind.FILL_GAPS -> SessionAssembler.gaps(content).isNotEmpty() || SessionAssembler.priceGaps(content).isNotEmpty()
+        StageKind.CROSS_CHECK -> SessionAssembler.priceGaps(content).isNotEmpty() || content.conflicts.any { it.resolution == null }
+        StageKind.SYNTHESIZE -> false
+    }
+
+    private fun followUp(content: SessionContent, stage: StageKind, allowed: Int): String = when (stage) {
+        StageKind.CROSS_CHECK -> Research2Prompt.crossCheck(content, allowed)
+        else -> Research2Prompt.fillGaps(content, SessionAssembler.gaps(content), SessionAssembler.priceGaps(content), allowed)
+    }
+
+    /** Soft dollar limit between batches: the next batch is not sent when its low estimate would pass the limit. */
+    private fun spendAllows(ctx: RunCtx, stage: StageKind, searches: Int): Boolean {
+        val limitCents = ctx.config.spendLimitCents ?: return true
+        val low = CostCalculator.estimateRun(ctx.config.model, searches, ctx.config.outputTokens)?.lowMicros ?: 0L
+        val ok = ctx.spentMicros + low <= limitCents * 10_000L
+        if (!ok) { ctx.ending = SessionAssembler.Ending.BUDGET_SPEND; event(ctx.runId, RunEventKind.BUDGET, "${stage.label}: next batch not sent — it would pass the spending limit") }
+        return ok
+    }
+
+    /**
+     * Writes the evidence merged so far to the store as an Interrupted session with a provisional run
+     * record, so a later timeout, dropped connection or process death keeps everything already paid for.
+     * [finish] replaces the provisional record; a discarded Stop removes the checkpoint again.
+     */
+    private suspend fun checkpoint(ctx: RunCtx, stage: StageKind) = withContext(NonCancellable) {
+        val now = clock.now()
+        val content = ctx.session.content
+        val provisional = RunRecord(
+            ctx.runId, ctx.kind, ctx.startedAt.toEpochMilli(), ctx.config.mode, ctx.config.model, ctx.config.searchBudget, ctx.config.spendLimitCents,
+            ctx.stages.toList() + StageRecord(stage, StageResult.DONE, 0, 0, note = "in progress"), ctx.usage, SessionOutcome.INTERRUPTED, "IN PROGRESS · EVIDENCE SAVED AFTER EACH CALL",
+        )
+        store.save(ctx.session.copy(content = content.copy(outcome = SessionOutcome.INTERRUPTED, proposals = ProposalBuilder.complete(content, now.toEpochMilli()), runs = ctx.priorRuns + provisional), updatedAt = now))
+        ctx.checkpointed = true
+        _state.update { st -> if (st is DeepRunState.Running && st.runId == ctx.runId) st.copy(checkpointed = true) else st }
+    }
+
+    /** Stop → discard: an initial run's checkpoint is removed; a continuation's session goes back to what it was. */
+    private suspend fun discardCheckpoint(ctx: RunCtx) {
+        if (!ctx.checkpointed) return
+        if (ctx.kind == RunKind.INITIAL) store.delete(ctx.session.id) else store.save(ctx.original)
     }
 
     private fun updateRunning(ctx: RunCtx) {
@@ -460,7 +547,7 @@ class DeepResearchService(
         content = content.copy(
             proposals = ProposalBuilder.complete(content, now.toEpochMilli()),
             outcome = outcome,
-            runs = content.runs + RunRecord(ctx.runId, ctx.kind, now.toEpochMilli(), ctx.config.mode, ctx.config.model, ctx.config.searchBudget, ctx.config.spendLimitCents, ctx.stages.toList(), ctx.usage, outcome, ctx.technical),
+            runs = ctx.priorRuns + RunRecord(ctx.runId, ctx.kind, ctx.startedAt.toEpochMilli(), ctx.config.mode, ctx.config.model, ctx.config.searchBudget, ctx.config.spendLimitCents, ctx.stages.toList(), ctx.usage, outcome, ctx.technical),
         )
         if (!ctx.merged) {
             // Nothing usable came back although the call "succeeded": say so rather than save an empty result.

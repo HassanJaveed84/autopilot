@@ -17,6 +17,11 @@ data class ModelCall(
     val cacheSystem: Boolean = false,
     /** The paused assistant turn to continue after `pause_turn`; opaque to everything but the adapter. */
     val prior: Any? = null,
+    /**
+     * How long the adapter waits for THIS call at the HTTP layer (applied per request, so a shared
+     * client's default never shortens it). Null = the adapter's default.
+     */
+    val timeout: java.time.Duration? = null,
 )
 
 enum class CallStop { END, PAUSE_TURN, MAX_TOKENS, REFUSAL }

@@ -112,11 +112,11 @@ class AnthropicResearchProvider(
             onProgress(ResearchProgress.Writing)
             return interpret(message, absorbed, model, elapsedMs(started), continued)
         } catch (e: TimeoutCancellationException) {
-            return ResearchResponse.Failure(ResearchError.Timeout, absorbed.searchCount)
+            return ResearchResponse.Failure(ResearchError.Timeout(timeout.seconds.toInt()), absorbed.searchCount)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            return ResearchResponse.Failure(mapError(e), absorbed.searchCount)
+            return ResearchResponse.Failure(mapError(e).let { if (it is ResearchError.Timeout) ResearchError.Timeout(timeout.seconds.toInt()) else it }, absorbed.searchCount)
         }
     }
 
@@ -226,10 +226,18 @@ class AnthropicResearchProvider(
  * Generic single Messages call for the multi-stage orchestrator. Same client, caps and error
  * mapping as [AnthropicResearchProvider.research]; `pause_turn` is handed back to the caller so every
  * HTTP call is accounted for separately. System prompt caching is 5-minute ephemeral when asked.
+ *
+ * Timeouts (P0 real-device fix): the shared SDK client is built with the legacy M3A 60-second limit,
+ * which OkHttp applies as both call and read timeout. Every M3A.2 call therefore passes its own
+ * limit as per-request [RequestOptions] — the SDK applies that to the request's connect, read and
+ * call timeouts — and the surrounding coroutine timeout is only a backstop a few seconds later. The
+ * client is still cached per API key and rebuilt on key change or [AnthropicResearchProvider.reset];
+ * none of that can pin a shorter limit onto a later call. No SDK retries.
  */
 class AnthropicResearchCalls(
     private val base: AnthropicResearchProvider,
-    private val timeout: Duration = com.lifeadmin.autopilot.ai.research2.Research2Config.CALL_TIMEOUT,
+    /** Default when a [ModelCall] names no timeout of its own. */
+    private val timeout: Duration = com.lifeadmin.autopilot.ai.research2.Research2Config.MAX_CALL_TIMEOUT,
     private val nanoTime: () -> Long = System::nanoTime,
 ) : com.lifeadmin.autopilot.ai.research2.ResearchCallProvider {
     override val id: String = "anthropic-web-search-v2"
@@ -253,12 +261,20 @@ class AnthropicResearchCalls(
         return builder.build()
     }
 
+    /** The per-request options that carry the call's own HTTP timeout (connect, read and whole call). */
+    fun requestOptions(call: com.lifeadmin.autopilot.ai.research2.ModelCall): com.anthropic.core.RequestOptions =
+        com.anthropic.core.RequestOptions.builder().timeout(timeoutFor(call)).build()
+
+    fun timeoutFor(call: com.lifeadmin.autopilot.ai.research2.ModelCall): Duration = call.timeout ?: timeout
+
     override suspend fun call(call: com.lifeadmin.autopilot.ai.research2.ModelCall, apiKey: String): com.lifeadmin.autopilot.ai.research2.CallResult {
         val started = nanoTime()
         fun elapsed() = ((nanoTime() - started) / 1_000_000L).coerceAtLeast(0)
         val absorbed = AnthropicResearchProvider.Absorbed()
+        val limit = timeoutFor(call)
+        val timedOut = ResearchError.Timeout(limit.seconds.toInt())
         try {
-            val message = withTimeout(timeout.toMillis() + 5_000L) { base.clientFor(apiKey).messages().create(buildParams(call)).await() }
+            val message = withTimeout(limit.toMillis() + TIMEOUT_SLACK_MS) { base.clientFor(apiKey).messages().create(buildParams(call), requestOptions(call)).await() }
             absorbed.add(message)
             val u = runCatching { message.usage() }.getOrNull()
             val usage = com.lifeadmin.autopilot.ai.usage.MeasuredUsage(
@@ -283,11 +299,17 @@ class AnthropicResearchCalls(
                 paused = if (stop == com.lifeadmin.autopilot.ai.research2.CallStop.PAUSE_TURN) message else null, refusalCategory = category,
             )
         } catch (e: TimeoutCancellationException) {
-            return com.lifeadmin.autopilot.ai.research2.CallResult.Failed(ResearchError.Timeout, absorbed.searchCount, null, elapsed())
+            return com.lifeadmin.autopilot.ai.research2.CallResult.Failed(timedOut, absorbed.searchCount, null, elapsed())
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            return com.lifeadmin.autopilot.ai.research2.CallResult.Failed(base.mapError(e), absorbed.searchCount, null, elapsed())
+            val mapped = base.mapError(e).let { if (it is ResearchError.Timeout) timedOut else it }
+            return com.lifeadmin.autopilot.ai.research2.CallResult.Failed(mapped, absorbed.searchCount, null, elapsed())
         }
+    }
+
+    companion object {
+        /** The coroutine backstop fires only after the SDK's own per-request timeout had its chance. */
+        private const val TIMEOUT_SLACK_MS = 5_000L
     }
 }

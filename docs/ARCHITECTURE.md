@@ -113,7 +113,10 @@ ReconcileWorker (WorkManager, 1 h) ── engine.reconcileAll + ledger prune
   limit, `pause_turn` as a separate billed call, Stop keep/discard, continuation on a saved session),
   `Research2Actions` (edited proposals → one transactional, idempotent `TaskEditCommand`; Undo).
   Start/continue run under one atomic launch claim (no double launch, no double daily reservation);
-  the final save runs non-cancellable.
+  the final save runs non-cancellable. Each HTTP call carries its own timeout (`ModelCall.timeout`,
+  from `Research2Config.callTimeout`: 60 s + 15 s/search + output tokens ÷ 40, clamped 120–540 s),
+  applied per request at the SDK layer; a stage allowed more than 6 searches runs in bounded batches,
+  each merged and checkpointed to the store before the next, so a slow or dropped call costs one batch.
 - `ai/usage`: a failed call keeps whatever the provider reported (full usage priced in full; searches
   seen as a floor with tokens unknown; nothing → unknown, never $0); a request rejected before
   processing is "Rejected · $0 assumed" and counted as such; `UsageGrouping` is the pure grouping the

@@ -318,6 +318,100 @@ The committed coverage screen (s10) now shows the brand preference verified in c
 from Thorne or Pure Encapsulations") and the output wish honestly Partly ("Steps for 3 of 4 items")
 under the "Incomplete · not enough evidence" banner.
 
+## P0 — real-device failure: Deep Research timed out at 60 s (fixed)
+
+**What happened.** First paid Deep Research test on a Galaxy S24 Ultra (Custom mode, Opus 5.5, 30
+searches authorised): the GATHER stage sent one request allowed up to 18 searches; after ~60 s the app
+showed "Research didn't finish — The request took longer than 60 s … CLIENT TIMEOUT (60 S)", with
+0/30 searches reported and nothing saved. Handled error, no crash.
+
+**Verified root cause.** `AnthropicResearchProvider` (the legacy M3A adapter) builds the SDK client with
+`.timeout(ResearchConfig.REQUEST_TIMEOUT)` = 60 s. In the Anthropic Java SDK that single value becomes
+OkHttp's *call* timeout and, because the read timeout defaults to the request timeout, its *read*
+timeout too. `AnthropicResearchCalls` (M3A.2) obtained that same cached client through
+`base.clientFor(apiKey)` and only wrapped the call in a 180 s coroutine timeout — which can never
+extend a shorter HTTP timeout. A non-streaming research request sends no bytes until the whole
+answer is ready, so OkHttp's 60 s read timeout fired, surfaced as `AnthropicIoException` →
+`InterruptedIOException` → `PlanningError.Timeout` → `ResearchError.Timeout`, whose text was built
+from the legacy 60 s constant whatever the pipeline. Reproduced with the real SDK client against
+MockWebServer: legacy client 1 s, M3A.2 wrapper 5 s, reply after 2 s → `Failed(Timeout)` (now
+`ResearchTimeoutHttpTest.deepResearchCallSurvivesAReplySlowerThanTheLegacyTimeoutButWithinItsOwn`,
+which failed on the unfixed code).
+
+**Exact failure path.** `DeepResearchService.runStage` → `AnthropicResearchCalls.call` →
+`base.clientFor(key).messages().create(params)` (client built with 60 s) → OkHttp read timeout at 60 s
+→ `mapError` → `ResearchError.Timeout` ("60 s") → ledger row `FAILED_UNKNOWN` (usage unknown, never
+$0 — that part was already right) → `RunResult.Failed` → error screen, nothing saved because no call
+had returned.
+
+**Fix A — the real HTTP timeout.** Every M3A.2 call now carries its own limit (`ModelCall.timeout`)
+and the adapter applies it **per request** through the SDK's `RequestOptions.timeout(...)`, which
+OkHttp uses for that request's connect, read and call timeouts; the coroutine timeout is only a 5 s
+backstop behind it. The shared client stays cached per API key (rebuilt on key change or `reset()`)
+and its 60 s default remains the legacy M3A flow's limit; it can no longer shorten an M3A.2 call.
+SDK retries stay at 0. `ResearchError.Timeout(seconds)` names the limit actually configured for the
+call that timed out; HTTP 504 is a separate `ServerTimeout`; a dropped connection is `Network`
+("Connection to Anthropic was lost"); Stop and process interruption keep their own errors.
+
+**New timeout policy** (`Research2Config.callTimeout`): 60 s + 15 s per search the call may run +
+output tokens ÷ 40 per second, clamped to 120–540 s, so every call stays inside Anthropic's
+10-minute non-streaming limit:
+
+| Mode (defaults) | Calls | Per-call limit |
+|---|---|---|
+| Quick · Haiku · 3 searches · 1.5k output | one call, ≤3 searches | 142 s |
+| Thorough · Sonnet · 10 searches · 6k output | GATHER ≤6 · FILL_GAPS ≤3 | 300 s · 255 s |
+| Deep · Opus · 25 searches · 10k output | GATHER 15 in batches of ≤6 · FILL_GAPS ≤6 then ≤1 · CROSS_CHECK ≤6 per call · write-up 0 | 400 s · 400 s / 325 s · ≤400 s · 310 s |
+| The failed run: Custom · Opus · 30 searches | GATHER 18 as 3 batches of ≤6 (was one 18-search call behind a 60 s limit) | 400 s each, cap 540 s |
+
+**Fix B — bounded batches, evidence saved as it arrives.** A stage allowed more than
+`MAX_SEARCHES_PER_CALL` (6) searches now runs them as separate HTTP calls: each call is its own
+billed request with its own timeout; after each call the merged evidence is **checkpointed** to the
+store as an Interrupted session with a provisional run record; the next batch is sent only while
+requirements are still open and the previous call actually searched, with the fill-gaps prompt
+(known sources, queries not to repeat), at most `MAX_CALLS_PER_STAGE` (5) calls per stage.
+`pause_turn` is still continued once per call within the same budget. Stages with ≤6 searches
+(Quick, Thorough) behave exactly as before. Evidence gathering is therefore **split, not streamed**:
+streaming would also give per-search progress, but the SDK's stream accumulator's handling of
+citation deltas was not verified and the batch approach needed no new framework; it is the
+documented next step if dropped idle connections show up on mobile networks.
+
+**Fix C — paid work is not lost.** A timeout, 504 or dropped connection after a completed call ends
+the run as "Partially complete" with everything merged so far (the checkpoint is finalised, not
+re-created); on the very first call it saves nothing and says so. The timed-out call's ledger row is
+`FAILED_UNKNOWN` with usage unknown (never $0); its searches, if the provider reported any, are a
+floor. Nothing is ever resubmitted on its own: "Try again" sends the person back to the preflight,
+and the error copy says a retry may be billed again. Stop → discard removes the checkpoint (a
+continuation's session goes back to what it was); Stop → keep finalises it as Stopped. Process death
+leaves the Interrupted checkpoint plus the in-flight ledger row, which the next app start settles as
+Interrupted/unknown; the session offers Continue. The search budget holds across batches and
+pause-turns (no call asks for more than the stage's remaining allowance); a soft spending limit is
+checked before every batch.
+
+**Fix D — status and error screens.** The counter reads "Searches reported"; a waiting line shows
+the call number, its elapsed time and the limit actually configured ("Waiting for Anthropic's reply to
+call 2 · 1:05 of up to 6:40. Search counts and sources arrive only when a call returns; Anthropic may
+already be searching."); the spend line says when earlier evidence is already saved; events name
+each batch ("…: 5 searches so far, evidence saved; still open: glucosamine — next batch of up to 6").
+Error states: client timeout (with the configured limit and the retry-may-bill note), server timeout
+(504), connection lost, stopped, interrupted. Flight Plan styling unchanged.
+
+**Tests.** `ResearchTimeoutHttpTest` (real SDK client vs MockWebServer, injected short durations):
+survives a reply slower than the legacy limit but within its own; times out at its own limit with the
+right seconds in the message, one request only; legacy flow keeps its shorter limit and the same base
+provider still serves a longer M3A.2 call; key change and reset rebuild the client without losing the
+limit. `DeepResearchServiceTest`: per-call timeout policy and what the orchestrator hands each call;
+Deep gather in bounded batches with a checkpoint after every call (store state inspected mid-run);
+timeout after a completed batch keeps the evidence and never resends; timeout on the first call saves
+nothing, names its limit, never resends; stop/discard removes the checkpoint, stop/keep finalises it;
+process death leaves an Interrupted checkpoint and an unknown ledger row settled on next start; search
+budget across batches and a pause-turn. `AnthropicResearchProviderHttpTest` (legacy) updated to the
+typed Timeout.
+
+**Remaining limitations.** Per-search progress still arrives only when a call returns (no streaming).
+A single batch can still take up to 400–540 s on a slow network; the waiting line now says so. The
+checkpoint shows as "Interrupted" in the task's research list while a run is in flight.
+
 ## Cost rules, assumptions and limitations
 
 - Estimates use Anthropic's **reported** `usage` (input, output, cache creation 5m/1h, cache read,

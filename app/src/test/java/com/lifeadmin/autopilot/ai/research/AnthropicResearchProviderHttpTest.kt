@@ -261,10 +261,10 @@ class AnthropicResearchProviderHttpTest {
     @Test fun timeoutAndNetworkFailuresAreReportedNotRetried() {
         server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
         val f = research(provider(Duration.ofMillis(600))) as ResearchResponse.Failure
-        assertEquals(ResearchError.Timeout, f.error)
+        assertEquals("the legacy flow names its own 60 s-class limit (here 0 s after rounding 600 ms)", ResearchError.Timeout(0), f.error)
         server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START))
         val n = research() as ResearchResponse.Failure
-        assertTrue(n.error.toString(), n.error == ResearchError.Network || n.error == ResearchError.Timeout)
+        assertTrue(n.error.toString(), n.error == ResearchError.Network || n.error is ResearchError.Timeout)
     }
 
     @Test fun cancellationAbortsTheCallAndPropagates() = runBlocking {

@@ -25,8 +25,31 @@ object Research2Config {
     /** `pause_turn` is continued at most this many times per stage, within the stage's remaining searches. */
     const val MAX_PAUSE_CONTINUATIONS = 1
 
-    /** Per HTTP call. Deep stages read a lot of search results; the server also enforces its own limits. */
-    val CALL_TIMEOUT: java.time.Duration = java.time.Duration.ofSeconds(180)
+    /**
+     * Searches one HTTP call may run. A stage with a larger allowance is split into bounded calls
+     * (each a separate billed request, each merged and saved before the next), so a slow or dropped
+     * call costs at most one batch of evidence instead of the whole stage. Follow-up calls within a
+     * stage happen only while requirements are still open and the model keeps searching.
+     */
+    const val MAX_SEARCHES_PER_CALL = 6
+
+    /** Upper bound on calls per stage (batches + one `pause_turn` continuation each). */
+    const val MAX_CALLS_PER_STAGE = 5
+
+    /**
+     * Per-call HTTP timeout policy (P0 real-device fix). Non-streaming Messages calls must finish well
+     * inside Anthropic's 10-minute request limit, and a research call's wall time grows with the
+     * searches it may run and the tokens it may write. The limit is applied per request at the SDK
+     * layer, never only as a coroutine timer.
+     */
+    val MIN_CALL_TIMEOUT: java.time.Duration = java.time.Duration.ofSeconds(120)
+    val MAX_CALL_TIMEOUT: java.time.Duration = java.time.Duration.ofSeconds(540)
+
+    /** 60 s base + 15 s per allowed search + ~40 output tokens/s, clamped to [MIN_CALL_TIMEOUT, MAX_CALL_TIMEOUT]. */
+    fun callTimeout(maxSearches: Int, outputTokens: Long): java.time.Duration {
+        val seconds = 60L + 15L * maxSearches.coerceAtLeast(0) + outputTokens.coerceAtLeast(0) / 40L
+        return java.time.Duration.ofSeconds(seconds.coerceIn(MIN_CALL_TIMEOUT.seconds, MAX_CALL_TIMEOUT.seconds))
+    }
 
     /** A price older than this is shown as "may be stale". */
     val PRICE_STALE_AFTER: java.time.Duration = java.time.Duration.ofHours(24)

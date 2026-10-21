@@ -139,6 +139,9 @@ fun InvestigationScreen(
                             ResearchError.WebSearchNotEnabled -> listOf("Open the Anthropic Console for your organization", "Enable the web search tool for your key", "Come back and start the research again")
                             ResearchError.OutOfCredit -> listOf("Add credit in the Anthropic Console", "Start the research again — your request is kept")
                             is ResearchError.RateLimited -> listOf("Wait a moment", "Tap Try again — nothing was retried for you")
+                            is ResearchError.Timeout -> listOf("The app waited ${ResearchError.describe(error.seconds)} for this call", "Nothing was retried for you; Try again sends a new request that may be billed again", "A smaller search budget or Thorough mode means shorter calls")
+                            ResearchError.ServerTimeout -> listOf("Anthropic gave up on the request (504)", "Nothing was retried for you; Try again sends a new request that may be billed again")
+                            ResearchError.Network -> listOf("Check Wi-Fi or mobile data", "Nothing was retried for you; Try again sends a new request that may be billed again")
                             else -> emptyList()
                         },
                     )
@@ -173,12 +176,21 @@ private fun RunningContent(run: DeepRunState.Running, elapsedMs: Long, reduced: 
         ResearchStamp(stampLine(run.config.mode, run.config.model, run.searchesRun, elapsedMs), Modifier.testTag("progress_stamp"))
         SurfaceCard(radius = 20.dp, contentPadding = PaddingValues(16.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Counter("Searches", "${run.searchesRun}/${run.config.searchBudget}")
+                Counter("Searches reported", "${run.searchesRun}/${run.config.searchBudget}")
                 Counter("Sources", if (run.sourcesSeen > 0) "${run.sourcesSeen}" else "—")
                 Counter("Time", "%d:%02d".format(elapsedMs / 60_000, (elapsedMs / 1_000) % 60))
             }
+            val callStarted = run.callStartedAtEpochMs
+            if (callStarted != null) {
+                val callElapsed = (elapsedMs - (callStarted - run.startedAt.toEpochMilli())).coerceAtLeast(0)
+                val limit = run.callTimeoutSeconds ?: 0
+                Text(
+                    "Waiting for Anthropic's reply to call ${run.callsSent} · ${"%d:%02d".format(callElapsed / 60_000, (callElapsed / 1_000) % 60)} of up to ${"%d:%02d".format(limit / 60, limit % 60)}. Search counts and sources arrive only when a call returns; Anthropic may already be searching.",
+                    style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(top = 10.dp).testTag("progress_waiting"),
+                )
+            }
             Text(
-                "So far: ${if (run.spentIsFloor) "≥ " else "~"}${UsdEstimate.format((run.spentMicros + run.searchesRun * 10_000L) / 1_000_000.0)} estimated for finished calls and searches; the call in flight is counted when it returns.",
+                "So far: ${if (run.spentIsFloor) "≥ " else "~"}${UsdEstimate.format((run.spentMicros + run.searchesRun * 10_000L) / 1_000_000.0)} estimated for finished calls and searches; the call in flight is counted when it returns." + if (run.checkpointed) " Evidence from finished calls is already saved." else "",
                 style = MaterialTheme.typography.bodySmall, color = c.ink3, modifier = Modifier.padding(top = 10.dp).testTag("progress_spent"),
             )
         }

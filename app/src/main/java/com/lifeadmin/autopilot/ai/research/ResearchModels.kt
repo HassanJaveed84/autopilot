@@ -163,8 +163,19 @@ sealed class ResearchError(val headline: String, val message: String, val retrya
     data class RateLimited(val retryAfterSeconds: Long?) : ResearchError("Anthropic is busy right now", "Your account hit a rate limit. Nothing was saved, and the app won't retry on its own" + (retryAfterSeconds?.let { " — try again in ${it.coerceAtLeast(1)} s." } ?: " — try again in a minute."), true, "RATE LIMITED (429) · NOT RETRIED AUTOMATICALLY")
     data class ServerError(val status: Int) : ResearchError("Research didn't finish", "Anthropic had a problem ($status). Searches that ran may be billed. Nothing was saved.", true, "SERVER ERROR ($status)")
     data class BadRequest(val status: Int) : ResearchError("The request was rejected", "Anthropic rejected the request ($status). If this persists, try another model in Settings → Plan with AI.", false, "REJECTED ($status)")
-    data object Timeout : ResearchError("Research didn't finish", "The request took longer than ${ResearchConfig.REQUEST_TIMEOUT.seconds} s and was stopped. Searches that ran may be billed. Nothing was saved.", true, "CLIENT TIMEOUT (${ResearchConfig.REQUEST_TIMEOUT.seconds} S)")
-    data object Network : ResearchError("Couldn't reach Anthropic", "Check your connection and try again. Nothing was saved.", true, "NETWORK ERROR")
+    /**
+     * The app stopped waiting at the limit configured for THIS call ([seconds]); the legacy M3A flow
+     * uses [ResearchConfig.REQUEST_TIMEOUT], the M3A.2 flow a per-call limit from its mode and budget.
+     */
+    data class Timeout(val seconds: Int = ResearchConfig.REQUEST_TIMEOUT.seconds.toInt()) : ResearchError(
+        "Research didn't finish",
+        "Anthropic hadn't replied after ${describe(seconds)}, so the app stopped waiting. Anthropic may still have run searches and may bill them. Nothing from this call was saved. Trying again sends a new request and may be billed again.",
+        true, "CLIENT TIMEOUT ($seconds S)",
+    )
+
+    /** Anthropic reported a timeout on its side (HTTP 504). */
+    data object ServerTimeout : ResearchError("Research didn't finish", "Anthropic timed out while working on the request (504). Searches that ran may be billed. Nothing from this call was saved. Trying again sends a new request and may be billed again.", true, "SERVER TIMEOUT (504)")
+    data object Network : ResearchError("Connection to Anthropic was lost", "The connection dropped before a reply arrived. Anthropic may still have run searches and may bill them. Nothing from this call was saved. Check your connection; trying again sends a new request.", true, "CONNECTION LOST")
     data class Refused(val category: String?) : ResearchError("Claude couldn't research this", "Claude declined this request" + (category?.let { " ($it)" } ?: "") + ". Nothing was suggested for your task.", false, "STOP REASON: REFUSAL")
     data class Malformed(val detail: String) : ResearchError("The answer couldn't be used", "The response had no usable text ($detail). Nothing was saved.", true, "MALFORMED RESPONSE")
     data class SearchTool(val code: String) : ResearchError("Web search failed", "Anthropic's search tool reported “$code”. Nothing was saved.", true, "SEARCH TOOL ERROR: ${code.uppercase()}")
@@ -173,6 +184,9 @@ sealed class ResearchError(val headline: String, val message: String, val retrya
     data class Unexpected(val kind: String) : ResearchError("Something went wrong", "Something unexpected happened ($kind). Nothing was saved.", true, "UNEXPECTED: $kind")
 
     companion object {
+        /** "90 s" / "5 min" / "5 min 30 s" for timeout copy. */
+        fun describe(seconds: Int): String = if (seconds < 120) "$seconds s" else "${seconds / 60} min" + (if (seconds % 60 != 0) " ${seconds % 60} s" else "")
+
         /** Shared failures reuse the planning adapter's classification. */
         fun fromPlanning(e: PlanningError): ResearchError = when (e) {
             PlanningError.Disabled -> Disabled
@@ -182,9 +196,9 @@ sealed class ResearchError(val headline: String, val message: String, val retrya
             PlanningError.Unauthorized -> Unauthorized
             PlanningError.Forbidden -> Forbidden
             is PlanningError.RateLimited -> RateLimited(e.retryAfter?.seconds)
-            is PlanningError.ServerError -> ServerError(e.status)
+            is PlanningError.ServerError -> if (e.status == 504) ServerTimeout else ServerError(e.status)
             is PlanningError.BadRequest -> BadRequest(e.status)
-            PlanningError.Timeout -> Timeout
+            PlanningError.Timeout -> Timeout()
             PlanningError.Network -> Network
             is PlanningError.Refused -> Refused(e.category)
             PlanningError.Truncated -> Malformed("cut off")

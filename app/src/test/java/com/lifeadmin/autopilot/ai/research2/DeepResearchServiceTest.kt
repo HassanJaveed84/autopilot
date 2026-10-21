@@ -245,7 +245,7 @@ class DeepResearchServiceTest {
         service.dismiss(f.runId)
         // After a good first pass the same failure is Partial and the run usage says it is a floor.
         provider.enqueue(Research2Fixtures.supplementsGather())
-        provider.enqueue(CallResult.Failed(ResearchError.Timeout, searchesSeen = 1, usage = null, elapsedMs = 180_000))
+        provider.enqueue(CallResult.Failed(ResearchError.Timeout(300), searchesSeen = 1, usage = null, elapsedMs = 180_000))
         start()
         val s = saved(awaitFinished())
         assertEquals(SessionOutcome.PARTIAL, s.outcome)
@@ -408,6 +408,187 @@ class DeepResearchServiceTest {
         assertTrue(service.state.value is DeepRunState.Finished)
         assertEquals(started.runId, (service.state.value as DeepRunState.Finished).runId)
         assertEquals(0, runBlocking { store.getAll() }.size)
+    }
+
+    // ------------------------------------------------------------------ P0: timeouts, bounded batches, checkpoints
+
+    private fun answerOnly(text: String = "## ANSWER\nWrite-up from the evidence held.\n", searches: Int = 0) =
+        CallResult.Done(listOf(RawSegment(text, emptyList())), emptyList(), MeasuredUsage(3_000, 400, 0, 0, 0, searches), CallStop.END, 2_000, "msg_" + text.hashCode())
+
+    private val thorneGlucosamine = com.lifeadmin.autopilot.ai.research.RawCitation("https://www.thorne.example/products/glucosamine", "Glucosamine & Chondroitin | Thorne", "Glucosamine sulfate 500 mg")
+    private fun glucosamineFound(searches: Int) = CallResult.Done(
+        listOf(
+            RawSegment("## REQ r-i3 · status=answered\n", emptyList()),
+            RawSegment("Thorne lists a glucosamine and chondroitin product.", listOf(thorneGlucosamine)),
+            RawSegment("\n## PICK r-i3 · status=answered\nPick: Thorne Glucosamine & Chondroitin\nLabel: ", emptyList()),
+            RawSegment("Glucosamine sulfate 500 mg per capsule.", listOf(thorneGlucosamine)),
+            RawSegment("\nWhy: preferred brand\n## PROPOSE step · req=r-i3\nBuy glucosamine: Thorne Glucosamine & Chondroitin\n", emptyList()),
+        ),
+        listOf(com.lifeadmin.autopilot.ai.research.RawSearch("Thorne glucosamine", emptyList())), MeasuredUsage(9_000, 300, 0, 0, 2_000, searches), CallStop.END, 5_000, "msg_gluc_$searches",
+    )
+    private var partlyIds = 0
+    private fun glucosaminePartly(searches: Int) = CallResult.Done(
+        listOf(RawSegment("## REQ r-i3 · status=partly\nA third-party listing only.\n## PICK r-i3 · status=partly\nPick: Other Brand Glucosamine 1500\nWhy: not a preferred brand\n", emptyList())),
+        emptyList(), MeasuredUsage(7_000, 200, 0, 0, 0, searches), CallStop.END, 4_000, "msg_partly_${searches}_${partlyIds++}",
+    )
+
+    @Test fun perCallTimeoutFollowsTheSearchesAndOutputOfTheCallNeverTheLegacyConstant() {
+        assertEquals(142L, Research2Config.callTimeout(3, 1_500).seconds)
+        assertEquals(300L, Research2Config.callTimeout(6, 6_000).seconds)
+        assertEquals(400L, Research2Config.callTimeout(6, 10_000).seconds)
+        assertEquals("write-up without searches", 310L, Research2Config.callTimeout(0, 10_000).seconds)
+        assertEquals("never past Anthropic's 10-minute request limit", 540L, Research2Config.callTimeout(30, 10_000).seconds)
+        assertEquals("never below the floor", 120L, Research2Config.callTimeout(0, 0).seconds)
+        assertTrue(Research2Config.MAX_CALL_TIMEOUT.seconds > ResearchConfig.REQUEST_TIMEOUT.seconds)
+        // The orchestrator hands each call its own limit.
+        provider.enqueue(Research2Fixtures.supplementsGather().copy(usage = MeasuredUsage(20_000, 2_000, 0, 0, 0, 3)))
+        start(draft(mode = ResearchMode.QUICK))
+        saved(awaitFinished())
+        assertEquals(java.time.Duration.ofSeconds(142), provider.calls.single().timeout)
+        val events = (service.state.value as DeepRunState.Finished).let { runBlocking { store.getAll() } }
+        assertTrue(events.isNotEmpty())
+    }
+
+    @Test fun deepGatherRunsInBoundedBatchesAndCheckpointsAfterEveryCall() {
+        // 25 searches → GATHER gets 15, sent as batches of at most 6 while requirements stay open.
+        provider.enqueue(Research2Fixtures.supplementsGather())          // batch 1: 5 searches, glucosamine still open
+        provider.enqueue(glucosaminePartly(2))                            // batch 2: still partly → one more
+        provider.enqueue(glucosamineFound(1))                             // batch 3: everything covered → stage ends early
+        provider.fallback = { answerOnly() }                              // write-up
+        provider.gate = CompletableDeferred(); provider.gateCall = 2
+        val started = start(draft(mode = ResearchMode.DEEP)) as StartResult2.Started
+        awaitCalls(2)
+        // Checkpoint after batch 1: the three picks are already on disk as an Interrupted session.
+        val mid = runBlocking { store.get(started.sessionId) }!!
+        assertEquals(SessionOutcome.INTERRUPTED, mid.outcome)
+        assertEquals(3, mid.content.body.picks.count { it.pick != null })
+        assertEquals("a provisional run record marks it as in progress", "IN PROGRESS · EVIDENCE SAVED AFTER EACH CALL", mid.content.runs.single().technical)
+        val running = service.state.value as DeepRunState.Running
+        assertTrue(running.checkpointed)
+        assertEquals(2, running.callsSent)
+        assertEquals(400, running.callTimeoutSeconds)
+        assertNotNull(running.callStartedAtEpochMs)
+        assertTrue(running.events.any { it.kind == RunEventKind.CONTINUED && it.text.contains("evidence saved") && it.text.contains("glucosamine") })
+        provider.gate!!.complete(Unit)
+        val s = saved(awaitFinished())
+        assertEquals(SessionOutcome.COMPLETE, s.outcome)
+        val gather = s.content.latestRun!!.stages.first { it.kind == StageKind.GATHER }
+        assertEquals(StageResult.DONE, gather.result)
+        assertEquals(3, gather.calls)
+        assertEquals(8, gather.searchesRun)
+        assertEquals(listOf(6, 6, 6, 0), provider.calls.map { it.maxSearches })
+        assertTrue("batch 2 is an evidence-driven follow-up naming the open item", provider.calls[1].user.contains("Still open") && provider.calls[1].user.contains("r-i3"))
+        assertTrue("batch 3 still carries the known sources", provider.calls[2].user.contains("Sources already held"))
+        assertEquals(listOf(400L, 400L, 400L, 310L), provider.calls.map { it.timeout!!.seconds })
+        assertEquals("one ledger row per HTTP call", 4, runBlocking { ledger.forSession(s.id) }.size)
+        assertEquals("the provisional record was replaced, not duplicated", 1, s.content.runs.size)
+        assertEquals(8, s.content.searchesTotal)
+    }
+
+    @Test fun timeoutAfterACompletedBatchKeepsTheSavedEvidenceAndNeverResends() {
+        provider.enqueue(Research2Fixtures.supplementsGather())
+        provider.enqueue(CallResult.Failed(ResearchError.Timeout(400), searchesSeen = 0, usage = null, elapsedMs = 405_000))
+        start(draft(mode = ResearchMode.DEEP))
+        val s = saved(awaitFinished())
+        assertEquals(SessionOutcome.PARTIAL, s.outcome)
+        assertEquals(3, s.content.body.picks.count { it.pick != null })
+        assertEquals("CLIENT TIMEOUT (400 S)", s.content.latestRun!!.technical)
+        assertEquals(1, s.content.runs.size)
+        assertEquals(listOf(StageResult.DONE, StageResult.FAILED).let { listOf(StageResult.FAILED) }, s.content.latestRun!!.stages.filter { it.kind == StageKind.GATHER }.map { it.result })
+        val recs = runBlocking { ledger.forSession(s.id) }
+        assertEquals(listOf(CallOutcome.COMPLETE, CallOutcome.FAILED_UNKNOWN), recs.map { it.outcome })
+        assertNull("a timed-out call's usage is unknown, never $0", recs[1].estimatedMicros)
+        assertEquals("nothing was re-sent", 2, provider.calls.size)
+        assertTrue((service.state.value as DeepRunState.Finished).result is RunResult.Saved)
+    }
+
+    @Test fun timeoutOnTheVeryFirstCallSavesNothingNamesItsLimitAndNeverResends() {
+        provider.enqueue(CallResult.Failed(ResearchError.Timeout(400), searchesSeen = 0, usage = null, elapsedMs = 405_000))
+        start(draft(mode = ResearchMode.DEEP))
+        val f = awaitFinished()
+        val err = (f.result as RunResult.Failed).error as ResearchError.Timeout
+        assertEquals(400, err.seconds)
+        assertTrue(err.message, err.message.contains("6 min 40 s") && err.message.contains("may be billed again"))
+        assertEquals("CLIENT TIMEOUT (400 S)", err.technical)
+        assertEquals(0, runBlocking { store.getAll() }.size)
+        val rec = runBlocking { ledger.getAll() }.single()
+        assertEquals(CallOutcome.FAILED_UNKNOWN, rec.outcome); assertNull(rec.estimatedMicros)
+        assertEquals(1, provider.calls.size)
+        // Distinct failure kinds keep distinct copy.
+        assertTrue(ResearchError.ServerTimeout.technical.contains("504"))
+        assertEquals("CONNECTION LOST", ResearchError.Network.technical)
+        assertEquals(ResearchError.ServerTimeout, ResearchError.fromPlanning(com.lifeadmin.autopilot.ai.PlanningError.ServerError(504)))
+        assertEquals(ResearchError.Timeout(60), ResearchError.fromPlanning(com.lifeadmin.autopilot.ai.PlanningError.Timeout))
+    }
+
+    @Test fun stopAndDiscardAfterACheckpointRemovesItAndStopAndKeepFinalisesIt() {
+        provider.enqueue(Research2Fixtures.supplementsGather())
+        provider.gate = CompletableDeferred(); provider.gateCall = 2
+        val a = start(draft(mode = ResearchMode.DEEP)) as StartResult2.Started
+        awaitCalls(2)
+        assertNotNull(runBlocking { store.get(a.sessionId) })
+        service.stop(a.runId, keepPartial = false)
+        assertEquals(RunResult.Failed(ResearchError.Stopped(5)), awaitFinished().result)
+        assertNull("discard removes the checkpoint", runBlocking { store.get(a.sessionId) })
+        assertEquals(listOf(CallOutcome.COMPLETE, CallOutcome.STOPPED), runBlocking { ledger.getAll() }.sortedBy { it.startedAt }.map { it.outcome }.takeLast(2))
+        service.dismiss(a.runId)
+        provider.calls.clear()
+        provider.enqueue(Research2Fixtures.supplementsGather())
+        provider.gate = CompletableDeferred(); provider.gateCall = 2
+        val b = start(draft(mode = ResearchMode.DEEP)) as StartResult2.Started
+        awaitCalls(2)
+        service.stop(b.runId, keepPartial = true)
+        val s = saved(awaitFinished())
+        assertEquals(SessionOutcome.STOPPED, s.outcome)
+        assertEquals("the provisional record is replaced by the final one", 1, s.content.runs.size)
+        assertEquals(3, s.content.body.picks.count { it.pick != null })
+    }
+
+    @Test fun processDeathLeavesAnInterruptedCheckpointAndAnUnknownLedgerRow() {
+        provider.enqueue(Research2Fixtures.supplementsGather())
+        provider.gate = CompletableDeferred(); provider.gateCall = 2
+        val started = start(draft(mode = ResearchMode.DEEP)) as StartResult2.Started
+        awaitCalls(2)
+        // The process dies here: nothing else runs. What is on disk?
+        val onDisk = runBlocking { store.get(started.sessionId) }!!
+        assertEquals(SessionOutcome.INTERRUPTED, onDisk.outcome)
+        assertEquals(3, onDisk.content.body.picks.count { it.pick != null })
+        assertTrue(onDisk.content.proposals.isNotEmpty())
+        val rows = runBlocking { ledger.forSession(started.sessionId) }
+        assertEquals(listOf(CallOutcome.COMPLETE, CallOutcome.IN_FLIGHT), rows.map { it.outcome })
+        // Next app start settles the in-flight row; the saved evidence is untouched and nothing is re-sent.
+        assertEquals(1, runBlocking { service.onAppStart() })
+        assertEquals(CallOutcome.INTERRUPTED, runBlocking { ledger.forSession(started.sessionId) }[1].outcome)
+        assertNull(runBlocking { ledger.forSession(started.sessionId) }[1].estimatedMicros)
+        assertEquals(2, provider.calls.size)
+        service.stop(started.runId, keepPartial = false)
+        awaitFinished()
+    }
+
+    @Test fun searchBudgetHoldsAcrossBatchesAndPauseTurn() {
+        // 14 searches → GATHER allowance 8 → batches of 6 then 2; a pause_turn inside batch 1 keeps the same budget.
+        val paused = Research2Fixtures.supplementsGather().copy(stop = CallStop.PAUSE_TURN, paused = "prior", usage = MeasuredUsage(20_000, 500, 0, 0, 0, 4))
+        provider.enqueue(paused)
+        provider.enqueue(glucosaminePartly(2))     // continuation of batch 1 within the stage's remaining 4: 2 more → 6 used, 2 left
+        provider.enqueue(glucosaminePartly(2))     // batch 2: up to 2
+        provider.enqueue(glucosamineFound(1))      // FILL_GAPS (30% of 14 = 4)
+        provider.fallback = { answerOnly() }
+        start(draft(mode = ResearchMode.DEEP, searches = 14))
+        val s = saved(awaitFinished())
+        assertEquals(listOf(6, 4, 2, 4, 0), provider.calls.map { it.maxSearches })
+        assertTrue("no single call ever asks for more than a batch", provider.calls.all { it.maxSearches <= Research2Config.MAX_SEARCHES_PER_CALL })
+        assertEquals("prior", provider.calls[1].prior)
+        assertNull(provider.calls[2].prior)
+        // A call's cap is the stage's remaining allowance at the time it is sent (a pause-turn continuation
+        // re-offers what the paused call left unused), so caps can overlap but searches run never exceed the budget.
+        val gatherCaps = provider.calls.take(3).map { it.maxSearches }
+        val usedBefore = listOf(0, 4, 6)
+        gatherCaps.forEachIndexed { i, cap -> assertTrue("call ${i + 1} cap $cap within 8 - ${usedBefore[i]}", cap <= 8 - usedBefore[i]) }
+        assertTrue(s.content.searchesTotal <= 14)
+        assertEquals(9, s.content.searchesTotal)
+        val gather = s.content.latestRun!!.stages.first { it.kind == StageKind.GATHER }
+        assertEquals(3, gather.calls); assertEquals(8, gather.searchesRun)
+        assertEquals(5, runBlocking { ledger.forSession(s.id) }.size)
     }
 
     @Test fun interruptedLedgerRowsAreSettledOnAppStart() = runBlocking {
