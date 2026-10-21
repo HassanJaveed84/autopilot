@@ -1,13 +1,15 @@
 # M3A.2 deep research screens
 
-Captured by `ScreenshotTourResearch2` on the CI emulator (API 34, 411 dp phone, run 39518965218 on head `fde29c2`) with a
+Captured by `ScreenshotTourResearch2` on the CI emulator (API 34, 411 dp phone, run 39534614658 on head `b088211`) with a
 scripted call provider: no network, no API key, all sources are fictional `.example` pages and every figure is a
 fixture. Light and dark at font 1.0 are committed here; the font 1.3 and 2.0 sets are CI artifacts of the same run
 (see `docs/M3A2_IMPLEMENTATION_REPORT.md`).
 
 Scenes 01–20 follow benchmark A (supplements, template C per-category recommendation, one requirement not found,
-continuation); 21–28 follow benchmark B (fragrance gift, template B shortlist); 29–32 are the error, offline and
-settings states.
+continuation with a typed follow-up); 21–28 follow benchmark B (fragrance gift, template B shortlist); 29–32 are the
+error, offline and settings states; 33–35 are a continuation cut off before any text (the real-device shape), with
+its shareable technical record and the unchanged saved result. (33–35 were captured as s30–s32 by the tour of that
+run and renumbered on commit; the tour now uses these numbers.)
 
 | # | Screen | Light | Dark |
 |---|---|---|---|
@@ -24,7 +26,8 @@ settings states.
 | 11 | Result C · item cards with provenance tags and citations | ![](light/s11-result-c-item-cards.png) | ![](dark/s11-result-c-item-cards.png) |
 | 12 | Result C · "Nothing reliable found" item | ![](light/s12-result-c-not-found.png) | ![](dark/s12-result-c-not-found.png) |
 | 13 | Result · Continue card (new budget, no repeated searches) | ![](light/s13-result-continue-card.png) | ![](dark/s13-result-continue-card.png) |
-| 14 | Continue sheet | ![](light/s14-continue-sheet.png) | ![](dark/s14-continue-sheet.png) |
+| 14 | Continue sheet · focus chips, the typed follow-up question, mode and estimate | ![](light/s14-continue-sheet.png) | ![](dark/s14-continue-sheet.png) |
+| 14b | Result · "Follow-ups" card: the question verbatim, status, cited answer; the original answer untouched | ![](light/s14b-result-follow-up-answered.png) | ![](dark/s14b-result-follow-up-answered.png) |
 | 15 | Result · how this was researched (stages, queries, usage, what was shared) | ![](light/s15-result-how-researched.png) | ![](dark/s15-result-how-researched.png) |
 | 16 | Proposals · editable rows, evidence chips, unticked research-later step | ![](light/s16-proposals.png) | ![](dark/s16-proposals.png) |
 | 17 | Applied · Undo | ![](light/s17-applied-undo.png) | ![](dark/s17-applied-undo.png) |
@@ -43,3 +46,6 @@ settings states.
 | 30 | Preflight blocked offline | ![](light/s30-preflight-offline.png) | ![](dark/s30-preflight-offline.png) |
 | 31 | AI settings · "AI usage & costs" entry | ![](light/s31-settings-ai-usage-entry.png) | ![](dark/s31-settings-ai-usage-entry.png) |
 | 32 | Usage · spending preferences (soft limits, monthly budget) | ![](light/s32-usage-preferences.png) | ![](dark/s32-usage-preferences.png) |
+| 33 | Continuation cut off before any text · what came back, "No new findings were saved. Your previous research is unchanged.", Back to your research | ![](light/s33-continuation-cut-off-before-text.png) | ![](dark/s33-continuation-cut-off-before-text.png) |
+| 34 | Technical details (safe to share) · stop reason, block kinds and counts, tokens vs max, searches, duration, classification; Copy | ![](light/s34-continuation-technical-record.png) | ![](dark/s34-continuation-technical-record.png) |
+| 35 | Saved result unchanged · "How this was researched" with one diagnostic line per call | ![](light/s35-result-unchanged-with-failed-continuation-on-log.png) | ![](dark/s35-result-unchanged-with-failed-continuation-on-log.png) |

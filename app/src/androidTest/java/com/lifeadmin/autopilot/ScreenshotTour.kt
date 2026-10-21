@@ -1287,17 +1287,17 @@ class ScreenshotTourResearch2 {
         compose.waitForIdle()
         compose.onNodeWithTag("continue_go").tap()
         compose.waitForTag("result_headline")
-        screenshot("s30-continuation-cut-off-before-text")
+        screenshot("s33-continuation-cut-off-before-text")
         compose.onNodeWithTag("result_diagnostics_toggle").tap()
         compose.waitForTag("result_diagnostics")
         compose.onNodeWithTag("research_progress").performScrollToNode(hasTestTag("result_diagnostics"))
-        screenshot("s31-continuation-technical-record")
+        screenshot("s34-continuation-technical-record")
         compose.onNodeWithTag("result_open_session").tap()
         compose.waitForTag("brief_list")
         compose.waitAndScrollTo("brief_list", "brief_log_toggle")
         compose.onNodeWithTag("brief_log_toggle").tap()
         compose.waitAndScrollTo("brief_list", "brief_log_call")
-        screenshot("s32-result-unchanged-with-failed-continuation-on-log")
+        screenshot("s35-result-unchanged-with-failed-continuation-on-log")
     }
 
     @Test fun s3_errorAndOffline() {
