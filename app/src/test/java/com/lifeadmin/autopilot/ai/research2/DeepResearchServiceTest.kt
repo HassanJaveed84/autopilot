@@ -200,7 +200,7 @@ class DeepResearchServiceTest {
     @Test fun spendLimitTrimsTheAllowanceInsteadOfStoppingWhenAFewSearchesFit() {
         provider.enqueue(Research2Fixtures.supplementsGather())
         provider.enqueue(Research2Fixtures.fragranceFillGaps().copy(segments = listOf(RawSegment("## REQ r-i3 · status=answered\nfound\n", emptyList()))))
-        start(draft(limitCents = 26))
+        start(draft(limitCents = 28))
         saved(awaitFinished())
         assertEquals(2, provider.calls.size)
         assertEquals("allowance trimmed from 3 to what fits under the limit", 2, provider.calls[1].maxSearches)
@@ -222,7 +222,7 @@ class DeepResearchServiceTest {
         provider.enqueue(CallResult.Failed(ResearchError.RateLimited(30), 0, null, 100))
         start()
         val f2 = awaitFinished()
-        assertEquals(RunResult.Failed(ResearchError.RateLimited(30)), f2.result)
+        assertEquals(ResearchError.RateLimited(30), (f2.result as RunResult.Failed).error)
         val all = runBlocking { ledger.getAll() }
         assertEquals(CallOutcome.FAILED_NOT_BILLED, all.first { it.runId == f2.runId }.outcome)
         assertEquals(0L, all.first { it.runId == f2.runId }.estimatedMicros)
@@ -302,11 +302,13 @@ class DeepResearchServiceTest {
     @Test fun refusalAndEmptyAnswersAreReportedNotSaved() {
         provider.enqueue(Research2Fixtures.supplementsGather().copy(segments = emptyList(), stop = CallStop.REFUSAL, refusalCategory = "harmful"))
         start()
-        assertEquals(RunResult.Failed(ResearchError.Refused("harmful")), awaitFinished().result)
+        assertEquals(ResearchError.Refused("harmful"), (awaitFinished().result as RunResult.Failed).error)
         service.dismiss((service.state.value as DeepRunState.Finished).runId)
         provider.enqueue(CallResult.Done(emptyList(), emptyList(), MeasuredUsage(100, 0, 0, 0, 0, 0), CallStop.END, 10, "m"))
         start()
-        assertTrue(awaitFinished().result.let { it is RunResult.Failed && it.error is ResearchError.Malformed })
+        val empty = (awaitFinished().result as RunResult.Failed)
+        assertTrue(empty.error.toString(), empty.error is ResearchError.NoFindings && (empty.error as ResearchError.NoFindings).why == CallClass.EMPTY)
+        assertEquals(CallClass.EMPTY, empty.diagnostics.single().classification)
     }
 
     @Test fun truncatedAnswerIsSavedAsPartial() {
@@ -354,7 +356,7 @@ class DeepResearchServiceTest {
         awaitCalls(1)
         service.stop(started.runId, keepPartial = false)
         val f = awaitFinished()
-        assertEquals(RunResult.Failed(ResearchError.Stopped(0)), f.result)
+        assertEquals(ResearchError.Stopped(0), (f.result as RunResult.Failed).error)
         assertEquals(0, runBlocking { store.getAll() }.size)
         assertEquals(CallOutcome.STOPPED, runBlocking { ledger.getAll() }.single().outcome)
     }
@@ -370,7 +372,9 @@ class DeepResearchServiceTest {
         provider.enqueue(
             CallResult.Done(
                 listOf(
-                    RawSegment("## REQ r-i0 · status=answered\nok\n## REQ r-i1 · status=answered\nok\n## REQ r-i2 · status=answered\nok\n## REQ r-i3 · status=answered\n", emptyList()),
+                    RawSegment("## REQ r-i0 · status=answered\nok\n## REQ r-i1 · status=answered\nok\n## REQ r-i2 · status=answered\nok\n## REQ r-f1 · status=answered\n", emptyList()),
+                    RawSegment("The brand site lists a glucosamine product directly, as asked.", listOf(com.lifeadmin.autopilot.ai.research.RawCitation("https://www.thorne.example/products/glucosamine", "Glucosamine | Thorne", "Glucosamine sulfate 500 mg"))),
+                    RawSegment("\n## REQ r-i3 · status=answered\n", emptyList()),
                     RawSegment("Found a glucosamine product on the brand site.", listOf(com.lifeadmin.autopilot.ai.research.RawCitation("https://www.thorne.example/products/glucosamine", "Glucosamine | Thorne", "Glucosamine sulfate 500 mg"))),
                     RawSegment("\n## PICK r-i3 · status=answered\nPick: Thorne Glucosamine & Chondroitin\nLabel: Glucosamine sulfate 500 mg src=s5\nWhy: Preferred brand.\n## PROPOSE step · req=r-i3\nBuy glucosamine: Thorne Glucosamine & Chondroitin\nNote: 500 mg per capsule.\n", emptyList()),
                 ),
@@ -388,6 +392,10 @@ class DeepResearchServiceTest {
         assertEquals("earlier source numbers are untouched", sourcesBefore, second.content.sources.take(sourcesBefore.size).map { it.n to it.url })
         assertEquals(5, second.content.sources.size)
         assertEquals("the continuation prompt carries the earlier queries", true, provider.calls[1].user.contains("Thorne glucosamine") && provider.calls[1].user.contains("Focus on: r-i3") && provider.calls[1].user.contains("Try the brand site directly"))
+        val fu = second.content.followUps.single()
+        assertEquals("Try the brand site directly", fu.question); assertEquals("r-f1", fu.requirementId); assertEquals(RequirementStatus.ANSWERED, fu.status)
+        assertTrue("the note is tracked as a requirement of its own", second.content.requirements.any { it.id == "r-f1" && it.followUp })
+        assertTrue("the original answer is kept", second.content.answer == first.content.answer)
         assertEquals(listOf("r-i0", "r-i1", "r-i2", "r-i3"), second.content.proposals.map { it.requirementId })
         assertEquals(ProposalKind.STEP, second.content.proposals.last().kind)
         assertEquals("Buy glucosamine: Thorne Glucosamine & Chondroitin", second.content.proposals.last().title)
@@ -444,7 +452,7 @@ class DeepResearchServiceTest {
         provider.enqueue(Research2Fixtures.supplementsGather().copy(usage = MeasuredUsage(20_000, 2_000, 0, 0, 0, 3)))
         start(draft(mode = ResearchMode.QUICK))
         saved(awaitFinished())
-        assertEquals(java.time.Duration.ofSeconds(142), provider.calls.single().timeout)
+        assertEquals("Quick: 60 s + 3 × 15 s + 6,000 / 40", java.time.Duration.ofSeconds(255), provider.calls.single().timeout)
         val events = (service.state.value as DeepRunState.Finished).let { runBlocking { store.getAll() } }
         assertTrue(events.isNotEmpty())
     }
@@ -466,7 +474,7 @@ class DeepResearchServiceTest {
         val running = service.state.value as DeepRunState.Running
         assertTrue(running.checkpointed)
         assertEquals(2, running.callsSent)
-        assertEquals(400, running.callTimeoutSeconds)
+        assertEquals("Deep batch of 6 with 12,000 output tokens: 60 + 90 + 300", 450, running.callTimeoutSeconds)
         assertNotNull(running.callStartedAtEpochMs)
         assertTrue(running.events.any { it.kind == RunEventKind.CONTINUED && it.text.contains("evidence saved") && it.text.contains("glucosamine") })
         provider.gate!!.complete(Unit)
@@ -479,7 +487,7 @@ class DeepResearchServiceTest {
         assertEquals(listOf(6, 6, 6, 0), provider.calls.map { it.maxSearches })
         assertTrue("batch 2 is an evidence-driven follow-up naming the open item", provider.calls[1].user.contains("Still open") && provider.calls[1].user.contains("r-i3"))
         assertTrue("batch 3 still carries the known sources", provider.calls[2].user.contains("Sources already held"))
-        assertEquals(listOf(400L, 400L, 400L, 310L), provider.calls.map { it.timeout!!.seconds })
+        assertEquals("Deep batches of 6 with 12,000 output tokens, then the write-up", listOf(450L, 450L, 450L, 360L), provider.calls.map { it.timeout!!.seconds })
         assertEquals("one ledger row per HTTP call", 4, runBlocking { ledger.forSession(s.id) }.size)
         assertEquals("the provisional record was replaced, not duplicated", 1, s.content.runs.size)
         assertEquals(8, s.content.searchesTotal)
@@ -528,7 +536,7 @@ class DeepResearchServiceTest {
         awaitCalls(2)
         assertNotNull(runBlocking { store.get(a.sessionId) })
         service.stop(a.runId, keepPartial = false)
-        assertEquals(RunResult.Failed(ResearchError.Stopped(5)), awaitFinished().result)
+        assertEquals(ResearchError.Stopped(5), (awaitFinished().result as RunResult.Failed).error)
         assertNull("discard removes the checkpoint", runBlocking { store.get(a.sessionId) })
         assertEquals(listOf(CallOutcome.COMPLETE, CallOutcome.STOPPED), runBlocking { ledger.getAll() }.sortedBy { it.startedAt }.map { it.outcome }.takeLast(2))
         service.dismiss(a.runId)

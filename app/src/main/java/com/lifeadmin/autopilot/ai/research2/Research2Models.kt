@@ -54,6 +54,11 @@ data class Requirement(
      * of a strict one keeps the research from being complete. See [CompletionPolicy].
      */
     val soft: Boolean = false,
+    /**
+     * A follow-up question typed on the Continue sheet. It is the primary objective of that
+     * continuation and is tracked like any requirement, but never gets a generated proposal of its own.
+     */
+    val followUp: Boolean = false,
 )
 
 /**
@@ -288,6 +293,108 @@ data class StageRecord(
     val queries: List<String> = emptyList(),
     val note: String? = null,
     val calls: Int = 0,
+    /** One privacy-safe diagnostic per HTTP call of this stage (counts and kinds only). */
+    val callLog: List<CallDiagnostic> = emptyList(),
+)
+
+/**
+ * What one reply amounted to, decided in code after parsing. Shown in the run log and in the
+ * failure screen so a real-device problem can be read off the record instead of guessed.
+ */
+@Serializable
+enum class CallClass(val label: String) {
+    /** Contract blocks parsed and merged. */
+    STRUCTURED("usable blocks"),
+    /** No contract headings at all; the text was kept as the answer. */
+    FREE_FORM("free-form text, kept"),
+    /** Headings present but none carried a usable id or body; the text was kept as free-form. */
+    TEXT_UNPARSED("headings unusable, text kept"),
+    /** Only an UNRESOLVED block: an honest "nothing verifiable", saved as such. */
+    UNRESOLVED_ONLY("only unresolved topics"),
+    /** Parsed fine but changed nothing the session already held. */
+    NO_NEW_EVIDENCE("nothing new"),
+    /** Searches ran (tool blocks) but no text was written and the turn ended. */
+    TOOL_ONLY("searches, no text"),
+    /** `pause_turn` arrived before any text was written. */
+    PAUSED_BEFORE_TEXT("paused before any text"),
+    /** `max_tokens` arrived before any text was written (thinking and tool calls used the output room). */
+    TRUNCATED_BEFORE_TEXT("output limit before any text"),
+    /** No content blocks at all. */
+    EMPTY("empty reply"),
+    REFUSED("declined"),
+    /** Transport or API failure; see [CallDiagnostic.error]. */
+    HTTP_FAILED("request failed"),
+    ;
+
+    /** The reply gave the app nothing to save. */
+    val nothingUsable: Boolean get() = this == TOOL_ONLY || this == PAUSED_BEFORE_TEXT || this == TRUNCATED_BEFORE_TEXT || this == EMPTY
+}
+
+/**
+ * One HTTP call, described without content: model, stop reason, block kinds and counts, parsed block
+ * counts, token and search usage, duration, stage and classification. Never the prompt, the task,
+ * the text, page bodies or the key.
+ */
+@Serializable
+data class CallDiagnostic(
+    val call: Int,
+    val stage: StageKind,
+    val model: String,
+    /** end_turn · pause_turn · max_tokens · refusal · failed */
+    val stop: String,
+    val blocks: Map<String, Int> = emptyMap(),
+    val textChars: Int = 0,
+    val citedBlocks: Int = 0,
+    /** Parsed contract blocks by kind (answer, req, cand, attr, pick, claim, step, unresolved, …). */
+    val parsed: Map<String, Int> = emptyMap(),
+    val inputTokens: Long? = null,
+    val outputTokens: Long? = null,
+    val maxTokens: Long,
+    val webSearches: Int? = null,
+    val searchesAllowed: Int,
+    val durationMs: Long,
+    val classification: CallClass,
+    /** Technical line of a failed request (never contains the key). */
+    val error: String? = null,
+) {
+    /** One shareable line. */
+    fun line(): String = buildString {
+        append("call $call · ${stage.name.lowercase()} · $model · stop=$stop")
+        if (blocks.isNotEmpty()) append(" · blocks: " + blocks.entries.joinToString(", ") { "${it.key} ${it.value}" }) else if (error == null) append(" · blocks: none")
+        append(" · text $textChars chars" + if (citedBlocks > 0) " ($citedBlocks cited)" else "")
+        append(" · parsed: " + if (parsed.isEmpty()) "none" else parsed.entries.joinToString(", ") { "${it.key} ${it.value}" })
+        append(" · tokens in ${inputTokens ?: "?"} out ${outputTokens ?: "?"} of max $maxTokens")
+        append(" · searches ${webSearches ?: "?"} of $searchesAllowed")
+        append(" · ${durationMs / 1000}.${(durationMs % 1000) / 100} s")
+        append(" · ${classification.name}")
+        error?.let { append(" · $it") }
+    }
+
+    companion object {
+        /** A redacted summary of a run's calls, safe to paste into a bug report. */
+        fun summary(runId: String, kind: RunKind, mode: ResearchMode, searchBudget: Int, calls: List<CallDiagnostic>): String = buildString {
+            appendLine("${kind.name.lowercase()} run $runId · ${mode.label} · budget $searchBudget searches · ${calls.size} ${if (calls.size == 1) "call" else "calls"}")
+            calls.forEach { appendLine(it.line()) }
+            append("Contains counts and kinds only: no prompt, task text, page content or key.")
+        }
+    }
+}
+
+/**
+ * The outcome of one continuation for a question or note typed on the Continue sheet. The original
+ * answer is never replaced; a follow-up is answered next to it, or recorded as not found.
+ */
+@Serializable
+data class FollowUp(
+    val runId: String,
+    val requirementId: String?,
+    /** The person's words, verbatim. */
+    val question: String,
+    val status: RequirementStatus,
+    val answer: List<CitedSegment> = emptyList(),
+    /** What was found or why nothing could be verified, one or two sentences. */
+    val summary: String = "",
+    val atEpochMs: Long,
 )
 
 @Serializable
@@ -365,6 +472,8 @@ data class SessionContent(
     val queries: List<String> = emptyList(),
     val proposals: List<Proposal> = emptyList(),
     val runs: List<RunRecord> = emptyList(),
+    /** Answers to follow-up questions from continuations, newest last; the original answer stays as it was. */
+    val followUps: List<FollowUp> = emptyList(),
     val outcome: SessionOutcome,
     /** What was shared, in plain words (preflight scope). */
     val shared: List<String> = emptyList(),

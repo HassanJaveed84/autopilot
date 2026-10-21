@@ -111,18 +111,58 @@ object Research2Prompt {
         append("Write TITLE, ANSWER, one REQ block per requirement, CALLOUT blocks, and PROPOSE blocks. Do not add facts that are not in the evidence above; keep every REQ status honest.")
     }
 
-    /** New run on a saved session: full context, new budget, no repeats. */
-    fun continuation(session: SessionContent, focus: List<Requirement>, allowedSearches: Int, note: String?): String = buildString {
-        appendLine("Continue earlier research. Request (verbatim): ${session.request}")
+    /**
+     * New run on a saved session with a new budget. With a note, the note is the primary objective:
+     * the exact words, the original constraints, the existing candidates by id and name (so new options
+     * are compared and merged, not re-listed), only the cited sources (compactly, by id), and a small
+     * contract: a REQ block for the follow-up, an ANSWER for it, new CAND/ATTR blocks, UNRESOLVED for
+     * what could not be verified. The saved answer is never asked to be rewritten.
+     */
+    fun continuation(session: SessionContent, focus: List<Requirement>, allowedSearches: Int, note: String?, followUpId: String? = null): String = buildString {
+        val question = note?.takeIf { it.isNotBlank() }
+        if (question != null && followUpId != null) {
+            appendLine("Follow-up on earlier research. The person's new question or instruction, verbatim: \"$question\"")
+            appendLine("Answering it is the main objective of this call; report it as REQ $followUpId.")
+            val constraints = session.requirements.filter { it.type == RequirementType.CONSTRAINT }
+            if (constraints.isNotEmpty()) appendLine("Constraints from the original request still apply: " + constraints.joinToString("; ") { it.label } + ".")
+            appendLine("Original request (verbatim): ${session.request}")
+        } else {
+            appendLine("Continue earlier research. Request (verbatim): ${session.request}")
+        }
         appendLine("Deliverable: ${templateLine(session.template)}")
-        appendLine("Requirements and their status after the earlier run (keep these ids):")
+        appendLine("Requirements and their status after the earlier run (keep these ids; update a status only for what you research now):")
         session.requirements.forEach { r -> appendLine("- ${r.id} · ${r.label} · ${session.coverageOf(r.id).status.name.lowercase()}") }
         if (focus.isNotEmpty()) appendLine("Focus on: " + focus.joinToString(", ") { it.id })
-        note?.takeIf { it.isNotBlank() }?.let { appendLine("Extra guidance from the person: $it") }
-        knownSources(session)
-        if (session.queries.isNotEmpty()) appendLine("Searches already run (do not repeat): " + session.queries.joinToString(" | "))
-        appendLine("Existing candidate ids: " + session.body.candidates.joinToString(", ") { it.id }.ifEmpty { "none" } + ". New candidates continue the numbering.")
-        append("Searches allowed on this call: $allowedSearches. Write REQ blocks for every requirement (updated statuses), and any new CAND/ATTR/PICK/CLAIM/PROPOSE/UNRESOLVED blocks.")
+        if (question != null && followUpId == null) appendLine("Extra guidance from the person: $question")
+        if (question != null) citedSources(session) else knownSources(session)
+        val queries = if (question != null) session.queries.takeLast(MAX_QUERIES_IN_FOLLOW_UP) else session.queries
+        if (queries.isNotEmpty()) appendLine("Searches already run (do not repeat): " + queries.joinToString(" | "))
+        val cands = session.body.candidates
+        if (cands.isEmpty()) appendLine("Existing candidate ids: none. New candidates start at c1.")
+        else if (question != null) appendLine("Existing candidates (keep these ids; new ones continue the numbering after c${nextCandidateNumber(session) - 1}): " + cands.take(MAX_CANDIDATES_IN_FOLLOW_UP).joinToString("; ") { c -> "${c.id} ${c.name}${c.variant?.let { " ($it)" } ?: ""}${c.price?.let { " " + it.display() } ?: ""}" })
+        else appendLine("Existing candidate ids: " + cands.joinToString(", ") { it.id } + ". New candidates continue the numbering.")
+        if (question != null) {
+            append("Searches allowed on this call: $allowedSearches. Write: ## REQ $followUpId with its status and one cited sentence; ## ANSWER with 2 to 4 sentences answering the follow-up, cited; CAND/ATTR blocks for any new option (never re-describe existing candidates); PICK/CLAIM/PROPOSE blocks only where they follow; ## UNRESOLVED for anything you could not verify. Do not rewrite the earlier answer or REQ blocks for requirements you did not research. If nothing can be verified, say so in REQ $followUpId (status=not_found) and UNRESOLVED rather than guessing.")
+        } else {
+            append("Searches allowed on this call: $allowedSearches. Write REQ blocks for every requirement (updated statuses), and any new CAND/ATTR/PICK/CLAIM/PROPOSE/UNRESOLVED blocks.")
+        }
+    }
+
+    /** Searches and candidates a follow-up call is reminded of; the rest stays on the device. */
+    const val MAX_QUERIES_IN_FOLLOW_UP = 10
+    const val MAX_CANDIDATES_IN_FOLLOW_UP = 8
+    const val MAX_SOURCES_IN_FOLLOW_UP = 12
+
+    /** Next free candidate number, so a continuation never reuses an id. */
+    fun nextCandidateNumber(session: SessionContent): Int =
+        ((session.body.candidates + session.body.excluded).mapNotNull { it.id.removePrefix("c").toIntOrNull() }.maxOrNull() ?: 0) + 1
+
+    /** Only sources that were cited, most-cited first, capped: enough to reuse ids, not a re-send of the whole list. */
+    private fun StringBuilder.citedSources(session: SessionContent) {
+        val cited = session.sources.filter { it.citedCount > 0 }.sortedByDescending { it.citedCount }.take(MAX_SOURCES_IN_FOLLOW_UP)
+        if (cited.isEmpty()) return
+        appendLine("Sources already held (refer to them as src=s<n>; do not describe them as new; ${session.sources.size} in total):")
+        cited.forEach { appendLine("- s${it.n} · ${it.title.take(60)} · ${it.domain}") }
     }
 
     private fun StringBuilder.knownSources(session: SessionContent) {

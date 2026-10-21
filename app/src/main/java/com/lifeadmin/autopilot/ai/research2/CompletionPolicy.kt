@@ -91,7 +91,8 @@ object CompletionPolicy {
 
     private fun validateOutput(s: SessionContent, r: Requirement, cov: Coverage, evidenceAnywhere: Boolean): Coverage {
         val label = r.label.lowercase(Locale.ROOT)
-        val items = s.requirements.filter { it.type == RequirementType.ITEM || it.type == RequirementType.USER_ADDED }
+        // A follow-up question from a continuation is not one of the requested items an output wish covers.
+        val items = s.requirements.filter { (it.type == RequirementType.ITEM || it.type == RequirementType.USER_ADDED) && !it.followUp }
         return when {
             label.contains("step per item") || label.contains("one step per") || label.contains("separate step") -> {
                 val provided = items.count { item ->

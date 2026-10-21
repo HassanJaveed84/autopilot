@@ -84,9 +84,21 @@ object ResearchModes {
 
     data class Preset(val mode: ResearchMode, val model: String, val searches: Int, val outputTokens: Long, val stages: List<StageKind>, val timeHint: String, val blurb: String)
 
-    val QUICK = Preset(ResearchMode.QUICK, QUICK_MODEL, 3, 1_500, listOf(StageKind.GATHER), "about 30 s", "One pass, a few searches. Good for a fact or a quick answer.")
-    val THOROUGH = Preset(ResearchMode.THOROUGH, THOROUGH_MODEL, 10, 6_000, listOf(StageKind.GATHER, StageKind.FILL_GAPS), "1–2 min", "Gathers evidence, then goes back for anything still missing.")
-    val DEEP = Preset(ResearchMode.DEEP, DEEP_MODEL, 25, 10_000, listOf(StageKind.GATHER, StageKind.FILL_GAPS, StageKind.CROSS_CHECK, StageKind.SYNTHESIZE), "3–6 min", "Multi-stage: gather, fill gaps, cross-check prices and conflicts, then write it up.")
+    /*
+     * Output room per call. The Claude 5.5 models think by default (adaptive thinking, not switchable off
+     * on Sonnet/Opus 5.5), and thinking plus tool calls count against `max_tokens` before any text is
+     * written. Quick's original 1,500 was reached on a real device before a single text block (the
+     * "MALFORMED RESPONSE" continuation bug), so every preset now leaves room for thinking, the tool
+     * calls and the contract. Output tokens are the cheap part of a research call: 6,000 Haiku 5.5
+     * output tokens cost about $0.003 against $0.03 for its three searches.
+     */
+    const val QUICK_OUTPUT_TOKENS = 6_000L
+    const val THOROUGH_OUTPUT_TOKENS = 8_000L
+    const val DEEP_OUTPUT_TOKENS = 12_000L
+
+    val QUICK = Preset(ResearchMode.QUICK, QUICK_MODEL, 3, QUICK_OUTPUT_TOKENS, listOf(StageKind.GATHER), "30–60 s", "One pass, a few searches. Good for a fact or a quick answer.")
+    val THOROUGH = Preset(ResearchMode.THOROUGH, THOROUGH_MODEL, 10, THOROUGH_OUTPUT_TOKENS, listOf(StageKind.GATHER, StageKind.FILL_GAPS), "1–2 min", "Gathers evidence, then goes back for anything still missing.")
+    val DEEP = Preset(ResearchMode.DEEP, DEEP_MODEL, 25, DEEP_OUTPUT_TOKENS, listOf(StageKind.GATHER, StageKind.FILL_GAPS, StageKind.CROSS_CHECK, StageKind.SYNTHESIZE), "3–6 min", "Multi-stage: gather, fill gaps, cross-check prices and conflicts, then write it up.")
 
     val PRESETS = listOf(QUICK, THOROUGH, DEEP)
 

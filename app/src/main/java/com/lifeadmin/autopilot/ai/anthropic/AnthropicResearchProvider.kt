@@ -141,12 +141,29 @@ class AnthropicResearchProvider(
         var outputTokens = 0L
         var reportedSearches = 0L
         private val pendingQueries = LinkedHashMap<String, String>()
+        /** Block kinds and counts, for the privacy-safe call diagnostic (never the content). */
+        val blockCounts = LinkedHashMap<String, Int>()
+        var citedTextBlocks = 0
 
         val searchCount: Int get() = maxOf(reportedSearches.toInt(), searches.size)
+
+        fun shape(): com.lifeadmin.autopilot.ai.research2.ReplyShape =
+            com.lifeadmin.autopilot.ai.research2.ReplyShape(blockCounts.toMap(), segments.sumOf { it.text.trim().length }, citedTextBlocks)
+
+        private fun kindOf(block: com.anthropic.models.messages.ContentBlock): String = when {
+            block.isText() -> "text"
+            block.isThinking() -> "thinking"
+            block.isRedactedThinking() -> "redacted_thinking"
+            block.isServerToolUse() -> "server_tool_use"
+            block.isWebSearchToolResult() -> "web_search_tool_result"
+            block.isToolUse() -> "tool_use"
+            else -> "other"
+        }
 
         fun add(message: Message) {
             // Each response carries only its own blocks; a continuation's blocks are appended in order.
             for (block in message.content()) {
+                blockCounts.merge(kindOf(block), 1, Int::plus)
                 block.serverToolUse().orElse(null)?.let { use ->
                     if (use.name().toString() == ResearchConfig.TOOL_NAME) pendingQueries[use.id()] = queryOf(use._input())
                     return@let
@@ -171,6 +188,7 @@ class AnthropicResearchProvider(
                             RawCitation(loc.url(), loc.title().orElse(null), loc.citedText())
                         }
                     }
+                    if (citations.isNotEmpty()) citedTextBlocks++
                     segments += RawSegment(text.text(), citations)
                 }
             }
@@ -305,6 +323,7 @@ class AnthropicResearchCalls(
             return com.lifeadmin.autopilot.ai.research2.CallResult.Done(
                 absorbed.segments.toList(), absorbed.searches.toList(), usage, stop, elapsed(), runCatching { message.id() }.getOrNull(),
                 paused = if (stop == com.lifeadmin.autopilot.ai.research2.CallStop.PAUSE_TURN) message else null, refusalCategory = category,
+                shape = absorbed.shape(),
             )
         } catch (e: TimeoutCancellationException) {
             base.reset()

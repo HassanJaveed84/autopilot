@@ -94,6 +94,11 @@ object SessionAssembler {
     /** Requirements still worth another call: anything (item, constraint or output wish) whose status is open. */
     fun gaps(session: SessionContent): List<Requirement> = CompletionPolicy.gaps(session)
 
+    /** True when a merge changed what the session holds as findings (not sources, queries or bookkeeping). */
+    fun findingsDiffer(a: SessionContent, b: SessionContent): Boolean =
+        a.answer != b.answer || a.coverage != b.coverage || a.body != b.body || a.claims != b.claims || a.conflicts != b.conflicts ||
+            a.unresolved != b.unresolved || a.callouts != b.callouts || a.proposals != b.proposals || a.title != b.title
+
     fun priceGaps(session: SessionContent): List<Candidate> = session.body.candidates.filter { it.included && (it.price == null || it.price.status == PriceStatus.NOT_CONFIRMED) }
 
     /** True when every requirement, constraints included, is covered after validation. */
@@ -168,7 +173,8 @@ object ProposalBuilder {
                 }
             }
         }.toMutableList()
-        val items = session.requirements.filter { it.type == RequirementType.ITEM || it.type == RequirementType.USER_ADDED }
+        // A follow-up question is answered in its own card; it never gets a generated proposal.
+        val items = session.requirements.filter { (it.type == RequirementType.ITEM || it.type == RequirementType.USER_ADDED) && !it.followUp }
         val wantsStepPerItem = session.template == DeliverableTemplate.PICK_PER_ITEM ||
             session.requirements.any { it.type == RequirementType.OUTPUT && it.label.contains("per item", true) }
         if (wantsStepPerItem && items.size >= 1) {

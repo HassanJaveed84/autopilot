@@ -81,12 +81,14 @@ sealed interface DeepRunState {
         val checkpointed: Boolean = false,
     ) : DeepRunState
 
-    data class Finished(val runId: String, val sessionId: String, val taskId: String, val result: RunResult) : DeepRunState
+    data class Finished(val runId: String, val sessionId: String, val taskId: String, val result: RunResult, val continuation: Boolean = false) : DeepRunState
 }
 
 sealed interface RunResult {
     data class Saved(val sessionId: String, val outcome: SessionOutcome) : RunResult
-    data class Failed(val error: ResearchError) : RunResult
+
+    /** [diagnostics]: the privacy-safe record of every call of the failed run, for the screen and a bug report. */
+    data class Failed(val error: ResearchError, val diagnostics: List<CallDiagnostic> = emptyList()) : RunResult
     data object Discarded : RunResult
 }
 
@@ -190,8 +192,19 @@ class DeepResearchService(
         if (!reserve()) return@claimed StartResult2.Rejected(ResearchError.DailyLimit)
         val runId = ids.newId()
         val focusReqs = session.content.requirements.filter { it.id in focus }
-        launch(session, runId, config, key, RunKind.CONTINUATION, shared = null, focus = focusReqs, note = note?.take(300))
+        val question = note?.trim()?.take(MAX_NOTE_CHARS)?.takeIf { it.isNotBlank() }
+        // A typed question is the objective of this run: tracked as a requirement of its own, so coverage,
+        // the outcome and the Continue sheet all account for it. The saved session is only touched by finish().
+        val followUp = question?.let { Requirement(nextFollowUpId(session.content.requirements), RequirementType.USER_ADDED, it.take(Research2Config.MAX_REQUIREMENT_CHARS), RequirementOrigin.USER, followUp = true) }
+        val working = if (followUp == null) session else session.copy(content = session.content.copy(requirements = session.content.requirements + followUp, coverage = session.content.coverage + Coverage(followUp.id, RequirementStatus.PENDING)))
+        launch(working, runId, config, key, RunKind.CONTINUATION, shared = null, focus = focusReqs, note = question, original = session, followUp = followUp)
         StartResult2.Started(runId, sessionId)
+    }
+
+    private fun nextFollowUpId(reqs: List<Requirement>): String {
+        var n = 1
+        while (reqs.any { it.id == "r-f$n" }) n++
+        return "r-f$n"
     }
 
     /**
@@ -252,8 +265,17 @@ class DeepResearchService(
         val focus: List<Requirement>,
         val note: String?,
         val registry: SourceRegistry2,
+        /** The requirement standing for the typed follow-up question of a continuation. */
+        val followUp: Requirement?,
     ) {
         var remaining = config.searchBudget
+        /** Privacy-safe record of every call, in order. */
+        val diagnostics = ArrayList<CallDiagnostic>()
+        /** What the last reply amounted to, and the plain-words reason when it had nothing usable. */
+        var lastClass: CallClass? = null
+        var nothingUsableDetail: String? = null
+        /** A continuation's ANSWER text goes next to the original answer, never over it. */
+        val followUpAnswer = ArrayList<CitedSegment>()
         var searchesRun = 0
         val stages = ArrayList<StageRecord>()
         var usage = RunUsage()
@@ -271,13 +293,13 @@ class DeepResearchService(
         var callsSent = 0
     }
 
-    private fun launch(session: ResearchSession, runId: String, config: RunConfig, key: String, kind: RunKind, shared: SharedContext?, focus: List<Requirement>, note: String?) {
+    private fun launch(session: ResearchSession, runId: String, config: RunConfig, key: String, kind: RunKind, shared: SharedContext?, focus: List<Requirement>, note: String?, original: ResearchSession = session, followUp: Requirement? = null) {
         val startedAt = clock.now()
         _state.value = DeepRunState.Running(
             runId, session.id, session.taskId, session.content.title, config, startedAt, null, 0, config.stages.size, emptyList(), 0, session.content.sources.size, 0L, false,
             continuation = kind == RunKind.CONTINUATION,
         )
-        val ctx = RunCtx(session, session, startedAt, runId, config, key, kind, shared, focus, note, SourceRegistry2(session.content.sources, runId))
+        val ctx = RunCtx(session, original, startedAt, runId, config, key, kind, shared, focus, note, SourceRegistry2(session.content.sources, runId), followUp)
         keepPartialOnStop = false
         job = scope.launch {
             val result: RunResult = try {
@@ -289,12 +311,12 @@ class DeepResearchService(
                     ctx.ending = SessionAssembler.Ending.STOPPED
                     ctx.technical = "STOPPED BY YOU"
                     event(runId, RunEventKind.STOPPED, "Stopped. Searches that already ran may be billed.")
-                    if (keepPartialOnStop && ctx.merged) finish(ctx) else { discardCheckpoint(ctx); RunResult.Failed(ResearchError.Stopped(ctx.searchesRun)) }
+                    if (keepPartialOnStop && ctx.merged) finish(ctx) else { discardCheckpoint(ctx); RunResult.Failed(ResearchError.Stopped(ctx.searchesRun), ctx.diagnostics.toList()) }
                 }
             } catch (e: Exception) {
-                RunResult.Failed(ResearchError.Unexpected(e.javaClass.simpleName))
+                RunResult.Failed(ResearchError.Unexpected(e.javaClass.simpleName), ctx.diagnostics.toList())
             }
-            _state.update { s -> if (s is DeepRunState.Running && s.runId == runId) DeepRunState.Finished(runId, session.id, session.taskId, result) else s }
+            _state.update { s -> if (s is DeepRunState.Running && s.runId == runId) DeepRunState.Finished(runId, session.id, session.taskId, result, continuation = kind == RunKind.CONTINUATION) else s }
         }
     }
 
@@ -336,7 +358,7 @@ class DeepResearchService(
                 if (stage == StageKind.SYNTHESIZE && ctx.spentMicros + low(0) > limitMicros) { budgetStop(ctx, stage, "the write-up would pass the spending limit"); return }
             }
             val user = when (stage) {
-                StageKind.GATHER -> if (ctx.kind == RunKind.CONTINUATION) Research2Prompt.continuation(content, ctx.focus, allowance, ctx.note) else Research2Prompt.gather(content, ctx.config, ctx.shared ?: SharedContext(), allowance)
+                StageKind.GATHER -> if (ctx.kind == RunKind.CONTINUATION) Research2Prompt.continuation(content, ctx.focus, allowance, ctx.note, ctx.followUp?.id) else Research2Prompt.gather(content, ctx.config, ctx.shared ?: SharedContext(), allowance)
                 StageKind.FILL_GAPS -> Research2Prompt.fillGaps(content, gaps, priceGaps, allowance)
                 StageKind.CROSS_CHECK -> Research2Prompt.crossCheck(content, allowance)
                 StageKind.SYNTHESIZE -> Research2Prompt.synthesize(content)
@@ -344,9 +366,12 @@ class DeepResearchService(
             val ok = runStage(ctx, stage, allowance, user, cache = stages.size > 1)
             if (!ok) return
             if (stage == StageKind.GATHER && !ctx.merged) {
-                // Nothing usable came back from the first pass: don't spend more on follow-ups.
-                ctx.failure = ResearchError.Malformed("no usable blocks"); ctx.technical = ctx.failure?.technical; ctx.ending = SessionAssembler.Ending.FAILED
-                event(ctx.runId, RunEventKind.FAILED, "${stage.label}: the answer had nothing usable; stopping here")
+                // Nothing usable came back from the first pass: don't spend more on follow-ups. The record says
+                // what did come back (paused, cut off, searches only, empty) instead of a generic "malformed".
+                val why = noFindings(ctx)
+                ctx.failure = why; ctx.technical = why.technical
+                if (ctx.ending != SessionAssembler.Ending.BUDGET_SEARCHES) ctx.ending = SessionAssembler.Ending.FAILED
+                event(ctx.runId, RunEventKind.FAILED, "${stage.label}: ${why.headline.lowercase(Locale.ROOT)} — stopping here")
                 return
             }
             if (ctx.remaining <= 0 && index < stages.lastIndex && SessionAssembler.gaps(ctx.session.content).isNotEmpty()) ctx.ending = SessionAssembler.Ending.BUDGET_SEARCHES
@@ -375,7 +400,9 @@ class DeepResearchService(
         var left = allowance
         var prompt = user
         val queries = ArrayList<String>()
+        val stageLog = ArrayList<CallDiagnostic>()
         val batched = stage != StageKind.SYNTHESIZE && allowance > Research2Config.MAX_SEARCHES_PER_CALL
+        fun log(d: CallDiagnostic) { stageLog += d; ctx.diagnostics += d; ctx.lastClass = d.classification }
         while (true) {
             val ask = if (stage == StageKind.SYNTHESIZE) 0 else minOf(left, Research2Config.MAX_SEARCHES_PER_CALL)
             val limit = Research2Config.callTimeout(ask, ctx.config.outputTokens)
@@ -426,7 +453,8 @@ class DeepResearchService(
                     } else if (outcome == CallOutcome.FAILED_UNKNOWN) {
                         ctx.usage = ctx.usage.copy(complete = false)
                     }
-                    ctx.stages += StageRecord(stage, StageResult.FAILED, allowance, searchesThisStage, queries, result.error.technical, calls)
+                    log(CallDiagnostic(calls, stage, ctx.config.model, "failed", inputTokens = observed?.inputTokens, outputTokens = observed?.outputTokens, maxTokens = ctx.config.outputTokens, webSearches = observed?.webSearches, searchesAllowed = ask, durationMs = result.elapsedMs, classification = CallClass.HTTP_FAILED, error = result.error.technical))
+                    ctx.stages += StageRecord(stage, StageResult.FAILED, allowance, searchesThisStage, queries, result.error.technical, calls, stageLog.toList())
                     ctx.failure = result.error
                     ctx.technical = result.error.technical
                     ctx.ending = if (ctx.merged) SessionAssembler.Ending.FAILED_AFTER_PARTIAL else SessionAssembler.Ending.FAILED
@@ -448,29 +476,80 @@ class DeepResearchService(
                     )
                     val n = result.usage.webSearches ?: result.searches.size
                     searchesThisStage += n; ctx.searchesRun += n; ctx.remaining = (ctx.remaining - n).coerceAtLeast(0); left = (left - n).coerceAtLeast(0)
+                    val shape = result.shape ?: ReplyShape.of(result.segments, result.searches)
+                    val stopName = when (result.stop) { CallStop.END -> "end_turn"; CallStop.PAUSE_TURN -> "pause_turn"; CallStop.MAX_TOKENS -> "max_tokens"; CallStop.REFUSAL -> "refusal" }
+                    fun diagnostic(parsed: Map<String, Int>, cls: CallClass) = CallDiagnostic(
+                        calls, stage, ctx.config.model, stopName, shape.blocks, shape.textChars, shape.citedBlocks, parsed,
+                        result.usage.inputTokens, result.usage.outputTokens, ctx.config.outputTokens, result.usage.webSearches, ask, result.elapsedMs, cls,
+                    )
                     if (result.stop == CallStop.REFUSAL) {
-                        ctx.stages += StageRecord(stage, StageResult.FAILED, allowance, searchesThisStage, queries, "STOP REASON: REFUSAL", calls)
+                        log(diagnostic(emptyMap(), CallClass.REFUSED))
+                        ctx.stages += StageRecord(stage, StageResult.FAILED, allowance, searchesThisStage, queries, "STOP REASON: REFUSAL", calls, stageLog.toList())
                         ctx.failure = ResearchError.Refused(result.refusalCategory); ctx.technical = ctx.failure?.technical
                         ctx.ending = if (ctx.merged) SessionAssembler.Ending.FAILED_AFTER_PARTIAL else SessionAssembler.Ending.FAILED
                         event(ctx.runId, RunEventKind.FAILED, "${stage.label}: Claude declined this request")
                         return false
                     }
-                    val out = ContractParser.parse(
-                        result.segments, result.searches, ctx.registry, ctx.session.content.requirements, clock.now().toEpochMilli(),
-                        ctx.session.content.body.candidates, SessionAssembler.evidenceLines(ctx.session.content),
+                    val before = ctx.session.content
+                    var out = ContractParser.parse(
+                        result.segments, result.searches, ctx.registry, before.requirements, clock.now().toEpochMilli(),
+                        before.body.candidates, SessionAssembler.evidenceLines(before),
                     )
                     queries += out.queries
                     ctx.queriesThisRun += out.queries
-                    if (out.answer.isNotEmpty() || out.coverage.isNotEmpty() || out.candidates.isNotEmpty() || out.picks.isNotEmpty() || out.claims.isNotEmpty() || out.steps.isNotEmpty()) ctx.merged = true
-                    ctx.session = ctx.session.copy(content = SessionAssembler.merge(ctx.session.content, out, ctx.registry.sources()))
+                    // Text that came back is kept as text when the contract could not be read from it (D): cited
+                    // sentences are never thrown away because a heading lacked an id.
+                    var unparsedKept = false
+                    if (!ContractParser.hasFindings(out) && out.unresolved.isEmpty() && shape.textChars > 0 && !out.freeForm) {
+                        val text = ContractParser.freeForm(result.segments, ctx.registry, SessionAssembler.evidenceLines(before))
+                        if (text.isNotEmpty()) { out = out.copy(answer = text); unparsedKept = true }
+                    }
+                    val usable = ContractParser.hasFindings(out) || out.unresolved.isNotEmpty()
+                    if (ctx.kind == RunKind.CONTINUATION) {
+                        // The saved answer and title stay; a continuation's answer is shown next to them (C).
+                        ctx.followUpAnswer += out.answer
+                        out = out.copy(answer = emptyList(), title = null)
+                    }
+                    val after = if (usable) SessionAssembler.merge(before, out, ctx.registry.sources()) else before.copy(sources = ctx.registry.sources(), queries = (before.queries + out.queries).distinct())
+                    val changed = usable && (SessionAssembler.findingsDiffer(before, after) || ctx.followUpAnswer.isNotEmpty() || after.sources.size != before.sources.size)
+                    val cls = when {
+                        !usable && result.stop == CallStop.PAUSE_TURN -> CallClass.PAUSED_BEFORE_TEXT
+                        !usable && result.stop == CallStop.MAX_TOKENS -> CallClass.TRUNCATED_BEFORE_TEXT
+                        !usable && (n > 0 || (shape.blocks["server_tool_use"] ?: 0) > 0) -> CallClass.TOOL_ONLY
+                        !usable -> CallClass.EMPTY
+                        out.freeForm -> CallClass.FREE_FORM
+                        unparsedKept -> CallClass.TEXT_UNPARSED
+                        !ContractParser.hasFindings(out) && ctx.followUpAnswer.isEmpty() -> CallClass.UNRESOLVED_ONLY
+                        !changed -> CallClass.NO_NEW_EVIDENCE
+                        else -> CallClass.STRUCTURED
+                    }
+                    log(diagnostic(ContractParser.counts(out), cls))
+                    if (usable) ctx.merged = true
+                    ctx.session = ctx.session.copy(content = after)
                     // Evidence survives whatever happens to the next call.
                     if (ctx.merged) checkpoint(ctx, stage)
                     updateRunning(ctx)
                     if (result.stop == CallStop.MAX_TOKENS) { ctx.truncated = true; ctx.ending = SessionAssembler.Ending.TRUNCATED }
-                    if (result.stop == CallStop.PAUSE_TURN && continuations < Research2Config.MAX_PAUSE_CONTINUATIONS && left > 0 && calls < Research2Config.MAX_CALLS_PER_STAGE) {
-                        prior = result.paused; continuations++
-                        event(ctx.runId, RunEventKind.CONTINUED, "${stage.label}: Anthropic paused the turn; continuing with $left ${plural(left, "search", "searches")} left")
-                        continue
+                    if (result.stop == CallStop.PAUSE_TURN) {
+                        // A paused turn is continued (same tools, remaining allowance) while the budget allows it (B). With
+                        // no searches left it cannot be continued without the tool, and never past the authorized budget:
+                        // the run ends here and says so.
+                        if (continuations < Research2Config.MAX_PAUSE_CONTINUATIONS && left > 0 && calls < Research2Config.MAX_CALLS_PER_STAGE) {
+                            prior = result.paused; continuations++
+                            event(ctx.runId, RunEventKind.CONTINUED, "${stage.label}: Anthropic paused the turn; continuing with $left ${plural(left, "search", "searches")} left")
+                            continue
+                        }
+                        val reason = if (left <= 0) "no searches left in the budget" else if (continuations >= Research2Config.MAX_PAUSE_CONTINUATIONS) "already continued once" else "call limit for this stage reached"
+                        if (left <= 0 && SessionAssembler.gaps(ctx.session.content).isNotEmpty()) ctx.ending = SessionAssembler.Ending.BUDGET_SEARCHES
+                        if (!usable) ctx.nothingUsableDetail = "Anthropic paused the turn after $searchesThisStage of $allowance ${plural(allowance, "search", "searches")} and before any text was written; it was not continued ($reason)"
+                        ctx.stages += StageRecord(stage, StageResult.DONE, allowance, searchesThisStage, queries, "paused by Anthropic; not continued — $reason", calls, stageLog.toList())
+                        event(ctx.runId, RunEventKind.STAGE_DONE, "${stage.label}: paused by Anthropic, not continued ($reason) · $searchesThisStage ${plural(searchesThisStage, "search", "searches")}")
+                        return true
+                    }
+                    if (!usable) ctx.nothingUsableDetail = when (cls) {
+                        CallClass.TRUNCATED_BEFORE_TEXT -> "The reply reached its ${ctx.config.outputTokens}-token output limit before writing any text (${describeBlocks(shape, n)})"
+                        CallClass.TOOL_ONLY -> "$n ${plural(n, "search", "searches")} ran but the reply ended without any text (${describeBlocks(shape, n)})"
+                        else -> "The reply was empty: no content blocks at all"
                     }
                     // Next bounded batch of the same stage, only while something is still open and the model kept searching.
                     if (batched && left > 0 && n > 0 && calls < Research2Config.MAX_CALLS_PER_STAGE && result.stop != CallStop.MAX_TOKENS && stillOpen(ctx.session.content, stage) && spendAllows(ctx, stage, minOf(left, Research2Config.MAX_SEARCHES_PER_CALL))) {
@@ -481,12 +560,27 @@ class DeepResearchService(
                         event(ctx.runId, RunEventKind.CONTINUED, "${stage.label}: $searchesThisStage ${plural(searchesThisStage, "search", "searches")} so far, evidence saved; still open: ${open.take(3).joinToString(", ") { it.label }}${if (open.size > 3) " +${open.size - 3}" else ""} — next batch of up to $next")
                         continue
                     }
-                    ctx.stages += StageRecord(stage, StageResult.DONE, allowance, searchesThisStage, queries, if (result.stop == CallStop.PAUSE_TURN) "paused by Anthropic; not continued again" else if (batched) "$calls ${plural(calls, "call", "calls")}" else null, calls)
+                    ctx.stages += StageRecord(stage, StageResult.DONE, allowance, searchesThisStage, queries, if (batched) "$calls ${plural(calls, "call", "calls")}" else null, calls, stageLog.toList())
                     event(ctx.runId, RunEventKind.STAGE_DONE, "${stage.label}: done · $searchesThisStage ${plural(searchesThisStage, "search", "searches")} · ${ctx.registry.sources().size} sources so far")
                     return true
                 }
             }
         }
+    }
+
+    /** "2 thinking blocks, 1 search, no text" — kinds and counts only. */
+    private fun describeBlocks(shape: ReplyShape, searches: Int): String {
+        val parts = ArrayList<String>()
+        (shape.blocks["thinking"] ?: 0).plus(shape.blocks["redacted_thinking"] ?: 0).takeIf { it > 0 }?.let { parts += "$it thinking ${plural(it, "block", "blocks")}" }
+        if (searches > 0) parts += "$searches ${plural(searches, "search", "searches")}"
+        parts += if (shape.textChars > 0) "${shape.textChars} characters of text" else "no text"
+        return parts.joinToString(", ")
+    }
+
+    /** The honest error for a run whose replies held nothing to save, from what the record says came back. */
+    private fun noFindings(ctx: RunCtx): ResearchError {
+        val cls = ctx.lastClass?.takeIf { it.nothingUsable } ?: CallClass.EMPTY
+        return ResearchError.NoFindings(cls, ctx.nothingUsableDetail ?: "The reply was empty: no content blocks at all", ctx.kind == RunKind.CONTINUATION)
     }
 
     private fun stillOpen(content: SessionContent, stage: StageKind): Boolean = when (stage) {
@@ -539,20 +633,52 @@ class DeepResearchService(
     }
 
     private suspend fun finish(ctx: RunCtx): RunResult {
-        if (!ctx.merged && ctx.failure != null) return RunResult.Failed(ctx.failure!!)
-        if (!ctx.merged && ctx.ending == SessionAssembler.Ending.STOPPED) return RunResult.Failed(ResearchError.Stopped(ctx.searchesRun))
-        var content = SessionAssembler.settlePending(ctx.session.content)
-        val outcome = SessionAssembler.outcome(content, ctx.ending)
         val now = clock.now()
+        if (!ctx.merged) {
+            // Nothing usable came back. The error says what did; a continuation's saved research is left exactly
+            // as it was, with the attempt and its cost on the run record so the log and the ledger agree.
+            val error = ctx.failure ?: if (ctx.ending == SessionAssembler.Ending.STOPPED) ResearchError.Stopped(ctx.searchesRun) else noFindings(ctx)
+            if (ctx.kind == RunKind.CONTINUATION) {
+                val outcome = when (ctx.ending) {
+                    SessionAssembler.Ending.BUDGET_SEARCHES, SessionAssembler.Ending.BUDGET_SPEND -> SessionOutcome.INCOMPLETE_BUDGET
+                    SessionAssembler.Ending.STOPPED -> SessionOutcome.STOPPED
+                    else -> SessionOutcome.FAILED
+                }
+                val record = RunRecord(ctx.runId, ctx.kind, ctx.startedAt.toEpochMilli(), ctx.config.mode, ctx.config.model, ctx.config.searchBudget, ctx.config.spendLimitCents, ctx.stages.toList(), ctx.usage, outcome, ctx.technical ?: error.technical)
+                val original = ctx.original
+                store.save(original.copy(content = original.content.copy(runs = ctx.priorRuns + record), updatedAt = now))
+            }
+            return RunResult.Failed(error, ctx.diagnostics.toList())
+        }
+        var content = ctx.session.content
+        val fu = ctx.followUp
+        val unresolvedNow = content.unresolved.filter { u -> ctx.original.content.unresolved.none { it.topic.equals(u.topic, true) } }
+        if (fu != null && content.coverageOf(fu.id).status == RequirementStatus.PENDING) {
+            // The model did not report the follow-up as a REQ block. Free text about it is shown but not counted as
+            // checked; an UNRESOLVED line is the honest "not found" with its reason.
+            val settled = when {
+                ctx.followUpAnswer.isNotEmpty() -> Coverage(fu.id, RequirementStatus.NEEDS_CHECK, "Answered in free text; the app could not check it against a structured result.")
+                unresolvedNow.isNotEmpty() -> Coverage(fu.id, RequirementStatus.NOT_FOUND, unresolvedNow.first().let { "${it.topic} — ${it.why}" }.take(300))
+                else -> null
+            }
+            if (settled != null) content = content.copy(coverage = content.coverage.map { if (it.requirementId == fu.id) settled else it })
+        }
+        content = SessionAssembler.settlePending(content)
+        val outcome = SessionAssembler.outcome(content, ctx.ending)
+        if (ctx.kind == RunKind.CONTINUATION) {
+            val cov = fu?.let { content.coverageOf(it.id) }
+            val question = ctx.note ?: ("Continued on: " + ctx.focus.joinToString(", ") { it.label }.ifBlank { "the open points" })
+            val status = cov?.status ?: if (ctx.focus.isNotEmpty() && ctx.focus.all { content.coverageOf(it.id).status.covered }) RequirementStatus.ANSWERED else if (ctx.followUpAnswer.isNotEmpty()) RequirementStatus.PARTLY else RequirementStatus.NOT_FOUND
+            val summary = cov?.summary?.takeIf { it.isNotBlank() } ?: unresolvedNow.firstOrNull()?.let { "${it.topic} — ${it.why}" } ?: if (status == RequirementStatus.NOT_FOUND) "The research did not report on this." else ""
+            if (fu != null || ctx.followUpAnswer.isNotEmpty()) {
+                content = content.copy(followUps = content.followUps + FollowUp(ctx.runId, fu?.id, question, status, ctx.followUpAnswer.toList(), summary, now.toEpochMilli()))
+            }
+        }
         content = content.copy(
             proposals = ProposalBuilder.complete(content, now.toEpochMilli()),
             outcome = outcome,
             runs = ctx.priorRuns + RunRecord(ctx.runId, ctx.kind, ctx.startedAt.toEpochMilli(), ctx.config.mode, ctx.config.model, ctx.config.searchBudget, ctx.config.spendLimitCents, ctx.stages.toList(), ctx.usage, outcome, ctx.technical),
         )
-        if (!ctx.merged) {
-            // Nothing usable came back although the call "succeeded": say so rather than save an empty result.
-            return RunResult.Failed(ResearchError.Malformed("no usable blocks"))
-        }
         val saved = ctx.session.copy(content = content, updatedAt = now)
         store.save(saved)
         return RunResult.Saved(saved.id, outcome)
@@ -599,6 +725,9 @@ class DeepResearchService(
     private fun today(): String = clock.now().atZone(zoneProvider.current()).toLocalDate().toString()
 
     companion object {
+        /** A follow-up note or question typed on the Continue sheet is kept verbatim up to this length. */
+        const val MAX_NOTE_CHARS = 300
+
         /** Estimate for the preflight / continue sheet. */
         fun estimate(config: RunConfig): UsdEstimate? = config.estimate()
     }

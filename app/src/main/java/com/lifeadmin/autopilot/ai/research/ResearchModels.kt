@@ -178,6 +178,25 @@ sealed class ResearchError(val headline: String, val message: String, val retrya
     data object Network : ResearchError("Connection to Anthropic was lost", "The connection dropped before a reply arrived. Anthropic may still have run searches and may bill them. Nothing from this call was saved. Check your connection; trying again sends a new request.", true, "CONNECTION LOST")
     data class Refused(val category: String?) : ResearchError("Claude couldn't research this", "Claude declined this request" + (category?.let { " ($it)" } ?: "") + ". Nothing was suggested for your task.", false, "STOP REASON: REFUSAL")
     data class Malformed(val detail: String) : ResearchError("The answer couldn't be used", "The response had no usable text ($detail). Nothing was saved.", true, "MALFORMED RESPONSE")
+
+    /**
+     * The request succeeded but the reply gave the app nothing to save, and the record says what came
+     * back instead (M3A.2 continuation bug): the output limit reached before any text, a paused turn
+     * with no searches left, searches without an answer, or an empty reply. A failed continuation never
+     * touches the research the person already has.
+     */
+    data class NoFindings(val why: com.lifeadmin.autopilot.ai.research2.CallClass, val detail: String, val continuation: Boolean) : ResearchError(
+        when (why) {
+            com.lifeadmin.autopilot.ai.research2.CallClass.TRUNCATED_BEFORE_TEXT -> "The reply hit its output limit before any answer"
+            com.lifeadmin.autopilot.ai.research2.CallClass.PAUSED_BEFORE_TEXT -> "Research paused before an answer was written"
+            com.lifeadmin.autopilot.ai.research2.CallClass.TOOL_ONLY -> "Searches ran, but no answer came back"
+            com.lifeadmin.autopilot.ai.research2.CallClass.EMPTY -> "Claude sent back an empty reply"
+            else -> "The answer couldn't be used"
+        },
+        detail.trimEnd('.') + ". " + if (continuation) "No new findings were saved. Your previous research is unchanged." else "Nothing was saved.",
+        true,
+        "NO FINDINGS · ${why.name}",
+    )
     data class SearchTool(val code: String) : ResearchError("Web search failed", "Anthropic's search tool reported “$code”. Nothing was saved.", true, "SEARCH TOOL ERROR: ${code.uppercase()}")
     data class Stopped(val searchesRan: Int) : ResearchError("Research stopped", "Nothing was saved and your task didn't change. " + if (searchesRan > 0) "$searchesRan ${if (searchesRan == 1) "search" else "searches"} had already run and may be billed." else "Any searches that had already run may be billed.", true, "STOPPED BY YOU · NO BRIEF SAVED")
     data object Interrupted : ResearchError("Research was interrupted", "The app was closed while researching. Nothing was saved; your question is kept.", true, "INTERRUPTED · NOT RE-SENT")

@@ -115,6 +115,10 @@ class SourceRegistry2(seed: List<SourceRef2> = emptyList(), private val runId: S
 object ContractParser {
     private val HEADING = Regex("""^\s*#{1,4}\s*(TITLE|ANSWER|REQ|CAND|ATTR|EXCLUDED|PICK|CLAIM|CONFLICT|STEP|CALLOUT|PROPOSE|UNRESOLVED)\b\s*(.*)$""", RegexOption.IGNORE_CASE)
     private val URL = Regex("""\b(?:https?://|www\.)\S+""", RegexOption.IGNORE_CASE)
+    /** Ids are matched anywhere in a heading: "REQ r-i0", "REQ · r-i0" and "REQ: r-i0" all name the same requirement. */
+    private val REQ_ID = Regex("""\b(r-[a-z]\d+)\b""")
+    private val CAND_ID = Regex("""\b(c\d+)\b""")
+    private val ATTR_KEY = Regex("""\b(c\d+)\.(\w+)""")
     private val SRC = Regex("""\s*\bsrc\s*=\s*((?:s\d+\s*,?\s*)+)""", RegexOption.IGNORE_CASE)
     private val BRACKET = Regex("""\s*\[\d+(?:,\s*\d+)*]""")
     private val KV = Regex("""(\w+)\s*=\s*([^·]+?)\s*(?=·|$)""")
@@ -209,7 +213,7 @@ object ContractParser {
                 "ANSWER", "FREE" -> if (b.lines.isNotEmpty()) answer += cited(spans, full, b.lines.first().second.first, b.end, registry, knownEvidence)
                 "REQ" -> {
                     val head = b.head
-                    val id = Regex("""^(r-[a-z]\d+)""").find(head)?.groupValues?.get(1) ?: continue
+                    val id = REQ_ID.find(head)?.groupValues?.get(1) ?: continue
                     if (id !in reqIds) continue
                     val status = statusOf(kv(head)["status"])
                     val r = refsOf(b)
@@ -217,7 +221,7 @@ object ContractParser {
                     coverage += Coverage(id, status, bodyText.take(300), r.verified, r.reused)
                 }
                 "CAND", "EXCLUDED" -> {
-                    val cid = Regex("""^(c\d+)""").find(b.head)?.groupValues?.get(1) ?: continue
+                    val cid = CAND_ID.find(b.head)?.groupValues?.get(1) ?: continue
                     val k = kv(b.head)
                     val name = clean(k["name"] ?: "").ifBlank { continue }
                     val hero = bodyText.startsWith("hero", ignoreCase = true)
@@ -230,7 +234,7 @@ object ContractParser {
                     if (b.kind == "CAND") candidates[cid] = c else excluded += c
                 }
                 "ATTR" -> {
-                    val m = Regex("""^(c\d+)\.(\w+)""").find(b.head) ?: continue
+                    val m = ATTR_KEY.find(b.head) ?: continue
                     val cid = m.groupValues[1]; val keyName = m.groupValues[2].lowercase(Locale.ROOT)
                     val cand = candidates[cid] ?: existingCandidates.firstOrNull { it.id == cid }?.copy(attrs = emptyList(), price = null, refs = emptyList(), reason = "", hero = false, reusedRefs = emptyList())?.also { candidates[cid] = it } ?: continue
                     val r = refsOf(b)
@@ -244,7 +248,7 @@ object ContractParser {
                     }
                 }
                 "PICK" -> {
-                    val id = Regex("""^(r-[a-z]\d+)""").find(b.head)?.groupValues?.get(1) ?: continue
+                    val id = REQ_ID.find(b.head)?.groupValues?.get(1) ?: continue
                     if (id !in reqIds) continue
                     val status = statusOf(kv(b.head)["status"])
                     var pick: String? = null; var variant: String? = null; var alt: String? = null; var forYou: String? = null; var why: String? = null; var price: Price? = null
@@ -312,6 +316,39 @@ object ContractParser {
             claims.take(Research2Config.MAX_CLAIMS), conflicts, steps.take(40), callouts.take(4), proposals.take(Research2Config.MAX_PROPOSALS), unresolved.take(12), queries, injection,
         )
     }
+
+    /**
+     * The whole reply as cited answer text, heading lines removed. Used when the contract parse yields
+     * nothing although text came back: cited text is kept and shown as text, never thrown away.
+     */
+    fun freeForm(segments: List<RawSegment>, registry: SourceRegistry2, knownEvidence: List<EvidenceLine> = emptyList()): List<CitedSegment> {
+        val stripped = segments.map { seg -> seg.copy(text = seg.text.split('\n').joinToString("\n") { line -> if (HEADING.matches(line)) "" else line }) }
+        val text = StringBuilder()
+        val spans = ArrayList<Span>()
+        for (seg in stripped) { val st = text.length; text.append(seg.text); spans += Span(st, text.length, seg.citations) }
+        val full = text.toString()
+        return trimEnds(cited(spans, full, 0, full.length, registry, knownEvidence))
+    }
+
+    /** Parsed block counts by kind, for the call diagnostic. */
+    fun counts(out: StageOutput): Map<String, Int> = buildMap {
+        if (out.title != null) put("title", 1)
+        if (out.answer.isNotEmpty()) put("answer", out.answer.size)
+        if (out.coverage.isNotEmpty()) put("req", out.coverage.size)
+        if (out.candidates.isNotEmpty()) put("cand", out.candidates.size)
+        if (out.excluded.isNotEmpty()) put("excluded", out.excluded.size)
+        if (out.picks.isNotEmpty()) put("pick", out.picks.size)
+        if (out.claims.isNotEmpty()) put("claim", out.claims.size)
+        if (out.conflicts.isNotEmpty()) put("conflict", out.conflicts.size)
+        if (out.steps.isNotEmpty()) put("step", out.steps.size)
+        if (out.callouts.isNotEmpty()) put("callout", out.callouts.size)
+        if (out.proposals.isNotEmpty()) put("propose", out.proposals.size)
+        if (out.unresolved.isNotEmpty()) put("unresolved", out.unresolved.size)
+    }
+
+    /** Something the session can hold as a finding: answer text, coverage, candidates, picks, claims or steps. */
+    fun hasFindings(out: StageOutput): Boolean =
+        out.answer.isNotEmpty() || out.coverage.isNotEmpty() || out.candidates.isNotEmpty() || out.picks.isNotEmpty() || out.claims.isNotEmpty() || out.steps.isNotEmpty()
 
     // ------------------------------------------------------------------ provenance helpers
 
