@@ -408,6 +408,18 @@ process death leaves an Interrupted checkpoint and an unknown ledger row settled
 budget across batches and a pause-turn. `AnthropicResearchProviderHttpTest` (legacy) updated to the
 typed Timeout.
 
+**Validation.** Local: `lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest` →
+lint clean, 525 tests / 0 failures, all three APKs. CI, head `b47c685`: Android CI runs
+[39520792363](https://github.com/HassanJaveed84/autopilot/actions/runs/39520792363) and
+[39520801515](https://github.com/HassanJaveed84/autopilot/actions/runs/39520801515) — lint "No issues
+found", **525 tests, 0 failures**, `apks` artifact, **instrumented tests green in both runs**; screenshot
+run [39518965218](https://github.com/HassanJaveed84/autopilot/actions/runs/39518965218) on the P0 code
+head `fde29c2` — 4/4 variants (the committed set; the investigation screen now shows "Searches reported",
+the waiting line with the configured limit and the "waiting up to 5 min" event). One CI-only flake in
+the new legacy-isolation test (an immediate "Connection lost" on the socket a timed-out request left in
+the pool) led to a product change: both adapters now drop the cached client after a timeout or lost
+connection so the next request opens a fresh connection.
+
 **Remaining limitations.** Per-search progress still arrives only when a call returns (no streaming).
 A single batch can still take up to 400–540 s on a slow network; the waiting line now says so. The
 checkpoint shows as "Interrupted" in the task's research list while a run is in flight.
