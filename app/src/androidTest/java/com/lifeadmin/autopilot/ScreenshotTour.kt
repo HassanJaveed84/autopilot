@@ -166,6 +166,19 @@ private fun ComposeTestRule.waitForText(text: String) =
 private fun ComposeTestRule.scrollTo(list: String, child: String) = onNodeWithTag(list).performScrollToNode(hasTestTag(child))
 
 /**
+ * A lazy list only composes what is on screen, so a tag below the fold is invisible to [waitForTag].
+ * Scroll to it instead, retrying while the list (or the item) is still on its way.
+ */
+private fun ComposeTestRule.waitAndScrollTo(list: String, child: String, timeoutMs: Long = 30_000) {
+    val deadline = System.currentTimeMillis() + timeoutMs
+    var last: Throwable? = null
+    while (System.currentTimeMillis() < deadline) {
+        try { scrollTo(list, child); return } catch (t: Throwable) { last = t; Thread.sleep(500) }
+    }
+    throw AssertionError("$child never appeared in $list within $timeoutMs ms", last)
+}
+
+/**
  * A task card merges its text into the clickable column (one TalkBack announcement), so the title
  * is on the clickable node itself; compact rows keep the text in a descendant. Match either.
  */
@@ -1167,8 +1180,7 @@ class ScreenshotTourResearch2 {
         screenshot("s14-continue-sheet")
         compose.onNodeWithTag("continue_go").tap()
         compose.waitForTag("brief_list")
-        compose.waitForTag("brief_followup")
-        compose.scrollTo("brief_list", "brief_followup")
+        compose.waitAndScrollTo("brief_list", "brief_followup")
         screenshot("s14b-result-follow-up-answered")
         compose.scrollTo("brief_list", "brief_log_toggle")
         compose.onNodeWithTag("brief_log_toggle").tap()
@@ -1265,10 +1277,9 @@ class ScreenshotTourResearch2 {
         )
         launch(container(calls), "Supplements", "Monthly order")
         openPreflight(com.lifeadmin.autopilot.testing.Research2Fixtures.SUPPLEMENTS_REQUEST)
-        compose.scrollTo("preflight_list", "preflight_start")
         compose.onNodeWithTag("preflight_start").tap()
         compose.waitForTag("brief_list")
-        compose.scrollTo("brief_list", "continue_card")
+        compose.waitAndScrollTo("brief_list", "continue_card")
         compose.onNodeWithTag("continue_button").tap()
         compose.waitForTag("continue_sheet")
         compose.onNodeWithTag("continue_note").performTextInput(FOLLOW_UP_QUESTION)
@@ -1283,10 +1294,9 @@ class ScreenshotTourResearch2 {
         screenshot("s31-continuation-technical-record")
         compose.onNodeWithTag("result_open_session").tap()
         compose.waitForTag("brief_list")
-        compose.scrollTo("brief_list", "brief_log_toggle")
+        compose.waitAndScrollTo("brief_list", "brief_log_toggle")
         compose.onNodeWithTag("brief_log_toggle").tap()
-        compose.waitForTag("brief_log_call")
-        compose.scrollTo("brief_list", "brief_log")
+        compose.waitAndScrollTo("brief_list", "brief_log_call")
         screenshot("s32-result-unchanged-with-failed-continuation-on-log")
     }
 
