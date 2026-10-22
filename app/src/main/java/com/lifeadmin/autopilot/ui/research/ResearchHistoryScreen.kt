@@ -59,6 +59,7 @@ fun ResearchHistoryScreen(
     onBack: () -> Unit,
     onOpenBrief: (briefId: String) -> Unit,
     onNewResearch: () -> Unit,
+    onOpenSession: (sessionId: String) -> Unit = {},
 ) {
     val s by viewModel.state.collectAsStateWithLifecycle()
     val c = AutopilotTheme.colors
@@ -79,7 +80,7 @@ fun ResearchHistoryScreen(
                     HorizontalDivider(color = c.line)
                     Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
                         PrimaryButton("New research", onClick = onNewResearch, icon = AutopilotIcons.Research, enabled = !s.running, modifier = Modifier.fillMaxWidth().testTag("history_new"))
-                        if (s.briefs.isNotEmpty()) SecondaryButton("Delete research for this task", onClick = { confirmDelete = true }, minHeight = 44.dp, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("history_delete_all"))
+                        if (s.total > 0) SecondaryButton("Delete research for this task", onClick = { confirmDelete = true }, minHeight = 44.dp, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("history_delete_all"))
                     }
                 }
             }
@@ -90,7 +91,7 @@ fun ResearchHistoryScreen(
                 Text(s.taskTitle, style = MaterialTheme.typography.bodyMedium, color = c.ink2)
                 Text("Saved on this phone with the task. Opens offline and never re-runs on its own.", style = MaterialTheme.typography.bodySmall, color = c.ink3, modifier = Modifier.padding(top = 2.dp, bottom = 14.dp))
             }
-            if (!s.loading && s.briefs.isEmpty()) {
+            if (!s.loading && s.total == 0) {
                 item {
                     SurfaceCard(radius = 20.dp, modifier = Modifier.testTag("history_empty")) {
                         IconCircle(AutopilotIcons.Research, tint = c.ink2, background = c.sunken)
@@ -99,8 +100,13 @@ fun ResearchHistoryScreen(
                     }
                 }
             }
-            items(s.briefs, key = { it.id }) { b ->
-                HistoryRow(b, s.now, zone, onClick = { onOpenBrief(b.id) }, modifier = Modifier.padding(bottom = 10.dp))
+            // Sessions (M3A.2) and legacy briefs, newest first.
+            val rows: List<Any> = (s.sessions.map { it to it.updatedAt } + s.briefs.map { it to it.createdAt }).sortedByDescending { it.second }.map { it.first }
+            items(rows, key = { (it as? ResearchBrief)?.id ?: (it as com.lifeadmin.autopilot.ai.research2.ResearchSession).id }) { row ->
+                when (row) {
+                    is ResearchBrief -> HistoryRow(row, s.now, zone, onClick = { onOpenBrief(row.id) }, modifier = Modifier.padding(bottom = 10.dp))
+                    is com.lifeadmin.autopilot.ai.research2.ResearchSession -> SessionHistoryRow(row, s.now, zone, onClick = { onOpenSession(row.id) }, modifier = Modifier.padding(bottom = 10.dp))
+                }
             }
         }
     }
@@ -111,7 +117,7 @@ fun ResearchHistoryScreen(
             title = { Text("Delete research for this task?") },
             text = {
                 Text(
-                    "Removes ${s.briefs.size} saved ${if (s.briefs.size == 1) "brief" else "briefs"} from this phone. Steps and notes you already added stay on the task; they just lose their link to the sources." +
+                    "Removes ${s.total} saved ${if (s.total == 1) "result" else "results"} from this phone. Steps and notes you already added stay on the task; they just lose their link to the sources." +
                         if (s.running) " The research running for this task is stopped and not saved; searches that already ran may still be billed." else "",
                 )
             },
@@ -137,6 +143,25 @@ fun HistoryRow(b: ResearchBrief, now: Instant, zone: ZoneId, onClick: () -> Unit
                     BriefStatus.VERIFIED -> Unit
                 }
                 KindTag(if (b.isStale(now)) "May be out of date" else "Fresh", if (b.isStale(now)) c.onSignalSoft else c.ink2)
+            }
+        }
+    }
+}
+
+@Composable
+fun SessionHistoryRow(sess: com.lifeadmin.autopilot.ai.research2.ResearchSession, now: Instant, zone: ZoneId, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val c = AutopilotTheme.colors
+    val content = sess.content
+    SurfaceCard(radius = 18.dp, contentPadding = PaddingValues(0.dp), modifier = modifier.testTag("history_${sess.id}")) {
+        Column(Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            ResearchStamp("${Format.relative(sess.updatedAt, now, zone)} · ${content.latestRun?.mode?.label ?: "research"} · ${content.searchesTotal} ${if (content.searchesTotal == 1) "search" else "searches"} · ${content.sources.size} ${if (content.sources.size == 1) "source" else "sources"}")
+            Text(content.title, style = MaterialTheme.typography.titleMedium, color = c.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(com.lifeadmin.autopilot.ai.research2.SessionAssembler.coverageLine(content).ifBlank { content.template.label }, style = MaterialTheme.typography.bodyMedium, color = c.ink2, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (sess.applied.isNotEmpty()) KindTag("${sess.applied.size} applied", c.onDoneSoft)
+                KindTag(content.outcome.label, if (content.outcome.success) c.ink2 else c.onSignalSoft)
+                if (content.runs.size > 1) KindTag("${content.runs.size} runs", c.ink2)
+                KindTag(if (sess.isStale(now)) "May be out of date" else "Fresh", if (sess.isStale(now)) c.onSignalSoft else c.ink2)
             }
         }
     }

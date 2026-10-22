@@ -143,28 +143,38 @@ use a server-side proxy instead. Default model: Claude Haiku 5.5 (cheapest). Son
 Opus 5.5 are selectable. Limits: 2,000 characters per request, 6,000 output tokens, 60 requests
 per day, no automatic retries. **Delete AI settings** removes the key and all AI settings.
 
-### Optional web research (M3, bring your own key)
+### Optional web research (M3 / M3A.2, bring your own key)
 
 On a task, **Move this forward → Research online** asks Claude to search the web (Anthropic's
-`web_search` server tool) and write a short brief: a quick answer with numbered citations, next
-moves you can add to the task, findings labelled by where they came from (sourced / sources
-disagree / couldn't confirm / Claude's suggestion), the sources, and a log of what was searched.
+`web_search` server tool) and returns a structured result shaped by what you asked for: a quick
+answer, a shortlist with a comparison table, one pick per requested item, how-to steps or a
+checklist. Every requirement you listed is reported with a status (answered, your call, needs a
+check, partly, not found), facts are tagged by where they come from (Fact / Reviews / Community /
+Judgment / Calc / Unknown), and prices show the retailer, size and when they were checked.
 
-- You start every request from a preflight that shows exactly what is sent (your question, and
-  by choice the task title, notes, steps, today's date and language). Nothing else about you is
-  sent; your location is never read. A one-time note explains the extra cost before the first run.
-- Caps: 3 web searches per request, 10 research requests per day (separate from planning's 60),
-  no automatic retries, nothing in the background. Anthropic bills searches on top of tokens; the
-  app shows counts, never prices.
-- Briefs are saved with the task, open offline and with AI off, and are included in backups
-  (never transcripts or the key). Deleting research keeps steps you already added.
-- Only structured citations from the API become sources. A URL the model merely writes in text is
-  removed and the sentence is labelled a suggestion. Links open in your browser, never inside the app.
-- Research never changes reminders, status, priority or deadlines. Steps and notes change only when
-  you review and tap Apply; Undo is offered while the task is unchanged since.
+- **Preflight first.** The app extracts your requirements on the phone (editable, nothing sent),
+  proposes a deliverable template, and lets you pick a depth: Quick (Haiku, 3 searches), Thorough
+  (Sonnet, 10 searches, two passes) or Deep (Opus, 25 searches, cross-check and write-up). Model,
+  search budget (1–30) and an optional soft spending limit are adjustable; the estimate is shown as
+  a range before you tap Start. No limit is the default — quality first, with an honest estimate.
+- **Honest progress and outcomes.** Stages come from the app's own plan and real responses; counts
+  are only what Anthropic reported. A result is *Complete* only when every requested item is
+  covered — running out of searches or money is reported as *Incomplete*, with a one-tap
+  **Continue researching** that picks up from the saved result (sources keep their numbers, nothing
+  is searched twice). Stop offers keep-what's-found or discard.
+- **Proposals are separate and editable.** One reviewable proposal per requested item; edit the
+  wording and the note, untick, "Add anyway" past a duplicate, then Apply once (Undo while the task
+  is unchanged). Research never changes reminders, status, priority or deadlines.
+- **Cost ledger.** Settings → Plan with AI → **AI usage** shows today, this month, by feature and
+  per run, estimated from Anthropic's reported tokens and searches × a versioned price table.
+  Unknown usage (a stopped or failed call) is never shown as $0. An optional monthly budget gives a
+  note at 80% and a confirmation at 100%; nothing is ever blocked. Anthropic's Console is the bill.
+- Results are saved with the task, open offline and with AI off, and are included in backups
+  (never transcripts, prompts or the key). Only structured citations from the API become sources;
+  links open in your browser, never inside the app.
 
 Live verification against the real API with a personal key is pending (see
-`docs/M3_RESEARCH_REPORT.md`); everything is tested against fakes and a local MockWebServer.
+`docs/M3A2_IMPLEMENTATION_REPORT.md`); everything is tested against fakes and a local MockWebServer.
 
 ## Limitations (honest)
 

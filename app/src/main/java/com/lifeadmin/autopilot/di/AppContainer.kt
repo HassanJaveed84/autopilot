@@ -60,6 +60,8 @@ class AppContainer(
     val apiKeyStore: ApiKeyStore = EncryptedApiKeyStore(context),
     val planningProvider: TaskPlanningProvider = AnthropicTaskPlanningProvider(),
     val researchProvider: ResearchProvider = AnthropicResearchProvider(),
+    /** M3A.2 structured research calls; defaults to the Anthropic adapter sharing [researchProvider]'s client. */
+    val researchCalls: com.lifeadmin.autopilot.ai.research2.ResearchCallProvider? = null,
     val networkStatus: NetworkStatus = AndroidNetworkStatus(context),
     val hintDismissals: HintDismissals = SharedPrefsHintDismissals(context),
 ) {
@@ -79,9 +81,12 @@ class AppContainer(
 
     val taskActions: TaskActions = TaskActions(database, taskRepository, settingsRepository, clock, zoneProvider)
 
+    /** Local AI usage ledger (M3A.2): one row per billable call, planning and research alike. */
+    val usageLedger: com.lifeadmin.autopilot.ai.usage.UsageLedger = com.lifeadmin.autopilot.data.repository.RoomUsageLedger(database)
+
     /** Optional AI planning (M2). Never writes tasks; approval goes through [taskRepository]. */
     val aiPlanning: AiPlanningService = AiPlanningService(
-        settingsRepository, apiKeyStore, planningProvider, taskRepository, clock, zoneProvider, ids, networkStatus,
+        settingsRepository, apiKeyStore, planningProvider, taskRepository, clock, zoneProvider, ids, ledger = usageLedger, network = networkStatus,
     )
 
     /** Saved research briefs (M3); readable offline. */
@@ -95,6 +100,19 @@ class AppContainer(
 
     /** Applies user-selected research moves through the transactional, idempotent edit path. */
     val researchActions: ResearchActions = ResearchActions(taskRepository, researchRepository, clock)
+
+    /** Saved M3A.2 research sessions; readable offline. */
+    val sessionRepository: com.lifeadmin.autopilot.data.repository.ResearchSessionRepository = com.lifeadmin.autopilot.data.repository.ResearchSessionRepository(database)
+
+    /** M3A.2 multi-stage research. One run at a time, in app scope so it survives navigation. */
+    val deepResearch: com.lifeadmin.autopilot.ai.research2.DeepResearchService = com.lifeadmin.autopilot.ai.research2.DeepResearchService(
+        settingsRepository, apiKeyStore, aiPlanning,
+        researchCalls ?: com.lifeadmin.autopilot.ai.anthropic.AnthropicResearchCalls(researchProvider as? AnthropicResearchProvider ?: AnthropicResearchProvider()),
+        taskRepository, sessionRepository, usageLedger, clock, zoneProvider, ids, appScope, networkStatus,
+    )
+
+    /** Applies user-edited research proposals through the same transactional path. */
+    val research2Actions: com.lifeadmin.autopilot.ai.research2.Research2Actions = com.lifeadmin.autopilot.ai.research2.Research2Actions(taskRepository, sessionRepository, clock)
 
     val backupRepository: BackupRepository = BackupRepository(
         database, clock, ids, BuildConfig.VERSION_NAME,
@@ -124,5 +142,7 @@ class AppContainer(
         runCatching { ReconcileWorker.schedule(context) }.onFailure { Log.w("LifeAdmin", "WorkManager unavailable: ${it.javaClass.simpleName}") }
         lastForegroundReconcile = System.currentTimeMillis()
         appScope.launch { runCatching { reconcileAll("app_start") } }
+        // Calls left "in flight" by a previous process are interrupted; their usage is unknown and nothing is re-sent.
+        appScope.launch { runCatching { deepResearch.onAppStart() } }
     }
 }

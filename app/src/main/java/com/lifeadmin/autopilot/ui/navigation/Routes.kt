@@ -19,12 +19,20 @@ object Routes {
     const val RESEARCH_RUN = "task/{taskId}/research/run/{runId}?q={q}"
     const val RESEARCH_BRIEF = "task/{taskId}/research/{briefId}"
     const val RESEARCH_APPLY = "task/{taskId}/research/{briefId}/apply?sel={sel}"
+    const val RESEARCH2_RUN = "task/{taskId}/research2/run/{sessionId}/{runId}"
+    const val RESEARCH2_SESSION = "task/{taskId}/research2/{sessionId}"
+    const val RESEARCH2_PROPOSALS = "task/{taskId}/research2/{sessionId}/proposals"
+    const val AI_USAGE = "ai_settings/usage?session={session}"
     fun taskDetail(taskId: String) = "task/$taskId"
     fun researchHistory(taskId: String) = "task/$taskId/research"
     fun researchNew(taskId: String, question: String = "") = "task/$taskId/research/new?q=" + android.net.Uri.encode(question)
     fun researchRun(taskId: String, runId: String, question: String) = "task/$taskId/research/run/$runId?q=" + android.net.Uri.encode(question)
     fun researchBrief(taskId: String, briefId: String) = "task/$taskId/research/$briefId"
     fun researchApply(taskId: String, briefId: String, selected: Collection<String>) = "task/$taskId/research/$briefId/apply?sel=" + android.net.Uri.encode(selected.joinToString(","))
+    fun research2Run(taskId: String, sessionId: String, runId: String) = "task/$taskId/research2/run/$sessionId/$runId"
+    fun research2Session(taskId: String, sessionId: String) = "task/$taskId/research2/$sessionId"
+    fun research2Proposals(taskId: String, sessionId: String) = "task/$taskId/research2/$sessionId/proposals"
+    fun aiUsage(sessionId: String? = null) = "ai_settings/usage?session=" + android.net.Uri.encode(sessionId.orEmpty())
     fun plan(text: String, auto: Boolean = false) = "plan?text=" + android.net.Uri.encode(text) + "&auto=" + auto
     fun planTask(taskId: String) = "plan/task/$taskId"
 }

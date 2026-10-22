@@ -67,6 +67,11 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
             researchExplainerVersion = this[RESEARCH_EXPLAINER] ?: d.researchExplainerVersion,
             researchUsageDay = this[RESEARCH_USAGE_DAY] ?: d.researchUsageDay,
             researchUsageCount = this[RESEARCH_USAGE_COUNT] ?: d.researchUsageCount,
+            researchSpendLimitCents = this[RESEARCH_SPEND_LIMIT] ?: d.researchSpendLimitCents,
+            aiMonthlyBudgetCents = this[AI_MONTHLY_BUDGET] ?: d.aiMonthlyBudgetCents,
+            researchQuickModel = this[RESEARCH_MODEL_QUICK] ?: d.researchQuickModel,
+            researchThoroughModel = this[RESEARCH_MODEL_THOROUGH] ?: d.researchThoroughModel,
+            researchDeepModel = this[RESEARCH_MODEL_DEEP] ?: d.researchDeepModel,
             lastReconcileAt = this[LAST_RECONCILE]?.let(Instant::ofEpochMilli),
             lastReconcileSummary = this[LAST_RECONCILE_SUMMARY],
             appearance = enumOr(this[APPEARANCE], d.appearance),
@@ -96,6 +101,11 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         this[RESEARCH_EXPLAINER] = s.researchExplainerVersion
         this[RESEARCH_USAGE_DAY] = s.researchUsageDay
         this[RESEARCH_USAGE_COUNT] = s.researchUsageCount
+        this[RESEARCH_SPEND_LIMIT] = s.researchSpendLimitCents
+        this[AI_MONTHLY_BUDGET] = s.aiMonthlyBudgetCents
+        this[RESEARCH_MODEL_QUICK] = s.researchQuickModel
+        this[RESEARCH_MODEL_THOROUGH] = s.researchThoroughModel
+        this[RESEARCH_MODEL_DEEP] = s.researchDeepModel
         s.lastReconcileAt?.let { this[LAST_RECONCILE] = it.toEpochMilli() } ?: remove(LAST_RECONCILE)
         s.lastReconcileSummary?.let { this[LAST_RECONCILE_SUMMARY] = it } ?: remove(LAST_RECONCILE_SUMMARY)
         this[APPEARANCE] = s.appearance.name
@@ -128,6 +138,11 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         private val RESEARCH_USAGE_DAY = stringPreferencesKey("research_usage_day")
         private val RESEARCH_USAGE_COUNT = intPreferencesKey("research_usage_count")
         private val AI_USAGE_COUNT = intPreferencesKey("ai_usage_count")
+        private val RESEARCH_SPEND_LIMIT = intPreferencesKey("research_spend_limit_cents")
+        private val AI_MONTHLY_BUDGET = intPreferencesKey("ai_monthly_budget_cents")
+        private val RESEARCH_MODEL_QUICK = stringPreferencesKey("research_model_quick")
+        private val RESEARCH_MODEL_THOROUGH = stringPreferencesKey("research_model_thorough")
+        private val RESEARCH_MODEL_DEEP = stringPreferencesKey("research_model_deep")
         private val APPEARANCE = stringPreferencesKey("appearance")
 
         private fun parseTime(raw: String): LocalTime? = runCatching { LocalTime.parse(raw) }.getOrNull()

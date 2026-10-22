@@ -86,7 +86,7 @@ const val AI_KEY_SECURITY_TEXT =
 
 /** AI planning settings: the switch, your key (Paste / Remove / Test), model, exactly what is sent, and removal. */
 @Composable
-fun AiSettingsScreen(viewModel: AiSettingsViewModel, onBack: () -> Unit) {
+fun AiSettingsScreen(viewModel: AiSettingsViewModel, onBack: () -> Unit, onOpenUsage: () -> Unit = {}) {
     val s by viewModel.state.collectAsStateWithLifecycle()
     val c = AutopilotTheme.colors
     val snackbar = remember { SnackbarHostState() }
@@ -226,16 +226,25 @@ fun AiSettingsScreen(viewModel: AiSettingsViewModel, onBack: () -> Unit) {
                     }
                 }
             }
+            item { SectionTitle("AI usage & costs", Modifier.padding(top = 26.dp, bottom = 10.dp, start = 4.dp)) }
+            item {
+                SurfaceCard(radius = 22.dp, contentPadding = PaddingValues(0.dp), modifier = Modifier.testTag("ai_usage_card")) {
+                    com.lifeadmin.autopilot.ui.components.GroupRow(
+                        "AI usage", onClick = onOpenUsage, icon = AutopilotIcons.Clock,
+                        subtitle = "Today, this month, per run — local estimates from Anthropic's reported counts. Spending preferences live there too.",
+                        modifier = Modifier.testTag("ai_usage_open"),
+                    )
+                }
+            }
             item { SectionTitle("Web research", Modifier.padding(top = 26.dp, bottom = 10.dp, start = 4.dp)) }
             item {
                 SurfaceCard(radius = 22.dp, modifier = Modifier.testTag("ai_research")) {
                     Text(
-                        "From a task, “Research online” searches the web with Anthropic’s web search tool and cites sources. Each request is started by you, capped at " +
-                            "${com.lifeadmin.autopilot.ai.research.ResearchConfig.MAX_SEARCHES_PER_REQUEST} searches, and billed by Anthropic on top of tokens. Nothing runs in the background.",
+                        "From a task, “Research online” searches the web with Anthropic’s web search tool and cites sources. You choose the depth (Quick, Thorough or Deep), the model and the search budget (1–${com.lifeadmin.autopilot.ai.research2.Research2Config.MAX_SEARCHES}) before each run; every run is started by you and billed by Anthropic on top of tokens. Nothing runs in the background.",
                         style = MaterialTheme.typography.bodyMedium, color = c.ink2,
                     )
                     Text(
-                        "Research today: ${s.researchToday} of ${com.lifeadmin.autopilot.ai.research.ResearchConfig.MAX_REQUESTS_PER_DAY} · saved briefs: ${s.briefCount}" +
+                        "Research today: ${s.researchToday} of ${com.lifeadmin.autopilot.ai.research2.Research2Config.MAX_SESSIONS_PER_DAY} · saved results: ${s.briefCount}" +
                             (if (s.researchExplainerAccepted) " · one-time note accepted" else " · one-time note shown before the first request"),
                         style = MaterialTheme.typography.bodySmall, color = c.ink3, modifier = Modifier.padding(top = 8.dp).testTag("ai_research_usage"),
                     )

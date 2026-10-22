@@ -117,7 +117,15 @@ data class RawPriority(
 )
 
 /** Usage reported by the provider, for the request-cost note shown to the user. */
-data class PlanningUsage(val inputTokens: Long, val outputTokens: Long, val model: String)
+data class PlanningUsage(
+    val inputTokens: Long,
+    val outputTokens: Long,
+    val model: String,
+    val cacheWriteTokens: Long = 0,
+    val cacheReadTokens: Long = 0,
+    /** Provider message id, for de-duplicating usage records. */
+    val messageId: String? = null,
+)
 
 sealed interface PlanningResult {
     data class Success(val plan: RawPlan, val usage: PlanningUsage?) : PlanningResult

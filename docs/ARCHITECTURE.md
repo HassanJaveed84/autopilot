@@ -92,6 +92,54 @@ ReconcileWorker (WorkManager, 1 h) ── engine.reconcileAll + ledger prune
   text is data (injection-looking lines never become moves); links go through `Sources.safeExternalUrl`
   and `ACTION_VIEW`, never a WebView; reminders/status/deadlines are never written by research.
 
+## M3A.2: deep research with actionable results and a cost ledger (implemented)
+
+- `ai/research2`: `Research2Models` (deliverable templates A–E, requirements with stable ids,
+  coverage statuses, candidates/attributes/prices with provenance tags, proposals, `SessionContent`
+  with per-run records and honest `SessionOutcome`), `RequirementExtractor` (deterministic, offline),
+  `Research2Prompt` (line-based `## REQ / ## CAND / ## ATTR / ## PICK / ## CLAIM / ## PROPOSE` contract),
+  `ContractParser` + `SourceRegistry2` (fresh provenance only from provider citations on a block's own
+  lines; the registry keeps *cited* and merely *discovered* pages apart; a model-typed `src=sN` resolves
+  only to a cited source and only as a pointer (`reusedRefs`) — it verifies nothing unless the line is a
+  validated restatement of evidence already held, otherwise the line is tagged Restated; prices are
+  confirmed only by a citation; source numbers stable across runs), `CompletionPolicy` (validates every
+  requirement status against the structured result after each merge: items need cited evidence,
+  budgets/brands/exclusions are checked against the candidates and picks themselves with soft vs strict
+  constraints, output wishes are verified for real; Partly / Needs a check / Not found are never covered),
+  `SessionAssembler` (merge with confirmed-beats-unconfirmed, coverage via the policy, outcome rules:
+  Complete only when every requirement incl. constraints is covered; budget exhausted is never Complete),
+  `ProposalBuilder` (one reviewable proposal per requested item), `DeepResearchService` (planned
+  stages GATHER → FILL_GAPS → CROSS_CHECK → SYNTHESIZE, budget check before each HTTP call, soft dollar
+  limit, `pause_turn` as a separate billed call — continued only while searches remain, never past the
+  budget — Stop keep/discard, continuation on a saved session where a typed note becomes a follow-up
+  requirement answered next to the saved answer, never over it; every HTTP call leaves a privacy-safe
+  `CallDiagnostic` — block kinds and counts, parsed block counts, stop reason, tokens, searches,
+  duration, classification — on the stage record, and a reply with nothing to save is reported as what
+  it was (cut off before text, paused before text, searches without text, empty) rather than "malformed"),
+  `Research2Actions` (edited proposals → one transactional, idempotent `TaskEditCommand`; Undo).
+  Start/continue run under one atomic launch claim (no double launch, no double daily reservation);
+  the final save runs non-cancellable. Each HTTP call carries its own timeout (`ModelCall.timeout`,
+  from `Research2Config.callTimeout`: 60 s + 15 s/search + output tokens ÷ 40, clamped 120–540 s),
+  applied per request at the SDK layer; a stage allowed more than 6 searches runs in bounded batches,
+  each merged and checkpointed to the store before the next, so a slow or dropped call costs one batch.
+- `ai/usage`: a failed call keeps whatever the provider reported (full usage priced in full; searches
+  seen as a floor with tokens unknown; nothing → unknown, never $0); a request rejected before
+  processing is "Rejected · $0 assumed" and counted as such; `UsageGrouping` is the pure grouping the
+  dashboard reconciles against the ledger; restores never duplicate a provider message id.
+- `ai/usage`: `PricingCatalog` (versioned, from the official pricing page), `CostCalculator` (pure),
+  `UsageRecord`/`UsageLedger` (one row per API call, inserted in flight and finalised; unknown usage
+  is never priced as $0; provider message ids de-duplicate). Planning (M2) calls record here too.
+- `ai/anthropic/AnthropicResearchCalls`: generic Messages call for the orchestrator (5-minute prompt
+  caching when a run has several stages, cache tokens and message id in usage). Still the only SDK importer.
+- Persistence: Room v5 `research_sessions` (FK cascade, 30 per task, payload cap) and `usage_records`
+  (no FK; outlives tasks); `MIGRATION_4_5`; backups carry sessions and the append-only ledger; legacy
+  `research_briefs` untouched and still readable.
+- UI: `ui/research2` (preflight with editable requirements, template chips, mode cards and Adjust;
+  investigation with real stage events and the Stop sheet; result screen with the five templates,
+  coverage rows, callouts, continue card/sheet, source sheet; editable proposals with Add anyway and
+  Undo; AI usage dashboard with run breakdown and spending preferences). `task/{id}/research/new` now
+  opens the M3A.2 preflight; M3A brief routes remain for saved briefs.
+
 ## Extension points for later milestones (not implemented)
 
 - M3 agents (research, email/calendar) would reuse the proposal → review → command pattern with

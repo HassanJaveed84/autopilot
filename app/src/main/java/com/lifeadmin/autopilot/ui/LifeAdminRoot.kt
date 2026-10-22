@@ -50,10 +50,18 @@ import com.lifeadmin.autopilot.ui.research.ResearchBriefScreen
 import com.lifeadmin.autopilot.ui.research.ResearchBriefViewModel
 import com.lifeadmin.autopilot.ui.research.ResearchHistoryScreen
 import com.lifeadmin.autopilot.ui.research.ResearchHistoryViewModel
-import com.lifeadmin.autopilot.ui.research.ResearchPreflightScreen
-import com.lifeadmin.autopilot.ui.research.ResearchPreflightViewModel
 import com.lifeadmin.autopilot.ui.research.ResearchProgressScreen
 import com.lifeadmin.autopilot.ui.research.ResearchRunViewModel
+import com.lifeadmin.autopilot.ui.research2.InvestigationScreen
+import com.lifeadmin.autopilot.ui.research2.InvestigationViewModel
+import com.lifeadmin.autopilot.ui.research2.Preflight2Screen
+import com.lifeadmin.autopilot.ui.research2.Preflight2ViewModel
+import com.lifeadmin.autopilot.ui.research2.ProposalsScreen
+import com.lifeadmin.autopilot.ui.research2.ProposalsViewModel
+import com.lifeadmin.autopilot.ui.research2.ResearchSessionScreen
+import com.lifeadmin.autopilot.ui.research2.Session2ViewModel
+import com.lifeadmin.autopilot.ui.research2.UsageScreen
+import com.lifeadmin.autopilot.ui.research2.UsageViewModel
 import com.lifeadmin.autopilot.ui.detail.TaskDetailViewModel
 import com.lifeadmin.autopilot.ui.health.ReminderHealthScreen
 import com.lifeadmin.autopilot.ui.health.ReminderHealthViewModel
@@ -195,9 +203,16 @@ fun LifeAdminRoot(
                 composable(Routes.LICENSES) { LicensesScreen(onBack = { navController.popBackStack() }) }
                 composable(Routes.AI_SETTINGS) {
                     val vm: AiSettingsViewModel = viewModel(factory = factoryOf {
-                        AiSettingsViewModel(container.settingsRepository, container.apiKeyStore, container.aiPlanning, container.clock, container.research, container.researchRepository)
+                        AiSettingsViewModel(container.settingsRepository, container.apiKeyStore, container.aiPlanning, container.clock, container.research, container.researchRepository, container.deepResearch, container.sessionRepository)
                     })
-                    AiSettingsScreen(vm, onBack = { navController.popBackStack() })
+                    AiSettingsScreen(vm, onBack = { navController.popBackStack() }, onOpenUsage = { navController.navigate(Routes.aiUsage()) { launchSingleTop = true } })
+                }
+                composable(Routes.AI_USAGE, arguments = listOf(navArgument("session") { type = NavType.StringType; defaultValue = "" })) { entry ->
+                    val focus = entry.arguments?.getString("session").orEmpty().ifBlank { null }
+                    val vm: UsageViewModel = viewModel(key = "ai-usage-$focus", factory = factoryOf {
+                        UsageViewModel(container.usageLedger, container.sessionRepository, container.settingsRepository, container.clock, container.zoneProvider, focus)
+                    })
+                    UsageScreen(vm, zone = container.zoneProvider.current(), onBack = { navController.popBackStack() })
                 }
                 composable(
                     Routes.PLAN,
@@ -227,6 +242,7 @@ fun LifeAdminRoot(
                         TaskDetailViewModel(
                             taskId, container.taskRepository, container.taskActions, container.settingsRepository, container.clock, container.zoneProvider, container.hintDismissals,
                             researchBriefs = container.researchRepository.observeForTask(taskId), researchRun = container.research.state,
+                            researchSessions = container.sessionRepository.observeForTask(taskId), deepRun = container.deepResearch.state,
                         )
                     })
                     TaskDetailScreen(
@@ -238,18 +254,21 @@ fun LifeAdminRoot(
                             onOpenBrief = { briefId -> navController.navigate(Routes.researchBrief(taskId, briefId)) { launchSingleTop = true } },
                             onOpenHistory = { navController.navigate(Routes.researchHistory(taskId)) { launchSingleTop = true } },
                             onOpenRun = { runId, q -> navController.navigate(Routes.researchRun(taskId, runId, q)) { launchSingleTop = true } },
+                            onOpenSession = { sessionId -> navController.navigate(Routes.research2Session(taskId, sessionId)) { launchSingleTop = true } },
+                            onOpenDeepRun = { sessionId, runId -> navController.navigate(Routes.research2Run(taskId, sessionId, runId)) { launchSingleTop = true } },
                         ),
                     )
                 }
                 composable(Routes.RESEARCH_HISTORY, arguments = listOf(navArgument("taskId") { type = NavType.StringType })) { entry ->
                     val taskId = entry.arguments?.getString("taskId").orEmpty()
                     val vm: ResearchHistoryViewModel = viewModel(key = "research-history-$taskId", factory = factoryOf {
-                        ResearchHistoryViewModel(taskId, container.researchRepository, container.taskRepository, container.research, container.clock)
+                        ResearchHistoryViewModel(taskId, container.researchRepository, container.taskRepository, container.research, container.clock, container.sessionRepository, container.deepResearch)
                     })
                     ResearchHistoryScreen(
                         vm, zone = container.zoneProvider.current(), onBack = { navController.popBackStack() },
                         onOpenBrief = { briefId -> navController.navigate(Routes.researchBrief(taskId, briefId)) { launchSingleTop = true } },
                         onNewResearch = { navController.navigate(Routes.researchNew(taskId)) { launchSingleTop = true } },
+                        onOpenSession = { sessionId -> navController.navigate(Routes.research2Session(taskId, sessionId)) { launchSingleTop = true } },
                     )
                 }
                 composable(
@@ -258,17 +277,64 @@ fun LifeAdminRoot(
                 ) { entry ->
                     val taskId = entry.arguments?.getString("taskId").orEmpty()
                     val q = entry.arguments?.getString("q").orEmpty()
-                    val vm: ResearchPreflightViewModel = viewModel(
-                        key = "research-new-$taskId",
-                        factory = viewModelFactory { initializer { ResearchPreflightViewModel(createSavedStateHandle(), taskId, q, container.research, container.taskRepository) } },
+                    val vm: Preflight2ViewModel = viewModel(
+                        key = "research2-new-$taskId",
+                        factory = viewModelFactory {
+                            initializer {
+                                Preflight2ViewModel(createSavedStateHandle(), taskId, q, container.deepResearch, container.taskRepository, container.settingsRepository, container.usageLedger, container.clock, container.zoneProvider)
+                            }
+                        },
                     )
-                    ResearchPreflightScreen(
+                    Preflight2Screen(
                         vm, onBack = { navController.popBackStack() },
-                        onStarted = { runId, question ->
-                            navController.navigate(Routes.researchRun(taskId, runId, question)) { popUpTo(Routes.RESEARCH_NEW) { inclusive = true }; launchSingleTop = true }
+                        onStarted = { runId, sessionId ->
+                            navController.navigate(Routes.research2Run(taskId, sessionId, runId)) { popUpTo(Routes.RESEARCH_NEW) { inclusive = true }; launchSingleTop = true }
                         },
                         onOpenAiSettings = ::openAiSettings,
+                        onOpenUsage = { navController.navigate(Routes.aiUsage()) { launchSingleTop = true } },
                     )
+                }
+                composable(
+                    Routes.RESEARCH2_RUN,
+                    arguments = listOf(navArgument("taskId") { type = NavType.StringType }, navArgument("sessionId") { type = NavType.StringType }, navArgument("runId") { type = NavType.StringType }),
+                ) { entry ->
+                    val taskId = entry.arguments?.getString("taskId").orEmpty()
+                    val sessionId = entry.arguments?.getString("sessionId").orEmpty()
+                    val runId = entry.arguments?.getString("runId").orEmpty()
+                    val vm: InvestigationViewModel = viewModel(key = "research2-run-$runId", factory = factoryOf { InvestigationViewModel(runId, sessionId, taskId, container.deepResearch) })
+                    InvestigationScreen(
+                        vm, now = container.clock::now,
+                        onBack = { navController.popBackStack() },
+                        onOpenSession = { sid -> navController.navigate(Routes.research2Session(taskId, sid)) { popUpTo(Routes.RESEARCH2_RUN) { inclusive = true }; launchSingleTop = true } },
+                        onTryAgain = { navController.navigate(Routes.researchNew(taskId)) { popUpTo(Routes.RESEARCH2_RUN) { inclusive = true }; launchSingleTop = true } },
+                        onOpenAiSettings = ::openAiSettings,
+                    )
+                }
+                composable(Routes.RESEARCH2_SESSION, arguments = listOf(navArgument("taskId") { type = NavType.StringType }, navArgument("sessionId") { type = NavType.StringType })) { entry ->
+                    val taskId = entry.arguments?.getString("taskId").orEmpty()
+                    val sessionId = entry.arguments?.getString("sessionId").orEmpty()
+                    val vm: Session2ViewModel = viewModel(
+                        key = "research2-session-$sessionId",
+                        factory = viewModelFactory {
+                            initializer { Session2ViewModel(createSavedStateHandle(), taskId, sessionId, container.sessionRepository, container.taskRepository, container.deepResearch, container.settingsRepository, container.networkStatus, container.clock) }
+                        },
+                    )
+                    ResearchSessionScreen(
+                        vm, zone = container.zoneProvider.current(),
+                        onBack = { navController.popBackStack() },
+                        onReview = { navController.navigate(Routes.research2Proposals(taskId, sessionId)) { launchSingleTop = true } },
+                        onContinueStarted = { runId -> navController.navigate(Routes.research2Run(taskId, sessionId, runId)) { launchSingleTop = true } },
+                        onOpenUsage = { navController.navigate(Routes.aiUsage(sessionId)) { launchSingleTop = true } },
+                    )
+                }
+                composable(Routes.RESEARCH2_PROPOSALS, arguments = listOf(navArgument("taskId") { type = NavType.StringType }, navArgument("sessionId") { type = NavType.StringType })) { entry ->
+                    val taskId = entry.arguments?.getString("taskId").orEmpty()
+                    val sessionId = entry.arguments?.getString("sessionId").orEmpty()
+                    val vm: ProposalsViewModel = viewModel(
+                        key = "research2-proposals-$sessionId",
+                        factory = viewModelFactory { initializer { ProposalsViewModel(createSavedStateHandle(), taskId, sessionId, container.sessionRepository, container.taskRepository, container.research2Actions, container.zoneProvider) } },
+                    )
+                    ProposalsScreen(vm, onBack = { navController.popBackStack() }, onDoneToTask = { navController.popBackStack(Routes.TASK_DETAIL, inclusive = false) })
                 }
                 composable(
                     Routes.RESEARCH_RUN,

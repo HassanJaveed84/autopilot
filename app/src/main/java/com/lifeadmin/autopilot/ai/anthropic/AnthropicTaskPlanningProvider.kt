@@ -131,7 +131,15 @@ class AnthropicTaskPlanningProvider(
         val text = message.content().flatMap { block -> block.text().map { listOf(it.text()) }.orElse(emptyList()) }.joinToString("").trim()
         if (text.isEmpty()) return PlanningResult.Failure(PlanningError.Malformed("empty answer"))
         val plan = decode(text) ?: return PlanningResult.Failure(PlanningError.Malformed("not the expected JSON"))
-        val usage = runCatching { message.usage().let { PlanningUsage(it.inputTokens(), it.outputTokens(), model) } }.getOrNull()
+        val usage = runCatching {
+            message.usage().let {
+                PlanningUsage(
+                    it.inputTokens(), it.outputTokens(), model,
+                    cacheWriteTokens = it.cacheCreationInputTokens().orElse(0L), cacheReadTokens = it.cacheReadInputTokens().orElse(0L),
+                    messageId = runCatching { message.id() }.getOrNull(),
+                )
+            }
+        }.getOrNull()
         return PlanningResult.Success(plan, usage)
     }
 

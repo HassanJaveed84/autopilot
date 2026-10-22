@@ -34,9 +34,11 @@ data class ResearchGate(
     val requestsToday: Int,
     /** null = unknown; the request is then attempted. */
     val online: Boolean?,
+    /** Daily cap this gate enforces (M3A requests or M3A.2 sessions). */
+    val cap: Int = ResearchConfig.MAX_REQUESTS_PER_DAY,
 ) {
     val model: String? get() = (availability as? AiAvailability.Ready)?.model
-    val remaining: Int get() = (ResearchConfig.MAX_REQUESTS_PER_DAY - requestsToday).coerceAtLeast(0)
+    val remaining: Int get() = (cap - requestsToday).coerceAtLeast(0)
 
     /** The first reason research cannot start right now, or null. */
     val blocker: ResearchError?

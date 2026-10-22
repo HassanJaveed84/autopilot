@@ -166,6 +166,19 @@ private fun ComposeTestRule.waitForText(text: String) =
 private fun ComposeTestRule.scrollTo(list: String, child: String) = onNodeWithTag(list).performScrollToNode(hasTestTag(child))
 
 /**
+ * A lazy list only composes what is on screen, so a tag below the fold is invisible to [waitForTag].
+ * Scroll to it instead, retrying while the list (or the item) is still on its way.
+ */
+private fun ComposeTestRule.waitAndScrollTo(list: String, child: String, timeoutMs: Long = 30_000) {
+    val deadline = System.currentTimeMillis() + timeoutMs
+    var last: Throwable? = null
+    while (System.currentTimeMillis() < deadline) {
+        try { scrollTo(list, child); return } catch (t: Throwable) { last = t; Thread.sleep(500) }
+    }
+    throw AssertionError("$child never appeared in $list within $timeoutMs ms", last)
+}
+
+/**
  * A task card merges its text into the clickable column (one TalkBack announcement), so the title
  * is on the clickable node itself; compact rows keep the text in a descendant. Match either.
  */
@@ -964,35 +977,12 @@ class ScreenshotTourResearch {
         compose.waitForTag("detail_title")
     }
 
-    private fun openPreflight(question: String) {
-        compose.scrollTo("detail_list", "action_research")
-        compose.onNodeWithTag("action_research").tap()
-        compose.waitForTag("preflight_question")
-        compose.onNodeWithTag("preflight_question").performTextInput(question)
-        compose.scrollTo("preflight_list", "detail_OPERATOR") // below the fold at large text
-        compose.onNodeWithTag("detail_OPERATOR").performTextInput("Northline Rail")
-    }
-
-    @Test fun r1_entryPreflightExplainerProgressBrief() {
-        val provider = ScriptedResearchProvider { sampleResponse }
-        provider.hold = CompletableDeferred()
-        launch(container(provider))
+    @Test fun r1_savedBriefSourcesApply() {
+        launch(container(ScriptedResearchProvider { sampleResponse }, explainerAccepted = true), seedBrief = true)
         compose.scrollTo("detail_list", "detail_ai_card")
         screenshot("r01-detail-move-forward-tiles")
-        openPreflight("When do advance tickets go on sale, and can I pre-book parking?")
-        compose.scrollTo("preflight_list", "preflight_for")
-        screenshot("r02-preflight-top")
-        compose.scrollTo("preflight_list", "preflight_scope")
-        screenshot("r03-preflight-scope")
-        compose.scrollTo("preflight_list", "preflight_cost")
-        screenshot("r04-preflight-cost")
-        compose.onNodeWithTag("preflight_start").tap()
-        compose.waitForTag("explainer_sheet")
-        screenshot("r05-explainer")
-        compose.onNodeWithTag("explainer_accept").tap()
-        compose.waitForTag("research_stop")
-        screenshot("r06-progress")
-        provider.hold!!.complete(Unit)
+        compose.scrollTo("detail_list", "detail_research_latest")
+        compose.onNodeWithTag("detail_research_latest").tap()
         compose.soft("brief-open") { compose.waitForTag("brief_list") }
         screenshot("r07-brief-top")
         compose.scrollTo("brief_list", "brief_answer")
@@ -1018,7 +1008,7 @@ class ScreenshotTourResearch {
         compose.waitForTag("apply_result")
         screenshot("r15-applied-undo")
         compose.onNodeWithTag("apply_done").tap()
-        compose.waitForTag("detail_list") // the list keeps its scroll position, so the title may be off screen
+        compose.waitForTag("detail_list")
         compose.scrollTo("detail_list", "detail_research_card")
         screenshot("r16-detail-research-card")
         compose.onNodeWithTag("detail_research_history").tap()
@@ -1046,28 +1036,6 @@ class ScreenshotTourResearch {
         screenshot("r20-preflight-offline")
     }
 
-    @Test fun r4_errorStates() {
-        val provider = ScriptedResearchProvider { com.lifeadmin.autopilot.ai.research.ResearchResponse.Failure(com.lifeadmin.autopilot.ai.research.ResearchError.WebSearchNotEnabled, 0) }
-        launch(container(provider, explainerAccepted = true))
-        openPreflight("How much is a child fare?")
-        compose.onNodeWithTag("preflight_start").tap()
-        compose.waitForTag("result_headline")
-        screenshot("r21-error-web-search-not-enabled")
-    }
-
-    @Test fun r5_stopped() {
-        val provider = ScriptedResearchProvider { sampleResponse }
-        provider.hold = CompletableDeferred()
-        launch(container(provider, explainerAccepted = true))
-        openPreflight("Is there a family railcard for this route?")
-        compose.onNodeWithTag("preflight_start").tap()
-        compose.waitForTag("research_stop")
-        compose.onNodeWithTag("research_stop").tap()
-        compose.waitForTag("result_headline")
-        screenshot("r22-stopped")
-        provider.hold!!.complete(Unit)
-    }
-
     @Test fun r6_settingsResearchSection() {
         launch(container(ScriptedResearchProvider { sampleResponse }, explainerAccepted = true), seedBrief = true)
         compose.back()
@@ -1079,5 +1047,290 @@ class ScreenshotTourResearch {
         compose.waitForTag("ai_settings_list")
         compose.scrollTo("ai_settings_list", "ai_research")
         screenshot("r23-settings-web-research")
+    }
+}
+
+/**
+ * M3A.2 Deep Research tour: preflight with extracted requirements, modes and Adjust; investigation;
+ * result templates C (supplements) and B (fragrance gift); editable proposals; stop sheet; error;
+ * usage dashboard. Scripted responses from the shared debug fixtures — no network, no key.
+ */
+@RunWith(AndroidJUnit4::class)
+class ScreenshotTourResearch2 {
+    @get:Rule val compose = createComposeRule()
+
+    private class ScriptedCalls : com.lifeadmin.autopilot.ai.research2.ResearchCallProvider {
+        override val id = "scripted-calls"
+        val queue = ArrayDeque<com.lifeadmin.autopilot.ai.research2.CallResult>()
+        var hold: CompletableDeferred<Unit>? = null
+        var calls = 0
+        override suspend fun call(call: com.lifeadmin.autopilot.ai.research2.ModelCall, apiKey: String): com.lifeadmin.autopilot.ai.research2.CallResult {
+            calls++
+            if (calls == 1) hold?.await()
+            return queue.removeFirstOrNull() ?: com.lifeadmin.autopilot.ai.research2.CallResult.Failed(com.lifeadmin.autopilot.ai.research.ResearchError.Unexpected("no script"), 0, null, 0)
+        }
+    }
+
+    private lateinit var container: AppContainer
+    private lateinit var taskId: String
+
+    @Before fun captureCrashes() {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            runCatching {
+                val dir = File(instrumentation.targetContext.getExternalFilesDir(null), "screenshots").apply { mkdirs() }
+                File(dir, "crash-${System.currentTimeMillis()}.txt").writeText("thread=${t.name}\n" + Log.getStackTraceString(e))
+            }
+            previous?.uncaughtException(t, e)
+        }
+    }
+
+    private fun container(calls: ScriptedCalls, aiEnabled: Boolean = true, explainerAccepted: Boolean = true, online: Boolean = true): AppContainer {
+        val context = instrumentation.targetContext
+        return AppContainer(
+            context = context,
+            database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build(),
+            settingsRepository = InMemorySettingsRepository(
+                AppSettings(onboardingCompleted = true, aiEnabled = aiEnabled, aiConsentAt = Instant.now(), researchExplainerVersion = if (explainerAccepted) com.lifeadmin.autopilot.ai.research.ResearchConfig.EXPLAINER_VERSION else 0),
+            ),
+            apiKeyStore = InMemoryApiKeyStore("test-key-0000000000000000000000000000"),
+            researchCalls = calls,
+            networkStatus = { online },
+        )
+    }
+
+    private fun launch(c: AppContainer, title: String, notes: String, step: String? = null) {
+        container = c
+        runBlocking {
+            taskId = c.taskRepository.createTask(NewTask(title, notes = notes, status = TaskStatus.ACTIONABLE, preset = ReminderPreset.PERSISTENT))
+            step?.let { c.taskRepository.addStep(taskId, it) }
+        }
+        compose.setContent { LifeAdminTheme { LifeAdminRoot(c) } }
+        compose.waitForTag("nav_tasks")
+        compose.onNodeWithTag("nav_tasks").tap()
+        compose.waitForTag("tasks_list")
+        compose.onNodeWithTag("tasks_list").performScrollToNode(hasText(title, substring = true))
+        compose.onAllNodes(clickableWithText(title)).onFirst().tap()
+        compose.waitForTag("detail_title")
+    }
+
+    private fun openPreflight(request: String) {
+        compose.scrollTo("detail_list", "action_research")
+        compose.onNodeWithTag("action_research").tap()
+        compose.waitForTag("preflight_question")
+        compose.onNodeWithTag("preflight_question").performTextInput(request)
+        // The soft keyboard can cover most of a 2.0-font-scale list; dismiss it before scrolling.
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.waitForIdle()
+    }
+
+    @Test fun s1_supplementsPreflightInvestigationResultProposals() {
+        val calls = ScriptedCalls().also { it.hold = CompletableDeferred() }
+        calls.queue.addLast(com.lifeadmin.autopilot.testing.Research2Fixtures.supplementsGather())
+        calls.queue.addLast(
+            com.lifeadmin.autopilot.ai.research2.CallResult.Done(
+                listOf(com.lifeadmin.autopilot.ai.research.RawSegment("## REQ r-i3 · status=not_found\nStill nothing from the preferred brands.\n", emptyList())),
+                emptyList(), com.lifeadmin.autopilot.ai.usage.MeasuredUsage(9_000, 200, 0, 0, 2_000, 2), com.lifeadmin.autopilot.ai.research2.CallStop.END, 5_000, "msg_2",
+            ),
+        )
+        // Third call: the typed follow-up on the Continue sheet, answered next to the original answer.
+        calls.queue.addLast(followUpAnswered())
+        launch(container(calls, explainerAccepted = false), "Supplements", "Monthly order", step = "Buy magnesium: Pure Encapsulations Magnesium (glycinate)")
+        openPreflight(com.lifeadmin.autopilot.testing.Research2Fixtures.SUPPLEMENTS_REQUEST)
+        compose.scrollTo("preflight_list", "preflight_for")
+        screenshot("s01-preflight-request")
+        compose.scrollTo("preflight_list", "preflight_requirements")
+        screenshot("s02-preflight-requirements")
+        compose.scrollTo("preflight_list", "mode_deep")
+        screenshot("s03-preflight-modes")
+        compose.scrollTo("preflight_list", "preflight_adjust")
+        compose.onNodeWithTag("preflight_adjust").tap()
+        compose.waitForTag("adjust_panel")
+        compose.scrollTo("preflight_list", "limit_none")
+        screenshot("s04-preflight-adjust")
+        compose.scrollTo("preflight_list", "preflight_usage")
+        screenshot("s05-preflight-scope-estimate")
+        compose.onNodeWithTag("preflight_start").tap()
+        compose.waitForTag("explainer_sheet")
+        screenshot("s06-explainer")
+        compose.onNodeWithTag("explainer_accept").tap()
+        compose.waitForTag("research_stop")
+        screenshot("s07-investigating")
+        compose.onNodeWithTag("research_stop").tap()
+        compose.waitForTag("stop_sheet")
+        screenshot("s08-stop-sheet")
+        compose.onNodeWithTag("stop_cancel").tap()
+        calls.hold!!.complete(Unit)
+        compose.soft("result-open") { compose.waitForTag("brief_list") }
+        screenshot("s09-result-c-top")
+        compose.scrollTo("brief_list", "brief_coverage")
+        screenshot("s10-result-c-coverage")
+        compose.scrollTo("brief_list", "item_r-i1")
+        screenshot("s11-result-c-item-cards")
+        compose.scrollTo("brief_list", "item_r-i3")
+        compose.onNodeWithTag("item_header_r-i3", useUnmergedTree = true).tap()
+        screenshot("s12-result-c-not-found")
+        compose.scrollTo("brief_list", "continue_card")
+        screenshot("s13-result-continue-card")
+        compose.onNodeWithTag("continue_button").tap()
+        compose.waitForTag("continue_sheet")
+        compose.onNodeWithTag("continue_note").performTextInput(FOLLOW_UP_QUESTION)
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.waitForIdle()
+        screenshot("s14-continue-sheet")
+        compose.onNodeWithTag("continue_go").tap()
+        compose.waitForTag("brief_list")
+        compose.waitAndScrollTo("brief_list", "brief_followup")
+        screenshot("s14b-result-follow-up-answered")
+        compose.scrollTo("brief_list", "brief_log_toggle")
+        compose.onNodeWithTag("brief_log_toggle").tap()
+        compose.waitForTag("brief_log")
+        compose.scrollTo("brief_list", "brief_log")
+        screenshot("s15-result-how-researched")
+        compose.onNodeWithTag("brief_review").tap()
+        compose.waitForTag("apply_list")
+        screenshot("s16-proposals")
+        compose.onNodeWithTag("apply_confirm").tap()
+        compose.waitForTag("apply_result")
+        screenshot("s17-applied-undo")
+        compose.onNodeWithTag("apply_done").tap()
+        compose.waitForTag("detail_list")
+        compose.scrollTo("detail_list", "detail_research_card")
+        screenshot("s18-detail-research-card")
+        compose.onNodeWithTag("detail_research_latest").tap()
+        compose.waitForTag("brief_list")
+        compose.onNodeWithTag("cost_chip").tap()
+        compose.waitForTag("usage_list")
+        screenshot("s19-usage-dashboard")
+        compose.scrollTo("usage_list", "usage_runs")
+        compose.onAllNodes(hasTestTag("usage_run_" + runBlocking { container.usageLedger.getAll() }.first().runId)).onFirst().tap()
+        compose.waitForTag("usage_breakdown")
+        screenshot("s20-usage-breakdown")
+    }
+
+    @Test fun s2_fragranceShortlist() {
+        val calls = ScriptedCalls()
+        calls.queue.addLast(com.lifeadmin.autopilot.testing.Research2Fixtures.fragranceGather())
+        calls.queue.addLast(com.lifeadmin.autopilot.testing.Research2Fixtures.fragranceFillGaps())
+        launch(container(calls), "Gift for Dad", "Birthday in November")
+        openPreflight(com.lifeadmin.autopilot.testing.Research2Fixtures.FRAGRANCE_REQUEST)
+        compose.scrollTo("preflight_list", "preflight_requirements")
+        screenshot("s21-preflight-gift-requirements")
+        compose.onNodeWithTag("preflight_start").tap()
+        compose.soft("result-open") { compose.waitForTag("brief_list") }
+        screenshot("s22-result-b-top")
+        compose.scrollTo("brief_list", "cand_c1")
+        screenshot("s23-result-b-hero")
+        compose.scrollTo("brief_list", "style_woody")
+        compose.onNodeWithTag("style_woody").tap()
+        screenshot("s24-result-b-rerank-woody")
+        compose.scrollTo("brief_list", "compare_table")
+        screenshot("s25-result-b-compare")
+        compose.scrollTo("brief_list", "excluded_c4")
+        screenshot("s26-result-b-excluded-conflict")
+        compose.scrollTo("brief_list", "cand_details_c1")
+        compose.onNodeWithTag("cand_details_c1").tap()
+        compose.waitForTag("candidate_sheet")
+        screenshot("s27-candidate-sheet")
+        compose.back()
+        compose.waitForTag("brief_review")
+        compose.onNodeWithTag("brief_review").tap()
+        compose.waitForTag("apply_list")
+        screenshot("s28-proposals-gift")
+    }
+
+    private val FOLLOW_UP_QUESTION = "Does Thorne sell glucosamine directly?"
+    private val thornePage = com.lifeadmin.autopilot.ai.research.RawCitation("https://www.thorne.example/products/glucosamine", "Glucosamine & Chondroitin | Thorne", "Glucosamine sulfate 500 mg")
+
+    /** A continuation reply that answers the typed follow-up: REQ for it, a short ANSWER, the item it settles. */
+    private fun followUpAnswered() = com.lifeadmin.autopilot.ai.research2.CallResult.Done(
+        listOf(
+            com.lifeadmin.autopilot.ai.research.RawSegment("## REQ r-f1 · status=answered\n", emptyList()),
+            com.lifeadmin.autopilot.ai.research.RawSegment("Thorne's own site lists Glucosamine & Chondroitin at 500 mg per capsule.", listOf(thornePage)),
+            com.lifeadmin.autopilot.ai.research.RawSegment("\n## ANSWER\n", emptyList()),
+            com.lifeadmin.autopilot.ai.research.RawSegment("Yes: Thorne sells Glucosamine & Chondroitin directly, 500 mg glucosamine sulfate per capsule.", listOf(thornePage)),
+            com.lifeadmin.autopilot.ai.research.RawSegment("\n## REQ r-i3 · status=answered\n", emptyList()),
+            com.lifeadmin.autopilot.ai.research.RawSegment("Found on the brand site.", listOf(thornePage)),
+            com.lifeadmin.autopilot.ai.research.RawSegment("\n## PICK r-i3 · status=answered\nPick: Thorne Glucosamine & Chondroitin\nLabel: ", emptyList()),
+            com.lifeadmin.autopilot.ai.research.RawSegment("Glucosamine sulfate 500 mg per capsule.", listOf(thornePage)),
+            com.lifeadmin.autopilot.ai.research.RawSegment("\nWhy: preferred brand\n## PROPOSE step · req=r-i3\nBuy glucosamine: Thorne Glucosamine & Chondroitin\nNote: 500 mg per capsule.\n", emptyList()),
+        ),
+        listOf(com.lifeadmin.autopilot.ai.research.RawSearch("Thorne glucosamine", emptyList())), com.lifeadmin.autopilot.ai.usage.MeasuredUsage(9_000, 600, 0, 0, 0, 1), com.lifeadmin.autopilot.ai.research2.CallStop.END, 6_000, "msg_follow_up",
+    )
+
+    /** The real-device shape: thinking and one search used the whole output budget before any text block. */
+    @Test fun s6_continuationCutOffBeforeAnyText() {
+        val calls = ScriptedCalls()
+        calls.queue.addLast(com.lifeadmin.autopilot.testing.Research2Fixtures.supplementsGather())
+        calls.queue.addLast(
+            com.lifeadmin.autopilot.ai.research2.CallResult.Done(
+                listOf(com.lifeadmin.autopilot.ai.research.RawSegment("## REQ r-i3 · status=not_found\nStill nothing from the preferred brands.\n", emptyList())),
+                emptyList(), com.lifeadmin.autopilot.ai.usage.MeasuredUsage(9_000, 200, 0, 0, 2_000, 2), com.lifeadmin.autopilot.ai.research2.CallStop.END, 5_000, "msg_2",
+            ),
+        )
+        calls.queue.addLast(
+            com.lifeadmin.autopilot.ai.research2.CallResult.Done(
+                emptyList(), listOf(com.lifeadmin.autopilot.ai.research.RawSearch("Thorne glucosamine", emptyList())), com.lifeadmin.autopilot.ai.usage.MeasuredUsage(9_800, 1_500, 0, 0, 0, 1),
+                com.lifeadmin.autopilot.ai.research2.CallStop.MAX_TOKENS, 12_100, "msg_cut",
+                shape = com.lifeadmin.autopilot.ai.research2.ReplyShape(mapOf("thinking" to 2, "server_tool_use" to 1, "web_search_tool_result" to 1), 0, 0),
+            ),
+        )
+        launch(container(calls), "Supplements", "Monthly order")
+        openPreflight(com.lifeadmin.autopilot.testing.Research2Fixtures.SUPPLEMENTS_REQUEST)
+        compose.onNodeWithTag("preflight_start").tap()
+        compose.waitForTag("brief_list")
+        compose.waitAndScrollTo("brief_list", "continue_card")
+        compose.onNodeWithTag("continue_button").tap()
+        compose.waitForTag("continue_sheet")
+        compose.onNodeWithTag("continue_note").performTextInput(FOLLOW_UP_QUESTION)
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.waitForIdle()
+        compose.onNodeWithTag("continue_go").tap()
+        compose.waitForTag("result_headline")
+        screenshot("s33-continuation-cut-off-before-text")
+        compose.onNodeWithTag("result_diagnostics_toggle").tap()
+        compose.waitForTag("result_diagnostics")
+        compose.onNodeWithTag("research_progress").performScrollToNode(hasTestTag("result_diagnostics"))
+        screenshot("s34-continuation-technical-record")
+        compose.onNodeWithTag("result_open_session").tap()
+        compose.waitForTag("brief_list")
+        compose.waitAndScrollTo("brief_list", "brief_log_toggle")
+        compose.onNodeWithTag("brief_log_toggle").tap()
+        compose.waitAndScrollTo("brief_list", "brief_log_call")
+        screenshot("s35-result-unchanged-with-failed-continuation-on-log")
+    }
+
+    @Test fun s3_errorAndOffline() {
+        val calls = ScriptedCalls()
+        calls.queue.addLast(com.lifeadmin.autopilot.ai.research2.CallResult.Failed(com.lifeadmin.autopilot.ai.research.ResearchError.WebSearchNotEnabled, 0, null, 100))
+        launch(container(calls), "Renew passport", "Expires in March")
+        openPreflight("How do I renew a UK passport from abroad?")
+        compose.onNodeWithTag("preflight_start").tap()
+        compose.waitForTag("result_headline")
+        screenshot("s29-error-web-search-not-enabled")
+    }
+
+    @Test fun s4_offlinePreflight() {
+        launch(container(ScriptedCalls(), online = false), "Renew passport", "Expires in March")
+        openPreflight("How do I renew a UK passport from abroad?")
+        compose.waitForTag("preflight_blocker")
+        screenshot("s30-preflight-offline")
+    }
+
+    @Test fun s5_settingsUsageEntry() {
+        launch(container(ScriptedCalls()), "Supplements", "Monthly order")
+        compose.back()
+        compose.waitForTag("nav_tasks")
+        compose.onNodeWithTag("nav_settings").tap()
+        compose.waitForTag("settings_list")
+        compose.onNodeWithTag("settings_list").performScrollToNode(hasText("Plan with AI"))
+        compose.onAllNodes(clickableWithText("Plan with AI")).onFirst().tap()
+        compose.waitForTag("ai_settings_list")
+        compose.scrollTo("ai_settings_list", "ai_usage_card")
+        screenshot("s31-settings-ai-usage-entry")
+        compose.onNodeWithTag("ai_usage_open").tap()
+        compose.waitForTag("usage_list")
+        compose.scrollTo("usage_list", "usage_prefs")
+        screenshot("s32-usage-preferences")
     }
 }
