@@ -399,7 +399,18 @@ See `docs/TEST_MATRIX.md` → "Production M2" (17 rows) and the M1 rows it build
 
 ## Gates actually run
 
-M2_GATES_PLACEHOLDER
+Local, on `bd6b367` (the head after the test-synchronisation fixes below), `./gradlew lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest --continue`: **exit 0**.
+
+| Gate | Result |
+|---|---|
+| `testDebugUnitTest` | 595 tests, 0 failures, 0 errors (whole suite; includes the new review, bridge and migrated flow tests) |
+| `lintDebug` | "No issues found." |
+| `assembleDebug` / `assembleRelease` / `assembleDebugAndroidTest` | all three APKs built |
+| Emulator instrumentation + screenshot tour | CI only (`Instrumented tests (emulator API 34)` job); not run locally |
+
+Earlier heads on this branch were red in CI and locally for test-synchronisation reasons, each fixed in its own commit rather than by loosening the assertion: the end-to-end review test asserted before the reopened review had loaded (`5ae6e37`); the view-model apply test read a message left over from the previous apply, and the research 200 % flow test still walked the retired proposals screen (`6d8520d`); under full-suite load the apply summary can arrive before the observed task and set carry the new revision, so the view-model test now waits for Undo to be offered (`bd6b367`). One product change came out of this: deciding a flagged change (Apply anyway / Keep yours) now clears the "Decide on the flagged change first" message.
+
+**Android CI:** runs 131 (push) and 132 (pull_request) on `bd6b367` were **in progress** when this section was written; earlier heads (`b81372d` cancelled by the next push, `4802301`, `5ae6e37`, `6d8520d`) were **red** in the "Lint, unit/Robolectric tests, APKs" job for the test-synchronisation reasons above, each fixed by the following commit. The final CI outcome for the head is recorded in PR #7.
 
 ## Remaining risks and deferred work
 
