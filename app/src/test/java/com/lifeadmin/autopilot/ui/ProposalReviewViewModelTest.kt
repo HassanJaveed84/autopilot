@@ -135,7 +135,8 @@ class ProposalReviewViewModelTest {
         s = ready(vm) { it.rows.first { r -> r.item.id == "d" }.item.status == ItemStatus.DECLINED && it.message == null && it.selectedCount == 1 }
         assertEquals(setOf("a"), s.pending.filter { it.selected }.map { it.item.id }.toSet())
         vm.apply()
-        s = ready(vm) { it.applied != null || it.message != null }
+        // The apply summary comes from the applier result; Undo is offered once the observed task and set carry the new revision.
+        s = ready(vm) { (it.applied != null && it.canUndo) || it.message != null }
         assertEquals(null, s.message)
         assertEquals(listOf("a"), s.applied!!.appliedItemIds)
         assertEquals(listOf("Take photo", "Book appointment"), runBlocking { tasks.getSteps(taskId) }.map { it.title })

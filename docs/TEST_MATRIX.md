@@ -241,6 +241,6 @@ Legend: ✅ covered by deterministic tests now · 🟡 partially covered by exis
 | Task-detail banner per open set with the pending count; the saved task stays separate from pending changes | `ProposalReviewUiTest`, `Research2FlowUiTest` | ✅ |
 | Process recovery: selection, edits and conflict decisions survive view-model recreation (SavedStateHandle) | `ProposalReviewViewModelTest.selectionEditsAndDecisionsSurviveRecreation` | ✅ |
 | Concurrent apply / idempotency (unchanged from M1, now the only path for both features) | `ProposalApplierConcurrencyTest`, `ProposalApplierTest.reapplyingASettledItemIsRefused…` | ✅ |
-| Narrow width (320 dp) at 200 % text: review usable end to end; 48 dp targets and labelled controls | `ProposalReviewLargeTextUiTest`, `ProposalReviewUiTest.touchTargetsAndLabelsAreAccessible` | ✅ |
+| Narrow width (320 dp) at 200 % text: review usable end to end; 48 dp targets and labelled controls; the whole M3A.2 research flow at 200 % now ends in the review | `ProposalReviewLargeTextUiTest`, `ProposalReviewUiTest.touchTargetsAndLabelsAreAccessible`, `ResearchFlowLargeTextUiTest` | ✅ |
 | Screenshot tour through the review (emulator, CI screenshot workflow) | `ScreenshotTour` s16/s16b/s17/s28, `ScreenshotTourAiReview` j2–j4 | 🟦 runs on the CI emulator job; not run locally |
 
