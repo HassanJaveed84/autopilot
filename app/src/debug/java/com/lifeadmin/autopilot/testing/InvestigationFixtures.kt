@@ -148,6 +148,20 @@ object InvestigationFixtures {
         MeasuredUsage(12_000, 700, 0, 0, 0, 2), "msg_aqua",
     )
 
+    /** R-G variant: searched, nothing found at all; the claim has no evidence and the unresolved line says what was tried. */
+    fun unverifiableNothingFound(): CallResult.Done = done(
+        listOf(
+            seg("## TITLE\nAquaPure X9 microplastics claim\n## ANSWER\nNo test report, listing or independent measurement of the 99.99% figure could be found [c1].\n"),
+            seg("## CLAIM c1 · type=fact · load=yes · scope=AquaPure X9 microplastic removal rate · asof=2026-10 · volatile=no · needs_input=no\nThe AquaPure X9 removes 99.99% of microplastics.\n"),
+            seg("## UNRESOLVED\n- AquaPure X9 removal rate — searched the maker's site, two retailers and one lab-testing site; no measurement found\n"),
+        ),
+        listOf(RawSearch("AquaPure X9 microplastics test", emptyList()), RawSearch("AquaPure X9 lab report", emptyList())),
+        MeasuredUsage(9_000, 400, 0, 0, 0, 2), "msg_aqua_none",
+    )
+
+    /** A reply whose only content is an instruction to the app: dropped as injection; nothing usable. */
+    fun serverFailure(status: Int = 529): CallResult.Failed = CallResult.Failed(com.lifeadmin.autopilot.ai.research.ResearchError.ServerError(status), 1, MeasuredUsage(null, null, null, null, null, 1), 3_000)
+
     /** Second pass fixture: the open claim is now checked and rewritten with fresh evidence (verify stage). */
     fun multisVerifyResolvesCertification(): CallResult.Done = done(
         listOf(

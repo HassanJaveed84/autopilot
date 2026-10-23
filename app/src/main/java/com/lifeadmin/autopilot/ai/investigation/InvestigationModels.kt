@@ -430,8 +430,11 @@ data class Investigation(
     /** The claims a continuation can inherit: the latest non-superseded version of every claim. */
     fun currentClaims(): List<Claim> {
         val all = turns.sortedBy { it.index }.flatMap { t -> t.result?.claims.orEmpty() }
-        val superseded = all.filter { it.superseded }.map { it.id }.toSet() + all.mapNotNull { it.supersededByClaimId }.let { _ -> all.filter { it.superseded }.map { it.id } }
-        return all.filter { it.id !in superseded && !it.superseded }.distinctBy { it.id }
+        // The latest version of each id wins; an id superseded in any turn stays superseded.
+        val latest = LinkedHashMap<String, Claim>()
+        for (c in all) latest[c.id] = c
+        val superseded = all.filter { it.superseded }.map { it.id }.toSet()
+        return latest.values.filter { it.id !in superseded && !it.superseded }
     }
 }
 
