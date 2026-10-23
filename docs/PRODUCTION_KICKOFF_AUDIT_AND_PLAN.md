@@ -352,5 +352,17 @@ Everything else in E/F/G/H agrees with the plan as written: Invariant vs. Capabi
 
 ## Gates actually run
 
-_Full gate run on this tree in progress at commit time; results recorded in the next commit._
+Run locally in this container on the reconciled tree (commit `46d54b4`, 2026-10-23):
+
+```
+./gradlew -q lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest   # EXIT 0
+```
+
+| Gate | Result |
+|---|---|
+| `lintDebug` | passed; the lint report lists no issues |
+| `testDebugUnitTest` | 583 tests in 75 classes, 0 failures, 0 skipped (6 new since the M1 run; the race test failed on the unfixed code and passes on the fixed one) |
+| `assembleDebug` / `assembleRelease` / `assembleDebugAndroidTest` | APKs built (30.1 MB / 4.4 MB / 1.2 MB); local debug key only |
+| Android CI (PR #6) | runs 118 and 119 green on the M1 heads (`638a187`, `0756670`); runs 120/121 on `46d54b4` recorded in the PR when complete |
+| Emulator instrumentation, physical device, live provider | not run by the agent |
 
