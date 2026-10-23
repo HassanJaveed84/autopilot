@@ -163,6 +163,13 @@ private fun ComposeTestRule.waitForTag(tag: String) =
 private fun ComposeTestRule.waitForText(text: String) =
     waitUntil(15_000) { onAllNodes(hasText(text, substring = true)).fetchSemanticsNodes().isNotEmpty() }
 
+/** The review's Apply button once something is selected ("Apply N changes"), whatever N the fixture yields. */
+private fun ComposeTestRule.waitForApplyCount() = waitUntil(15_000) {
+    onAllNodes(SemanticsMatcher("Apply N changes") { n ->
+        n.config.getOrNull(SemanticsProperties.Text)?.any { it.text.matches(Regex("Apply \\d+ changes?")) } == true
+    }).fetchSemanticsNodes().isNotEmpty()
+}
+
 private fun ComposeTestRule.scrollTo(list: String, child: String) = onNodeWithTag(list).performScrollToNode(hasTestTag(child))
 
 /**
@@ -1203,7 +1210,8 @@ class ScreenshotTourResearch2 {
         compose.waitForTag("review_list")
         screenshot("s16-review-nothing-selected")
         compose.onNodeWithTag("review_select_recommended").tap()
-        compose.waitForText("Apply 2 changes")
+        // The follow-up run adds a sourced glucosamine step, so the recommended count differs from the Robolectric flow test; the tour only needs a non-empty selection.
+        compose.waitForApplyCount()
         screenshot("s16b-review-recommended-selected")
         compose.onNodeWithTag("review_apply").tap()
         compose.waitForTag("review_result")
