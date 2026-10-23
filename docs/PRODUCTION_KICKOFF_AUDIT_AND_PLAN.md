@@ -476,3 +476,113 @@ Not a wrapper: the keyword extractor and the deliverable templates are deleted, 
 7. Regression, gates, CI, screenshot tour, docs, report.
 
 Known boundaries recorded up front: draft-origin research and the Living Draft hand-offs are M3 (G6); the combined planning + research period budget with warning and hard-stop thresholds is M5 (RES-142) — M4 keeps the existing monthly soft note and the per-turn spending limit; objective-preparation calls are ledgered in M4 (the "necessary minimum" the brief allows) and the RES-142 combined threshold is not applied to them until M5.
+
+---
+
+# Milestone 4 report — Research Online Investigation Thread (branch `prod-ux-m4-investigation-thread`, stacked on M2; draft PR #8)
+
+Everything below is deterministic evidence: scripted call provider, in-memory or file Room, Robolectric Compose. **No live provider call was made and no physical device was used.** Emulator instrumentation runs in CI only.
+
+## Commits
+
+| Slice | Commit | Content |
+|---|---|---|
+| Plan | `76b7dca` | M4.1–M4.3 above, written before code |
+| 1 | `96e1d20` | Objective and evidence domain: `Objective`, `Claim`, `EvidenceRef`, `ClaimAssessor`, `ResultDeriver`, `AnswerComposer` + `LeakageScan`, `InvestigationParser`, `ObjectivePreparer`, `ResearchPresets` (R48) |
+| 2 | `53fa7e8` | Room v7 (`investigations`, `investigation_turns`, `usage_records.effort`), `MIGRATION_6_7`, `InvestigationRepository`, backup arrays and legacy import |
+| 3 | `c7e6e09` | `InvestigationService`: prepare / clarify / authorize / run / stop / failure / interruption / association; `AuthorizationBuilder` (frozen payload + SHA-256) |
+| 4 | `54f4a0d` | Objective-led composition across domains; continuation (inheritance dispositions, exclusions, supersession, CHANGED / CONFIRMED) |
+| 5 + 6 | see PR | Native thread UI and home; proposals through the canonical review; retirement of the M3A and M3A.2 run/apply paths. **Committed together**: the new routes, task-detail entry points and `AppContainer` wiring replace the retired screens in the same files, so neither half compiles alone. |
+| 7 | see PR | Regression fixes, screenshot tour, gates, docs and this report |
+
+## Components: what actually happened versus M4.1
+
+| Plan | Outcome |
+|---|---|
+| Retain provider seam, `SourceRegistry2`, diagnostics, ledger, M1 builders, M2 review | As planned. `ModelCall` gained `effort`; the ledger gained `UsageFeature.OBJECTIVE_PREP` and a per-row `effort`. |
+| `DeepResearchService` → `InvestigationService` + `TurnRunner` | **Deviation:** one class, `InvestigationService`. The run loop (GATHER → FILL_GAPS → CROSS_CHECK → SYNTHESIZE, each a ceiling) lives in it; a separate `TurnRunner` added no seam the tests needed. |
+| `ResearchModes` → `ResearchPresets` | New runs use `ResearchPresets` only. `ResearchModes` stays because the read-only legacy session screen labels old runs with it. |
+| `ResearchProposalBridge` → `InvestigationProposalBridge` | New bridge written (claim-level `src`). The old bridge stays only so a legacy M3A.2 report's pending proposals can still open in the canonical review. |
+| `research_sessions` → `investigations` + turns | As planned: same ids, one legacy turn per recorded run, table dropped. |
+| Retire `RequirementExtractor`, `DeliverableTemplate`, `CompletionPolicy`, `SessionAssembler`, `ProposalBuilder`, `Research2Prompt` | **Partly a deviation.** Removed from every run path: no new run reads a keyword, a template or a requirement. `RequirementExtractor` and `Research2Prompt` are deleted from the app (`RequirementExtractor` survives as a test fixture helper). `DeliverableTemplate`, `CompletionPolicy`, `SessionAssembler`, `ContractParser` and `ProposalBuilder` remain as the **decoder and display code for stored M3A.2 reports** (the read-only session screen and the legacy converter call them); their existing tests still run. Deleting them would make stored reports unreadable, which RES-092 forbids. |
+| Retire `ui/research2/*` and routes `RESEARCH_NEW` / `RESEARCH2_RUN` | `Preflight2Screen` and `InvestigationScreen` deleted; route `RESEARCH2_RUN` removed. **Deviation:** `ResearchSessionScreen` is kept as the read-only view of a legacy report (no continue, no run) because a legacy turn's "Open the original report" goes there. |
+| Retire the M3A run/apply path | `ResearchService`, `ResearchActions`, `ResearchPreflightScreen`, `ResearchProgressScreen`, `ApplyResearchScreen`, `ResearchHistoryScreen` and routes `RESEARCH_HISTORY` / `RESEARCH_RUN` / `RESEARCH_APPLY` deleted. The M3A brief screen is read-only (its "apply moves" path is gone, so there is now **one** task write path for research: the canonical review). **Retained, unused by any screen:** `BriefParser`, `ResearchPrompt` and `AnthropicResearchProvider.research()`; the adapter's HTTP tests still exercise them, and removing the adapter method is a separate clean-up. |
+
+Not a wrapper: the new thread never calls the keyword extractor, a deliverable template or the coverage policy. The answer's shape comes from the objective's ask kind (`AnswerComposer`), and statuses from evidence (`ClaimAssessor`).
+
+## Architecture as built
+
+`ObjectivePreparer` (local pass; provider pass only under general AI consent, one no-search call, ledgered as objective preparation) → turn in CLARIFYING or AUTHORIZING → `AuthorizationBuilder` (objective, context switches, inherited findings with dispositions, configuration, estimate, frozen payload JSON and its SHA-256) written onto the turn → `InvestigationService` run loop with bounded calls, a checkpoint after every call, the search budget and the spending limit as ceilings → `InvestigationParser` → `ClaimAssessor` → `ResultDeriver` → `AnswerComposer` → immutable turn result → `InvestigationProposalBridge` (task-linked turns only) → canonical Proposal Review → `ProposalApplier`. The thread UI (`ui/investigation`) renders every turn state from the stored turn, so a restart shows the same thread.
+
+## Room v7 migration
+
+`MIGRATION_6_7` creates `investigations` (task FK `ON DELETE SET NULL`, so deleting a task keeps the research) and `investigation_turns` (unique `investigationId + turnIndex`, cascade on investigation delete), adds `usage_records.effort`, converts every `research_sessions` row through `LegacyInvestigations.fromStored` with the same id (ledger rows still join), then drops the old table. No destructive fallback. Tested by `MigrationTest.migrateV6ToV7…` on a seeded v6 database, `InvestigationRepositoryTest` and the backup cases (files with `sessions`, files with `investigations`, a running turn in a backup imports as interrupted).
+
+## Document F Stage 0 — M4 rows
+
+| Stage 0 bullet | M4 coverage |
+|---|---|
+| Authorization events vs. provider calls (RES-021/023/025) | `InvestigationServiceTest.preparingAndOpeningMakeNoProviderCall…` asserts the authorization and payload hash are on the turn when the first call is made; clarification blocks authorization (`…aClarificationBlocks…`) |
+| Outbound payload inspection (RES-093/160; INT-020–022/064) | Same test: an unticked context item is listed as not sent and its text is absent from the payload and the prompt; excluded findings stay out of later turns (`InvestigationContinuationTest`, `InvestigationThreadUiTest.aFollowUpCanExcludeAnEarlierFinding…`) |
+| Ledger completeness incl. effort and partial/unknown | Effort per row; stopped and interrupted turns settle as floor / unknown (`InvestigationServiceTest` stop and recovery cases) |
+| Ceiling precedence (RES-030/141) | `InvestigationServiceTest` spending-limit cases (added in slice 7, see below) and the search-budget endings |
+| Status derivation, same evidence → same status, negative claims, contradictions, independence | `ClaimAssessorTest`, `ResultDeriverTest`, `AnswerComposerTest` — now on the claim model |
+| Citation-to-claim linkage (RES-044/085/101) | `InvestigationParserTest` (provider citations verify; typed pointers never do), `AnswerComposerTest` (markers only on citable claims) |
+| Provenance on incorporated findings; report immutability | `InvestigationProposalBridge` writes claim-level `src`; turns are immutable rows; continuations never edit an earlier turn |
+| Leakage scan (RES-087) | `LeakageScan` + `AnswerComposerTest` across five unrelated objectives |
+
+## Cross-domain results
+
+`InvestigationContinuationTest.fiveUnrelatedObjectivesGetFiveShapesFromTheirAskAndNoneLeaksInternals` runs five unrelated objectives through the same service, parser, assessor and composer:
+
+| Objective | Shape produced | Derived state |
+|---|---|---|
+| Address fact (Union Station, DC) | Lead only; no sections; no recommendation | Answered |
+| Passport renewal procedure | Steps + a condition the person resolves; no table | Answered with conditions |
+| Multivitamin comparison | Comparison table on criteria; optional pick; "Sources disagree" caveat in the main answer | Partially answered |
+| Engineering decision (Snowflake direct vs. replicate to Postgres) | Recommendation whose reasons cite claims; the recommendation itself uncited; flip condition | Answered with conditions |
+| Unverifiable product claim (filter removes 99.99 % of microplastics) | An "unresolved" section; nothing proposed | not asserted in this test |
+
+All five pass the leakage scan and contain no template vocabulary. The fragrance follow-up (`aFollowUpChangingTheBudget…`) adds a sixth domain for continuation: the new budget replaces the old constraint, volatile prices are checked fresh and the earlier pick is superseded.
+
+## Authorization and payload isolation
+
+Nothing paid runs before Start. Preparation, opening the thread and changing settings make no call. The payload is built only from the current task's allow-listed fields the person left switched on, the objective, and the inherited findings of the **same** investigation with their dispositions; nothing from another investigation or another task is an input. The exact JSON the run will send is viewable before Start ("See exactly what will be sent") and its SHA-256 is stored on the turn.
+
+## Stop, interruption and recovery
+
+Stop offers keep or discard. Keep marks unchecked load-bearing claims "Not checked before it stopped" in the main answer; discard drops the findings but keeps the turn and its usage. A failure midway keeps checkpointed evidence and states the failure. Process death leaves a RUNNING turn; on next start `recoverInterrupted()` marks it INTERRUPTED, settles its usage as unknown and restarts nothing. Resume is a new turn with a new authorization and lists what was preserved and what is unresolved.
+
+## UI and accessibility
+
+One thread screen for every state: question, objective card (editable), clarification, missing details, authorization (depth presets, Adjust panel with model / searches / limit / effort, context switches, inherited findings, payload sheet, estimate), running (progress, Stop), result turns (answer, caveats, sections, recommendation, evidence and sources sheets, "How this was researched"), stopped / failed / interrupted turns with resume, declined turns, legacy turns with "Open the original report", follow-up composer. A home list shows all investigations, task-linked and standalone, with link / unlink / delete. Task detail, Today and the review screen link into it. Robolectric tests cover the flows at default size and at 320 dp with 200 % text; the bottom-bar footer shortens at large font scales so Start stays reachable.
+
+## Slice 7 findings (regression pass)
+
+- **Depth or configuration tap could be lost (product bug, fixed).** The thread view model rebuilt the authorization preview from several coroutines at once. A slower rebuild that began before a tap could finish last and overwrite the configuration, so Start could run a different depth than the one chosen. Rebuilds are now serialised, always read the latest choices and write nothing if the choices changed mid-rebuild. Start resolves its configuration from the current choices directly. Seen in `InvestigationThreadUiTest.aFollowUpCanExcludeAnEarlierFinding…`, where a two-stage run was sent instead of Quick.
+- **A spending limit below the first call reported "the reply was empty" (product bug, fixed).** Nothing had been sent. The turn now fails with "Your spending limit is below the first call" and nothing sent. A turn whose ceiling left nothing gathered is FAILED, not DONE. New tests: `InvestigationServiceTest.aSpendingLimitBelowTheFirstCall…` and `…aSpendingLimitTrims…`. These restore the ceiling coverage the retired `DeepResearchServiceTest` had.
+- **Robolectric test harness.** Waiting on service or database state with Compose's `waitUntil` does not run the main looper when the UI is idle. A coroutine resuming on Main after a database hop could then sit unrun, and the stop test timed out. The thread UI tests now use a looper-pumping wait for non-UI conditions and the file-backed test database (WAL, as in production). This is a test-environment fix; it changes no app code.
+
+## Gates actually run
+
+Local, on the slice 7 working tree (committed as the head of this branch), `./gradlew --continue lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest`: **exit 0**.
+
+| Gate | Result |
+|---|---|
+| `testDebugUnitTest` | 596 tests in 83 classes, 0 failures, 0 errors, 0 skipped |
+| `lintDebug` | "No issues found." |
+| `assembleDebug` / `assembleRelease` / `assembleDebugAndroidTest` | all three APKs built (30.8 MB / 4.5 MB / 1.2 MB); local debug key only |
+| Thread UI + service tests, repeated | `InvestigationThreadUiTest`, `InvestigationThreadLargeTextUiTest`, `InvestigationServiceTest`: three consecutive green runs (6 + 15 tests) |
+| Emulator instrumentation + `ScreenshotTourInvestigation` | CI only (`Instrumented tests (emulator API 34)`); not run locally. The androidTest APK compiles. |
+
+Earlier runs on this branch, recorded rather than overwritten: the first full run on the slice 5 + 6 tree (`e760258`) had 594 tests with 1 failure (`stoppingKeepsWhatWasFound…`, the harness wait above). The second had 596 tests with 1 failure (same test). In isolation that run also exposed the lost-tap race in the follow-up test. Both were fixed as described above.
+
+Android CI on the pushed head is recorded in PR #8.
+
+## Limitations and dependencies
+
+- **No live provider run.** The prompts, contract and parser are tested against scripted replies only. A live Anthropic run (with web search) needs your explicit approval and your key.
+- **No physical device.** Emulator instrumentation and the screenshot tour run in CI only.
+- Legacy decoder code (see the components table) is retained for reading stored reports; removing it requires a decision to stop displaying them in their original form.
+- `AnthropicResearchProvider.research()`, `BriefParser` and `ResearchPrompt` are unused by any screen and should be removed in a clean-up PR.
+- Draft-origin research and the Living Draft hand-offs are **M3** (not started). The combined planning + research period budget with warning and hard-stop thresholds is **M5**; M4 keeps the monthly soft note and the per-turn spending limit, and objective-preparation calls are ledgered but not yet counted against a combined threshold.

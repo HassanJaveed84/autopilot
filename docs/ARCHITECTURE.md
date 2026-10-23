@@ -196,6 +196,58 @@ Both AI features now propose through one path (handoff §1, §7; INT-042): a `Pr
   points retire in the Research Online milestone; `createPlannedTask` (saving a new task from a draft) is not a proposal
   apply and stays.
 
+## Production M4: the Research Online Investigation Thread (2026-10-23)
+
+Objective-led research replaces the M3A.2 requirement/template engine as the source of the question
+and the shape of the answer (RES-010/011, RES-080–089). Code: `ai/investigation`, `ui/investigation`,
+Room v7. The M3A.2 call loop, provider adapter, usage ledger and checkpointing were kept and moved
+behind the new model; the M3A and M3A.2 run, preflight and apply paths were removed.
+
+- **Objective first** (`ObjectivePreparer`): a free, offline objective from the person's own words
+  (ask kind from the request's wording, never its subject; constraints echoed; a question with no
+  subject asks first). Optional: one small no-search call under general AI consent, ledgered as
+  `OBJECTIVE_PREP`, sending the question alone; an instruction-carrying reply falls back to local.
+  A follow-up is read against the earlier objective (changed constraints replace their kind).
+- **Authorization before any paid call** (`AuthorizationBuilder`, M1 `InvestigationTurnBuilder`):
+  the record holds the objective and constraints, each context item with its switch, each earlier
+  finding with its disposition (reused / checked fresh / replaced / not sent / excluded by you), the
+  configuration and preset name, the estimate, warnings, and the exact frozen payload with its
+  SHA-256. `InvestigationService.authorize` writes it to the turn before the first byte leaves.
+- **Claims, not coverage** (`InvestigationModels`, `InvestigationParser`, `ClaimAssessor`,
+  `ResultDeriver`): each claim has type, scope, as-of, supporting and opposing evidence; provider
+  citations verify, model-typed `src=` tokens only point; status is derived from evidence
+  (established / indicative / contested / not established / depends on you); judgments inherit their
+  weakest premise and are never cited; the turn's result state is derived from load-bearing claims.
+- **Composition** (`AnswerComposer`, `LeakageScan`): the answer leads; sections appear only when the
+  ask calls for them (steps, comparison rows, conditions, changes); every load-bearing gap is a caveat
+  in the main answer; absence of evidence is never worded as "false"; no internal ids, markers or
+  status labels reach the text.
+- **Turns** (`InvestigationService`, `TurnWork`): stages from the R48 preset (Quick / Standard /
+  Thorough / Deep + Custom; model, effort, searches and limit independent); at most 6 searches per
+  call; a verify pass only for open load-bearing claims; a reconcile pass only for contested ones;
+  a checkpoint of the turn after every merged call; the spend limit checked before each batch. Stop
+  keeps findings and usage (open claims become "not checked"); discard drops findings but keeps the
+  turn and usage; a failure keeps earlier evidence; `recoverInterrupted()` turns a dead process's
+  running turn into Interrupted with its checkpoint. A continuation inherits only what its
+  authorization sent; exclusions persist on the thread (OD-4); `CHANGED` supersedes a claim; earlier
+  proposal sets resting on a superseded claim become obsolete.
+- **Proposals** (`InvestigationProposalBridge`): one canonical `ProposalSet` per turn with
+  claim-level `src`; established basis → recommended change (a correction of the person's step is
+  material); indicative/contested basis → labelled "Check:" verification item; unchecked or
+  unsupported basis → held back and counted; a standalone thread proposes nothing.
+- **Room v7** (`MIGRATION_6_7`): `investigations` (standalone or task-linked; `ON DELETE SET NULL`)
+  and `investigation_turns` (one record per turn, unique per index); every `research_sessions` row
+  became one legacy investigation with a turn per run and its content kept byte-for-byte; the old
+  table was dropped after the copy; `usage_records.effort`. Backups carry `investigations` plus a
+  legacy `sessions` copy for older app versions; session-only backups import as threads.
+- **UI**: research history (`research?task=`), new thread (`research/new`), one thread
+  (`research/thread/{id}`) from Today's header (standalone) and the task's "Research online" tile
+  (task-linked). Thread screen: question → objective card (edit, clarify, add details) → authorization
+  card (depth, adjust, context switches, earlier findings, exact payload) → progress → turn cards
+  (answer, caveats, sections, judgment, evidence list and sheet, sources, how it was researched,
+  requested vs used configuration, review hand-off, recovery surface) → follow-up. Legacy M3A briefs
+  and M3A.2 sessions stay readable, read-only.
+
 ## Extension points for later milestones (not implemented)
 
 - M3 agents (research, email/calendar) would reuse the proposal → review → command pattern with
