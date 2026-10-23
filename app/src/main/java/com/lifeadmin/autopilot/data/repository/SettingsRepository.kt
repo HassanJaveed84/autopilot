@@ -72,6 +72,10 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
             researchQuickModel = this[RESEARCH_MODEL_QUICK] ?: d.researchQuickModel,
             researchThoroughModel = this[RESEARCH_MODEL_THOROUGH] ?: d.researchThoroughModel,
             researchDeepModel = this[RESEARCH_MODEL_DEEP] ?: d.researchDeepModel,
+            researchStandardModel = this[RESEARCH_MODEL_STANDARD] ?: d.researchStandardModel,
+            researchDefaultDepth = this[RESEARCH_DEFAULT_DEPTH] ?: d.researchDefaultDepth,
+            researchDefaultSearches = this[RESEARCH_DEFAULT_SEARCHES] ?: d.researchDefaultSearches,
+            researchEffort = this[RESEARCH_EFFORT] ?: d.researchEffort,
             lastReconcileAt = this[LAST_RECONCILE]?.let(Instant::ofEpochMilli),
             lastReconcileSummary = this[LAST_RECONCILE_SUMMARY],
             appearance = enumOr(this[APPEARANCE], d.appearance),
@@ -106,6 +110,10 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         this[RESEARCH_MODEL_QUICK] = s.researchQuickModel
         this[RESEARCH_MODEL_THOROUGH] = s.researchThoroughModel
         this[RESEARCH_MODEL_DEEP] = s.researchDeepModel
+        this[RESEARCH_MODEL_STANDARD] = s.researchStandardModel
+        this[RESEARCH_DEFAULT_DEPTH] = s.researchDefaultDepth
+        this[RESEARCH_DEFAULT_SEARCHES] = s.researchDefaultSearches
+        this[RESEARCH_EFFORT] = s.researchEffort
         s.lastReconcileAt?.let { this[LAST_RECONCILE] = it.toEpochMilli() } ?: remove(LAST_RECONCILE)
         s.lastReconcileSummary?.let { this[LAST_RECONCILE_SUMMARY] = it } ?: remove(LAST_RECONCILE_SUMMARY)
         this[APPEARANCE] = s.appearance.name
@@ -143,6 +151,10 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         private val RESEARCH_MODEL_QUICK = stringPreferencesKey("research_model_quick")
         private val RESEARCH_MODEL_THOROUGH = stringPreferencesKey("research_model_thorough")
         private val RESEARCH_MODEL_DEEP = stringPreferencesKey("research_model_deep")
+        private val RESEARCH_MODEL_STANDARD = stringPreferencesKey("research_model_standard")
+        private val RESEARCH_DEFAULT_DEPTH = stringPreferencesKey("research_default_depth")
+        private val RESEARCH_DEFAULT_SEARCHES = intPreferencesKey("research_default_searches")
+        private val RESEARCH_EFFORT = stringPreferencesKey("research_effort")
         private val APPEARANCE = stringPreferencesKey("appearance")
 
         private fun parseTime(raw: String): LocalTime? = runCatching { LocalTime.parse(raw) }.getOrNull()

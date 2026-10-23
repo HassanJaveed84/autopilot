@@ -22,6 +22,8 @@ data class ModelCall(
      * client's default never shortens it). Null = the adapter's default.
      */
     val timeout: java.time.Duration? = null,
+    /** Provider reasoning effort (`output_config.effort`): low / medium / high; null = provider default (RES-135). */
+    val effort: String? = null,
 )
 
 enum class CallStop { END, PAUSE_TURN, MAX_TOKENS, REFUSAL }

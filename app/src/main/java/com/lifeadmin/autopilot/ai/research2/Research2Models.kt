@@ -275,8 +275,8 @@ enum class ResearchMode(val label: String) { QUICK("Quick"), THOROUGH("Thorough"
 @Serializable
 enum class StageKind(val label: String) {
     GATHER("Searching and gathering evidence"),
-    FILL_GAPS("Filling gaps"),
-    CROSS_CHECK("Cross-checking"),
+    FILL_GAPS("Checking what the answer rests on"),
+    CROSS_CHECK("Reconciling sources"),
     SYNTHESIZE("Writing the result"),
 }
 
