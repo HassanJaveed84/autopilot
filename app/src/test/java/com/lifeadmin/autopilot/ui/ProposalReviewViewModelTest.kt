@@ -131,7 +131,9 @@ class ProposalReviewViewModelTest {
         assertTrue(s.message!!.contains("Decide"))
         assertEquals(1, runBlocking { tasks.getSteps(taskId) }.size)
         vm.resolve("d", ConflictResolution.KEEP_YOURS)
-        ready(vm) { it.rows.first { r -> r.item.id == "d" }.item.status == ItemStatus.DECLINED }
+        // Deciding clears the "decide first" message; the declined item is no longer selected or pending.
+        s = ready(vm) { it.rows.first { r -> r.item.id == "d" }.item.status == ItemStatus.DECLINED && it.message == null && it.selectedCount == 1 }
+        assertEquals(setOf("a"), s.pending.filter { it.selected }.map { it.item.id }.toSet())
         vm.apply()
         s = ready(vm) { it.applied != null || it.message != null }
         assertEquals(null, s.message)

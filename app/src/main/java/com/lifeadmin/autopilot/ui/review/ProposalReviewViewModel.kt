@@ -176,9 +176,9 @@ class ProposalReviewViewModel(
         if (resolution == ConflictResolution.KEEP_YOURS) {
             // Keep yours declines the item outright (handoff §5); no apply needed.
             viewModelScope.launch { applier.decline(setId, listOf(id), "Kept yours") }
-            local.update { l -> l.copy(selected = l.selected - id, resolutions = l.resolutions - id) }
+            local.update { l -> l.copy(selected = l.selected - id, resolutions = l.resolutions - id, message = null) }
         } else {
-            local.update { l -> l.copy(resolutions = l.resolutions + (id to resolution), selected = l.selected + id) }
+            local.update { l -> l.copy(resolutions = l.resolutions + (id to resolution), selected = l.selected + id, message = null) }
         }
         persist()
     }
