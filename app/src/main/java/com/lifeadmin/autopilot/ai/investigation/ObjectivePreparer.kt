@@ -121,6 +121,46 @@ object ObjectivePreparer {
         )
     }
 
+    /**
+     * A follow-up inside an investigation is read against the earlier objective (RES-100, RES-103): a
+     * constraint it changes replaces the earlier one of the same kind ("under $100" replaces "under
+     * $150"), the ones it leaves alone carry over, and a follow-up with no subject of its own ("what
+     * about under $100?") keeps the earlier subject and ask instead of asking the person what they mean.
+     */
+    fun followUp(question: String, earlier: Objective): Objective {
+        val re = local(question)
+        val q = re.question
+        val merged = earlier.constraints.filter { c -> re.constraints.none { constraintKind(it.text) == constraintKind(c.text) } } + re.constraints
+        val fewWords = q.lowercase(Locale.ROOT).split(Regex("[^\\p{L}\\p{N}$£€]+")).count { it.length > 2 && it !in STOP } <= 3
+        val askSignal = re.askKind != AskKind.FACT
+        val ask = if (askSignal || !fewWords) re.askKind else earlier.askKind
+        val core = q.trimEnd('?', '.', ' ')
+        return if (re.established && !fewWords) {
+            re.copy(constraints = merged, askKind = ask, satisfies = if (ask == re.askKind) re.satisfies else listOf(satisfiesLine(ask)), consequential = re.consequential || earlier.consequential, recommendedDepth = recommendedDepth(ask, re.consequential || earlier.consequential).first)
+        } else {
+            Objective(
+                question = q,
+                text = (earlier.text.ifBlank { earlier.question } + " — now: " + core).take(400),
+                askKind = ask,
+                satisfies = earlier.satisfies.ifEmpty { listOf(satisfiesLine(ask)) },
+                constraints = merged,
+                exclusions = earlier.exclusions,
+                consequential = earlier.consequential || re.consequential,
+                recommendedDepth = earlier.recommendedDepth, depthReason = earlier.depthReason,
+                established = true,
+                preparedBy = ObjectiveSource.LOCAL,
+            )
+        }
+    }
+
+    /** Budget / place / time / other, so a follow-up's constraint can replace the one it changes. */
+    internal fun constraintKind(text: String): String = when {
+        BUDGET.containsMatchIn(text) || Regex("""[$£€]\s?\d""").containsMatchIn(text) -> "budget"
+        PLACE.containsMatchIn(text) -> "place"
+        TIME.containsMatchIn(text) -> "time"
+        else -> "other:" + text.lowercase(Locale.ROOT)
+    }
+
     /** The person's own edit of the objective text; the ask and constraints are re-read from the new wording where it changed them. */
     fun edited(current: Objective, newText: String): Objective {
         val t = newText.trim()

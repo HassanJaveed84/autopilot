@@ -173,6 +173,90 @@ object InvestigationFixtures {
         MeasuredUsage(8_000, 500, 0, 0, 2_000, 1), "msg_multis_verify",
     )
 
+    // ---- R-D: a gift recommendation with a budget; prices are volatile, the follow-up changes the budget
+    const val FRAGRANCE = "Best men's fragrance under $150 in the US as a gift"
+    val deptStore = RawCitation("https://www.deptstore.example/sauvage-edt-100", "Dior Sauvage EDT 100 ml", "Dior Sauvage Eau de Toilette 100 ml, $128.00, in stock.")
+    val reviewSite = RawCitation("https://www.scentreview.example/sauvage", "Sauvage EDT review", "Lasts about eight hours on skin; strong projection for the first two.")
+    val discounter = RawCitation("https://www.discounter.example/bleu-edt-50", "Bleu de Chanel EDT 50 ml", "Bleu de Chanel Eau de Toilette 50 ml, $95.00, ships from the US.")
+
+    fun fragranceGather(): CallResult.Done = done(
+        listOf(
+            seg("## TITLE\nA men's fragrance gift under $150\n## ANSWER\n"),
+            seg("Dior Sauvage EDT (100 ml) is the pick: it is $128 at a US department store [c1]", deptStore),
+            seg(" and lasts about eight hours on skin [c2].", reviewSite),
+            seg(" It is a safe gift because it is widely liked and inside the budget [c3].\n"),
+            seg("## CLAIM c1 · type=fact · load=yes · scope=Dior Sauvage EDT 100 ml, US department store · asof=2026-10-23 · volatile=yes · needs_input=no\nDior Sauvage EDT 100 ml costs $128 at a US department store.\nEVIDENCE: "),
+            seg("Dior Sauvage Eau de Toilette 100 ml, $128.00, in stock.", deptStore),
+            seg("\n## CLAIM c2 · type=fact · load=yes · scope=Dior Sauvage EDT · asof=2026 · volatile=no · needs_input=no\nDior Sauvage EDT lasts about eight hours on skin.\nEVIDENCE: "),
+            seg("Lasts about eight hours on skin; strong projection for the first two.", reviewSite),
+            seg("\n## CLAIM c3 · type=recommendation · load=no · scope=- · asof=- · volatile=no · needs_input=no\nDior Sauvage EDT is the gift pick under $150.\nPREMISES: c1, c2\n"),
+            seg("## RECOMMEND optional=no\nDior Sauvage EDT, 100 ml.\nBecause: it is $128, inside the budget [c1]\nBecause: it lasts a full day [c2]\nAssumes: the recipient likes a fresh, spicy scent\nChanges if: the budget drops below about $120\n"),
+            seg("## UNRESOLVED\n- none\n"),
+        ),
+        listOf(RawSearch("best men's fragrance gift under 150", listOf(RawSearchResult(deptStore.url, deptStore.title!!, "October 2026"), RawSearchResult(reviewSite.url, reviewSite.title!!, null)))),
+        MeasuredUsage(14_000, 1_100, 0, 0, 0, 2), "msg_frag",
+    )
+
+    /** Follow-up "what about under $100?": the price claim is checked fresh and replaced; the longevity claim is reused. */
+    fun fragranceFollowUp(): CallResult.Done = done(
+        listOf(
+            seg("## TITLE\nA men's fragrance gift under $100\n## ANSWER\n"),
+            seg("Under $100 the pick changes: Bleu de Chanel EDT (50 ml) is $95 at a US discounter [c4].", discounter),
+            seg(" Sauvage no longer fits; its 100 ml bottle is still $128 [c1].\n", deptStore),
+            seg("## CLAIM c4 · type=fact · load=yes · scope=Bleu de Chanel EDT 50 ml, US discounter · asof=2026-10-24 · volatile=yes · needs_input=no\nBleu de Chanel EDT 50 ml costs $95 at a US discounter.\nEVIDENCE: "),
+            seg("Bleu de Chanel Eau de Toilette 50 ml, $95.00, ships from the US.", discounter),
+            seg("\n## CLAIM c1 · type=fact · load=yes · scope=Dior Sauvage EDT 100 ml, US department store · asof=2026-10-24 · volatile=yes · needs_input=no\nDior Sauvage EDT 100 ml costs $128 at a US department store.\nEVIDENCE: "),
+            seg("Dior Sauvage Eau de Toilette 100 ml, $128.00, in stock.", deptStore),
+            seg("\n## CLAIM c5 · type=recommendation · load=no · scope=- · asof=- · volatile=no · needs_input=no\nBleu de Chanel EDT 50 ml is the gift pick under $100.\nPREMISES: c4\n"),
+            seg("## CHANGED c3 -> c5\nThe pick changed because the budget changed, not because anything about Sauvage changed.\n"),
+            seg("## RECOMMEND optional=no\nBleu de Chanel EDT, 50 ml.\nBecause: it is $95, inside the new budget [c4]\nAssumes: a 50 ml bottle is acceptable as a gift\nChanges if: the budget goes back above $128\n"),
+            seg("## UNRESOLVED\n- none\n"),
+        ),
+        listOf(RawSearch("men's fragrance gift under 100 US", listOf(RawSearchResult(discounter.url, discounter.title!!, "October 2026"), RawSearchResult(deptStore.url, deptStore.title!!, "October 2026")))),
+        MeasuredUsage(12_000, 900, 0, 0, 2_500, 2), "msg_frag_2",
+    )
+
+    // ---- Deep passes on the supplement comparison: verify keeps the disagreement, reconcile explains it as a change over time, synthesis writes the result
+    val nsfListing = RawCitation("https://www.nsf.example/listing/thorne-bn", "NSF listing | Thorne Basic Nutrients", "Basic Nutrients 2/Day: NSF Certified for Sport, certificate lapsed March 2025, renewed January 2026.")
+
+    fun multisVerifyStillContested(): CallResult.Done = done(
+        listOf(
+            seg("## CLAIM c4 · type=fact · load=yes · scope=Thorne Basic Nutrients 2/Day certification · asof=2026 · volatile=no · needs_input=no\nThorne Basic Nutrients 2/Day is NSF Certified for Sport.\nEVIDENCE: "),
+            seg("Two capsules daily; NSF Certified for Sport.", thorne),
+            seg("\nAGAINST: "),
+            seg("A user says Thorne dropped NSF certification on this product in 2025.", forumPost),
+            seg("\n## UNRESOLVED\n- Thorne NSF status — the brand page and the forum post still disagree; no registry page found yet\n"),
+        ),
+        listOf(RawSearch("Thorne Basic Nutrients NSF certification 2025", listOf(RawSearchResult(forumPost.url, forumPost.title!!, "2025")))),
+        MeasuredUsage(7_000, 400, 0, 0, 2_000, 1), "msg_multis_verify2",
+    )
+
+    fun multisReconcile(): CallResult.Done = done(
+        listOf(
+            seg("## CLAIM c5 · type=fact · load=yes · scope=Thorne Basic Nutrients 2/Day certification, 2025–2026 · asof=2026-01 · volatile=no · needs_input=no\nThorne Basic Nutrients 2/Day lost its NSF Certified for Sport listing in March 2025 and regained it in January 2026.\nEVIDENCE: "),
+            seg("Basic Nutrients 2/Day: NSF Certified for Sport, certificate lapsed March 2025, renewed January 2026.", nsfListing),
+            seg("\nEVIDENCE: "),
+            seg("A user says Thorne dropped NSF certification on this product in 2025.", forumPost),
+            seg("\n## CHANGED c4 -> c5\nNot a disagreement: the forum post described the 2025 lapse; the brand page describes the current, renewed certificate.\n"),
+            seg("## UNRESOLVED\n- none\n"),
+        ),
+        listOf(RawSearch("NSF Certified for Sport Thorne Basic Nutrients listing", listOf(RawSearchResult(nsfListing.url, nsfListing.title!!, "January 2026")))),
+        MeasuredUsage(9_000, 600, 0, 0, 2_000, 1), "msg_multis_reconcile",
+    )
+
+    fun multisSynthesis(): CallResult.Done = done(
+        listOf(
+            seg("## TITLE\nThorne vs Pure Encapsulations multivitamins\n## ANSWER\nThorne's Basic Nutrients 2/Day is two capsules a day [c1] and Pure Encapsulations O.N.E. is one [c2]; both passed independent label testing in 2026 [c3]. Thorne's NSF Certified for Sport listing lapsed in 2025 and was renewed in January 2026 [c5], so it is current now.\n"),
+            seg("## COMPARE criterion=Daily dose\nThorne: two capsules [c1] | Pure Encapsulations: one capsule [c2]\n"),
+            seg("## COMPARE criterion=Independent testing\nThorne: passed 2026 label testing [c3] | Pure Encapsulations: passed 2026 label testing [c3]\n"),
+            seg("## COMPARE criterion=Certification\nThorne: NSF Certified for Sport, renewed 2026 [c5] | Pure Encapsulations: not stated on the page found\n"),
+            seg("## RECOMMEND optional=yes\nIf a single capsule matters most, Pure Encapsulations O.N.E. is the simpler routine.\nBecause: it is one capsule a day [c2]\nAssumes: you have no preference about certification\nChanges if: NSF certification matters to you\n"),
+            seg("## UNRESOLVED\n- none\n"),
+        ),
+        emptyList(),
+        MeasuredUsage(11_000, 1_200, 0, 0, 3_000, 0), "msg_multis_synth",
+    )
+
     /** Objective-preparation reply for the ambiguous "address of Union Station" (R-N(b)): a clarification, no authorization yet. */
     fun unionStationAmbiguous(): CallResult.Done = done(
         listOf(

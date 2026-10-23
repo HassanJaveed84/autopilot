@@ -85,4 +85,21 @@ class ObjectivePreparerTest {
         val o = ObjectivePreparer.fromProvider(InvestigationFixtures.PASSPORT, bad, "m")
         assertEquals(ObjectiveSource.LOCAL, o.preparedBy)
     }
+
+    @Test fun aFollowUpIsReadAgainstTheEarlierObjective() {
+        val earlier = ObjectivePreparer.local("Best men's fragrance under $150 in the US as a gift")
+        val cheaper = ObjectivePreparer.followUp("What about under $100?", earlier)
+        assertTrue(cheaper.established)
+        assertNull(cheaper.clarification)
+        assertEquals(AskKind.RECOMMEND, cheaper.askKind)
+        assertEquals(listOf("in the US", "under $100"), cheaper.constraints.map { it.text })
+        assertTrue(cheaper.text.contains("fragrance") && cheaper.text.contains("under $100"))
+        val different = ObjectivePreparer.followUp("How do I return a fragrance bought online in the US?", earlier)
+        assertEquals("a full question with its own ask stands on its own", AskKind.PROCEDURE, different.askKind)
+        assertTrue(different.text.startsWith("Work out how to"))
+        assertEquals("under $150", different.constraints.first { ObjectivePreparer.constraintKind(it.text) == "budget" }.text)
+        val bare = ObjectivePreparer.followUp("is it worth it?", earlier)
+        assertTrue("inside an investigation a bare referent has a subject: the earlier objective", bare.established)
+        assertEquals(AskKind.DECIDE, bare.askKind)
+    }
 }

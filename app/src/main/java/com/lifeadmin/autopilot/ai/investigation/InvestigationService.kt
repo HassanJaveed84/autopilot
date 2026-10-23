@@ -192,7 +192,8 @@ class InvestigationService(
         val linkedTask = existing?.taskId ?: taskId
         val earlier = existing?.latestTurn?.objective
         val kind = when { resumeOf != null -> TurnKind.RESUME; existing != null -> TurnKind.CONTINUATION; else -> TurnKind.INITIAL }
-        var objective = ObjectivePreparer.local(q)
+        var objective = if (earlier != null && resumeOf == null) ObjectivePreparer.followUp(q, earlier) else ObjectivePreparer.local(q)
+        if (resumeOf != null) existing?.turns?.firstOrNull { it.id == resumeOf }?.let { objective = it.objective }
         if (useProvider) {
             val st = settings.current()
             val availability = planning.availability(st)
@@ -389,7 +390,8 @@ class InvestigationService(
         val sentIds = auth.inherited.filter { it.disposition == com.lifeadmin.autopilot.ai.context.FindingDisposition.SENT }.map { it.claimId }.toSet()
         val inherited = inv.currentClaims().filter { it.id in sentIds && it.id !in excluded }
         val seed = inv.turns.sortedBy { it.index }.flatMap { it.result?.sources.orEmpty() }.distinctBy { it.n }
-        val ctx = RunCtx(inv, turn, config, key, payload, SourceRegistry(seed, turn.id), TurnWork(turn.id, inherited, inv.taskId != null), startedAt)
+        val lineage = inv.currentClaims().associate { it.id to (it.inheritedFromTurnId ?: it.turnId) }
+        val ctx = RunCtx(inv, turn, config, key, payload, SourceRegistry(seed, turn.id), TurnWork(turn.id, inherited, inv.taskId != null, lineage, excluded), startedAt)
         _state.value = TurnRunState.Running(
             turn.id, inv.id, inv.taskId, inv.title, config, startedAt, null, 0, config.stages.size, emptyList(), 0, seed.size, inherited.size, inherited.count { it.status == ClaimStatus.ESTABLISHED }, 0L, false,
             continuation = turn.kind != TurnKind.INITIAL,

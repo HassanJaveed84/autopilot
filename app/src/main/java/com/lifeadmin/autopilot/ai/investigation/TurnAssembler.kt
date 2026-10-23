@@ -9,7 +9,15 @@ import com.lifeadmin.autopilot.ai.research2.StageRecord
  * wrote, changes, proposals, queries. Pure merging; the service only feeds it parser output and asks
  * for a result. The same inputs always give the same result (RES-068).
  */
-class TurnWork(val turnId: String, inherited: List<Claim>, val taskLinked: Boolean) {
+class TurnWork(
+    val turnId: String,
+    inherited: List<Claim>,
+    val taskLinked: Boolean,
+    /** Origin turn of every claim id this investigation has held, so a fresh re-check keeps its lineage (RES-101). */
+    private val lineage: Map<String, String> = emptyMap(),
+    /** Claim ids the person excluded: never reinserted, whatever a reply says (OD-4). */
+    private val excluded: Set<String> = emptySet(),
+) {
     val claims = LinkedHashMap<String, Claim>().apply { inherited.forEach { put(it.id, it.copy(reused = true, inheritedFromTurnId = it.inheritedFromTurnId ?: it.turnId.takeIf { t -> t != turnId })) } }
     var title: String? = null
     var answer: List<AnswerSegment> = emptyList()
@@ -38,6 +46,7 @@ class TurnWork(val turnId: String, inherited: List<Claim>, val taskLinked: Boole
         var changed = false
         if (out.injectionNoticed) injectionNoticed = true
         for (c in out.claims) {
+            if (c.id in excluded) continue
             val prior = claims[c.id]
             // A re-check that brings no new verified source keeps the earlier opposing evidence it did not restate, so a
             // conflict is never lost by silence; one that brings fresh evidence stands as written (RES-106), and the
@@ -49,7 +58,7 @@ class TurnWork(val turnId: String, inherited: List<Claim>, val taskLinked: Boole
             }
             val merged = c.copy(
                 reused = false, checked = true,
-                inheritedFromTurnId = prior?.inheritedFromTurnId ?: prior?.turnId?.takeIf { it != turnId } ?: c.inheritedFromTurnId,
+                inheritedFromTurnId = prior?.inheritedFromTurnId ?: prior?.turnId?.takeIf { it != turnId } ?: c.inheritedFromTurnId ?: lineage[c.id]?.takeIf { it != turnId },
                 against = against,
             )
             if (prior == null || prior != merged) changed = true

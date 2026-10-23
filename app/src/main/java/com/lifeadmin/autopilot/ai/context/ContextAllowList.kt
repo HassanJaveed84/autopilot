@@ -238,9 +238,11 @@ object InvestigationTurnBuilder {
         return out
     }
 
+    /** A paraphrase counts: most of the item's significant words (at least two) appear in the objective. */
     private fun mentions(objective: String, value: String): Boolean {
-        val words = value.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length >= 4 }
+        val words = value.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length >= 4 }.distinct()
         if (words.isEmpty()) return objective.contains(value.lowercase().trim()) && value.isNotBlank()
-        return words.all { objective.contains(it) }
+        val matched = words.count { objective.contains(it) }
+        return matched == words.size || matched >= maxOf(2, (words.size * 0.6 + 0.5).toInt())
     }
 }
