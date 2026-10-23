@@ -70,6 +70,8 @@ class ProposalReconcilerTest {
         val check = ProposalReconciler.check(item, withDeadline, withDeadline)
         assertEquals("OD-6: blocked, not merely a conflict", CheckOutcome.BLOCKED, check.outcome)
         assertEquals(CheckOutcome.OK, ProposalReconciler.check(item, base, base).outcome)
+        // The user removed their deadline after the snapshot: compatible in principle, but theirs to decide.
+        assertEquals(CheckOutcome.CONFLICT, ProposalReconciler.check(item, withDeadline, base).outcome)
         // A planning target is the allowed alternative and lives in its own field.
         val target = ProposalItem("g", ItemKind.SET_TARGET, value = ItemValue.Date("2026-10-20", basis = "3-week processing time"), material = true)
         assertEquals(CheckOutcome.OK, ProposalReconciler.check(target, withDeadline, withDeadline).outcome)

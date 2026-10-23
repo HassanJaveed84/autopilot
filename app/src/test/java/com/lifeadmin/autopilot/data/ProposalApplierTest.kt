@@ -307,4 +307,70 @@ class ProposalApplierTest {
         val r3 = tasks.getTask(id)!!.rev
         assertTrue(r0 < r1 && r1 < r2 && r2 < r3)
     }
+
+    @Test fun partialApplyThenTheRestKeepsTheOriginalSnapshotAndRecordsTwoApplies() = runTest {
+        val id = seedTask()
+        val set = makeSet(id, ProposalSource.RESEARCH,
+            ProposalItem("a", ItemKind.ADD_STEP, value = ItemValue.Step("Book appointment")),
+            ProposalItem("b", ItemKind.APPEND_NOTE, value = ItemValue.Text("Processing takes 3 weeks")),
+            ProposalItem("c", ItemKind.SET_TARGET, value = ItemValue.Date("2026-11-10", basis = "verified processing time"), material = true))
+        val first = applier.apply(set.id, listOf(ApplyChoice("a"))) as ApplyResult.Applied
+        // The user ticks the new step and snoozes in between: unrelated to what is left.
+        tasks.setStepDone(stepId(id, "Book appointment"), true)
+        tasks.snooze(id, clock.now().plusSeconds(3600))
+        val checks = applier.reconcile(sets.get(set.id)!!)
+        assertTrue("remaining items reconcile against the rebased base and stay applicable", checks.none { it.blocksApply })
+        val second = applier.apply(set.id, listOf(ApplyChoice("b"), ApplyChoice("c"))) as ApplyResult.Applied
+        assertTrue(second.revBefore > first.revAfter)
+        val after = sets.get(set.id)!!
+        assertEquals("baseOriginal never changes (OD-2)", set.baseOriginal, after.baseOriginal)
+        assertEquals("base follows the latest apply", second.revAfter, after.base.rev)
+        assertEquals(SetStatus.CLOSED, after.status)
+        assertEquals(listOf("b", "c"), after.lastApply!!.appliedItemIds)
+        val applies = db.eventDao().getForTask(id).filter { it.eventType == EventType.EDITED && it.summary.startsWith("Applied") }
+        assertEquals(2, applies.size)
+        assertEquals("the first apply's history entry is untouched", "1", com.lifeadmin.autopilot.data.local.decodeMetadata(applies.last().structuredMetadata)["items"]!!.split(",").size.toString())
+        assertEquals(3, sets.provenanceForTask(id).size)
+        // Undo now reverts only the second apply; the step from the first stays.
+        assertTrue(applier.undo(set.id))
+        assertTrue(stepTitles(id).contains("Book appointment"))
+        assertNull(tasks.getTask(id)!!.targetLocalDate)
+        assertEquals("Expires in March", tasks.getTask(id)!!.notes)
+    }
+
+    @Test fun reapplyingASettledItemIsRefusedAndChangesNothing() = runTest {
+        val id = seedTask()
+        val set = makeSet(id, ProposalSource.RESEARCH,
+            ProposalItem("b", ItemKind.APPEND_NOTE, value = ItemValue.Text("Processing takes 3 weeks")),
+            ProposalItem("a", ItemKind.ADD_STEP, value = ItemValue.Step("Book appointment")))
+        applier.apply(set.id, listOf(ApplyChoice("b"))) as ApplyResult.Applied
+        val notes = tasks.getTask(id)!!.notes
+        val rev = tasks.getTask(id)!!.rev
+        val again = applier.apply(set.id, listOf(ApplyChoice("b")))
+        assertEquals(ApplyResult.Rejected::class, again::class)
+        assertTrue((again as ApplyResult.Rejected).message.contains("already applied"))
+        assertEquals(notes, tasks.getTask(id)!!.notes)
+        assertEquals(rev, tasks.getTask(id)!!.rev)
+        assertEquals(1, sets.provenanceForTask(id).size)
+        // A mixed request applies only what is still pending.
+        val mixed = applier.apply(set.id, listOf(ApplyChoice("b"), ApplyChoice("a"))) as ApplyResult.Applied
+        assertEquals(listOf("a"), mixed.appliedItemIds)
+        assertEquals(notes, tasks.getTask(id)!!.notes)
+    }
+
+    @Test fun nothingButAChosenReminderItemEverTouchesReminders() = runTest {
+        val id = seedTask()
+        val before = tasks.getPolicy(id)!!
+        val set = makeSet(id, ProposalSource.PLANNING,
+            ProposalItem("a", ItemKind.ADD_STEP, value = ItemValue.Step("Book appointment")),
+            ProposalItem("r", ItemKind.SET_REMINDER, value = ItemValue.Reminder("DAILY_TIMES", listOf("09:00")), material = true),
+            ProposalItem("d", ItemKind.SET_DEADLINE, value = ItemValue.Date("2026-11-05", basis = "derived from your trip date"), material = true))
+        applier.apply(set.id, listOf(ApplyChoice("a"), ApplyChoice("d"))) as ApplyResult.Applied
+        val after = tasks.getPolicy(id)!!
+        assertEquals("not enabled", false, after.enabled)
+        assertEquals(before.times, after.times)
+        assertEquals(before.kind, after.kind)
+        assertEquals(ItemStatus.PENDING, sets.get(set.id)!!.item("r")!!.status)
+        assertTrue(db.eventDao().getForTask(id).none { it.eventType == EventType.POLICY_EDITED })
+    }
 }

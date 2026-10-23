@@ -76,15 +76,25 @@ class ProposalApplier(
     }
 
     suspend fun apply(setId: String, choices: List<ApplyChoice>): ApplyResult {
-        val set = sets.get(setId) ?: return ApplyResult.Rejected("This proposal no longer exists")
-        if (set.targetKind != TargetKind.TASK) return ApplyResult.Rejected("This proposal is for a draft")
-        if (set.status != SetStatus.OPEN) return ApplyResult.Rejected("This proposal is closed")
-        val chosen = choices.distinctBy { it.itemId }.filter { c -> set.item(c.itemId)?.status == ItemStatus.PENDING }
-        if (chosen.none { it.resolution != ConflictResolution.KEEP_YOURS }) return ApplyResult.Rejected("Select at least one change to apply")
-        val dismiss = chosen.any { set.item(it.itemId)?.kind == ItemKind.SET_STATUS }
+        val peek = sets.get(setId) ?: return ApplyResult.Rejected("This proposal no longer exists")
+        if (peek.targetKind != TargetKind.TASK) return ApplyResult.Rejected("This proposal is for a draft")
+        if (peek.status != SetStatus.OPEN) return ApplyResult.Rejected("This proposal is closed")
+        val wanted = choices.distinctBy { it.itemId }.filter { peek.item(it.itemId) != null }
+        if (wanted.none { it.resolution != ConflictResolution.KEEP_YOURS }) return ApplyResult.Rejected("Select at least one change to apply")
+        val dismiss = wanted.any { peek.item(it.itemId)?.kind == ItemKind.SET_STATUS }
         return try {
-            tasks.coordinator.mutateTask(set.targetId, dismissNotification = dismiss) {
-                db.withTransaction { applyNow(set, chosen) }
+            tasks.coordinator.mutateTask(peek.targetId, dismissNotification = dismiss) {
+                db.withTransaction {
+                    // Re-read under the per-task lock and inside the transaction: a concurrent apply of the same
+                    // set may have settled items since the caller looked. An item is applied at most once.
+                    val set = sets.get(setId) ?: return@withTransaction ApplyResult.Rejected("This proposal no longer exists")
+                    if (set.status != SetStatus.OPEN) return@withTransaction ApplyResult.Rejected("These changes were already applied")
+                    val chosen = wanted.filter { set.item(it.itemId)?.status == ItemStatus.PENDING }
+                    if (chosen.none { it.resolution != ConflictResolution.KEEP_YOURS }) {
+                        return@withTransaction ApplyResult.Rejected(if (chosen.size < wanted.size) "These changes were already applied" else "Select at least one change to apply")
+                    }
+                    applyNow(set, chosen)
+                }
             }
         } catch (e: IllegalArgumentException) {
             // ValidationException and state-machine rejections alike: the transaction rolled back, the task is unchanged.
@@ -289,10 +299,13 @@ class ProposalApplier(
      * false and changes nothing otherwise.
      */
     suspend fun undo(setId: String): Boolean {
-        val set = sets.get(setId) ?: return false
-        val la = set.lastApply ?: return false
-        return tasks.coordinator.mutateTask(set.targetId) {
+        val peek = sets.get(setId) ?: return false
+        if (peek.lastApply == null) return false
+        return tasks.coordinator.mutateTask(peek.targetId) {
             db.withTransaction {
+                // Re-read under the lock: the apply record may have been undone or replaced since the caller looked.
+                val set = sets.get(setId) ?: return@withTransaction false
+                val la = set.lastApply ?: return@withTransaction false
                 val task = taskDao.get(set.targetId) ?: return@withTransaction false
                 if (task.rev != la.revAfter || task.status.isTerminal) return@withTransaction false
                 val now = clock.now()

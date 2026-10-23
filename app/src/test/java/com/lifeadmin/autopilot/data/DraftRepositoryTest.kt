@@ -80,4 +80,41 @@ class DraftRepositoryTest {
         assertEquals(DraftStatus.SAVED, repo.get(d.id)!!.status)
         db.close()
     }
+
+    @Test fun textIsStoredVerbatimIncludingWhitespaceNewlinesAndNonBmpCharacters() = runTest {
+        val db = inMemoryDatabase()
+        val repo = DraftRepository(db, clock, SequentialIds("d"))
+        val text = "  Book the dentist\n\n  for Ada 🦷 — before the 12th\t"
+        val d = repo.create(text)
+        assertEquals(text, repo.get(d.id)!!.text)
+        assertEquals(text, repo.get(d.id)!!.content.text)
+        assertEquals(text, db.draftDao().get(d.id)!!.text)
+        db.close()
+    }
+
+    @Test fun exactlyTheLimitIsAcceptedVerbatimAndOneMoreIsRejectedWithoutWriting() = runTest {
+        val db = inMemoryDatabase()
+        val repo = DraftRepository(db, clock, SequentialIds("d"))
+        val atLimit = buildString { while (length < DraftRepository.MAX_TEXT) append("Renew passport. ") }.take(DraftRepository.MAX_TEXT)
+        assertEquals(DraftRepository.MAX_TEXT, atLimit.length)
+        val d = repo.create(atLimit)
+        assertEquals(atLimit, repo.get(d.id)!!.text)
+        try {
+            repo.create(atLimit + "x")
+            org.junit.Assert.fail("expected rejection")
+        } catch (e: com.lifeadmin.autopilot.data.repository.ValidationException) {
+            assertTrue(e.message!!.contains("too long"))
+        }
+        assertEquals("nothing was written for the rejected input", 1, repo.getAll().size)
+        // An over-long edit is rejected too, and the draft is left exactly as it was.
+        try {
+            repo.update(d.id) { it.copy(text = it.text + "x") }
+            org.junit.Assert.fail("expected rejection")
+        } catch (e: com.lifeadmin.autopilot.data.repository.ValidationException) {
+            // expected
+        }
+        assertEquals(atLimit, repo.get(d.id)!!.text)
+        assertEquals(clock.now(), repo.get(d.id)!!.updatedAt)
+        db.close()
+    }
 }

@@ -41,6 +41,7 @@ object ProposalReconciler {
             ItemKind.SET_TITLE -> if (base.title != current.title) conflict(item, "You changed the title since this was proposed") else ok(item)
             ItemKind.SET_DEADLINE -> when {
                 current.hasDeadline -> blocked(item, "Your deadline is kept. A proposed date can only become a planning target")
+                base.hasDeadline -> conflict(item, "You removed your deadline since this was proposed")
                 else -> ok(item)
             }
             ItemKind.SET_TARGET -> if (base.targetDate != current.targetDate || base.targetBasis != current.targetBasis) conflict(item, "The planning target changed since this was proposed") else ok(item)

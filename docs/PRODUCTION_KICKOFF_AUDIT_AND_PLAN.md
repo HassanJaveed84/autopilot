@@ -2,7 +2,8 @@
 
 **Status:** Phase 1 deliverable (audit + plan). Phase 3 Milestone 1 starts on this branch after this document.
 **Branch:** `prod-ux-m1-foundations`, created from `m3a2-deep-research` @ `f5eb868` (the M3A.2 head; PR #5 is still a draft and is not merged). Draft PR to follow; nothing is merged by this work.
-**Date:** 2026-10-23
+**Date:** 2026-10-23 (reconciled against Documents E/F/G/H the same day; see §9)
+**Baseline assessed against:** frozen product baseline **v1.0** (Documents A–G, frozen 2026-10-22; Document H v1.0 change log), per Document E change-control rule 4.
 
 ## 0. Sources, precedence and what is missing
 
@@ -13,12 +14,12 @@
 | 1 | Document C (Research Online PRD) v1.0, RES-010…RES-161 | yes | 89 requirements |
 | 1 | Document D (Integration spec) v1.0, INT-010…INT-072 + INT-023 consent table | yes | 32 requirements |
 | 1 | Document J (UX design handoff brief) v1.0 | yes | |
-| 1 | Documents E (decision log), F (evaluation framework, Stage 0 fixtures), G (roadmap), H (change logs) | **no** | Not in either zip; not in `docs/`. Specs README confirms only A–D and J were packaged. |
+| 1 | Documents E (decision log), F (evaluation framework, Stage 0 fixtures), G (roadmap), H (v1.0 freeze change log) | **yes (received after M1, 2026-10-23)** | Read in full; reconciliation in §9. The original kickoff package held only A–D and J. |
 | 2 | `UX-implementation-handoff.md` v1.1 incl. OD-1…OD-12, §13 mandatory native work, §14 native acceptance tests | yes | Treated as the authority on behaviour the frozen docs leave to UX |
 | 3 | Design boards Flow / Main / Plan / Task (`.dc.html`) | yes | Flow wins on behaviour; Plan/Main/Task give full surfaces (§0.3) |
 | 4 | Prototype acceptance scripts (`tests/*.js`, Playwright 1.56) | yes | Behavioural reference only; **not** production acceptance |
 
-**Consequence of the missing documents.** Where B/C/D say "Stage 0 fixture (Document F)", this plan defines the native test from the requirement's own *Acceptance* line plus handoff §14. The decision log is approximated by the *Basis* lines in B/C/D and the OD table. If E/F/G/H are later supplied, the acceptance list in §7 should be reconciled against them; nothing here reopens a closed decision.
+**Documents E/F/G/H** arrived after M1 was implemented. §9 reconciles this plan, the roadmap and the test matrix against them; the Stage 0 acceptance mapping lives in `docs/TEST_MATRIX.md`. Nothing here reopens a confirmed decision; where a decision is still open in Document E it is named as open.
 
 ## 1. Repository audit (as of `f5eb868`)
 
@@ -185,7 +186,7 @@ Each milestone ships on its own branch stacked on the previous one with a draft 
 
 ## 5. Blockers, contradictions and recorded assumptions
 
-1. **Documents E/F/G/H missing** (non-blocking). Native acceptance is derived from B/C/D acceptance lines and handoff §14. If F arrives, fixture wording may need reconciliation (see OD-5 note in the handoff).
+1. **Documents E/F/G/H** were missing at kickoff and are now reconciled (§9). Two owner decisions are surfaced there (milestone order vs. Document G §3; research preset names vs. Document F's "Standard" level, OQ-C1).
 2. **PLAN-073 vs. current apply** (contradiction with existing code, resolved by M1): whole-task `updatedAt` rejection is replaced by per-item reconciliation against `rev`; the previous behaviour is kept only as the "task deleted/completed" guard.
 3. **OD-5 vs. current pre-selection** (resolved by handoff): nothing pre-selected; `selectedByDefault` and EXPLICIT pre-selection are removed from review; "Select recommended" is the one-tap path that satisfies PLAN-071's acceptance.
 4. **Priority proposals** (behaviour change from M2): the handoff forbids proposing priority; planning may still *read* priority. New drafts let the user set priority manually.
@@ -284,5 +285,72 @@ Run locally in this container on the M1 tree (2026-10-23):
 - `ProposalApplier` targets tasks only. Draft-targeted apply (and retargeting on Save, OD-7) is M3; `ProposalSetRepository.retarget` exists but is unused.
 - Research `src` for proposal items will be populated from the Investigation turn model in M4. Nothing converts today's `SessionContent.proposals` into `ProposalSet`s yet; the M3A.2 proposals screen is unchanged.
 - No live provider call, no device install and no emulator run were performed by this session for M1; CI results are recorded above when available.
-- Documents E/F/G/H remain unavailable; the fixtures above are derived from the B/C/D acceptance lines and handoff §14.
+- The fixtures above were derived from the B/C/D acceptance lines and handoff §14 before Documents E/F/G/H were available; §9 maps them to Document F Stage 0 and records what changed.
+
+---
+
+# 9. Reconciliation against Documents E, F, G and H (2026-10-23)
+
+All four documents were read in full. The frozen documents were not modified. Findings are listed with the frozen IDs they rest on; "changed" means this plan or the test matrix changed, never the baseline.
+
+## 9.1 Material discrepancies and what changed
+
+| # | Finding | Source | Effect on this plan |
+|---|---|---|---|
+| 1 | **The M3A.2 template layer cannot be the objective source.** RES-010/011 ("explicit objective; never inferred from topic, keyword or template") and RES-087 are **P0 Invariants** in Document G §2. Today `RequirementExtractor` derives requirements from keywords and `DeliverableTemplate` (A–E) shapes the result; Document F §9 classifies a category-keyed structure that dictates the answer as a *template defect*, and Document G §8 names this exact fork ("if its structured-contract design is the root of Problems 2 and 9, replacement is the cheaper path"). | G §2, §8; F §9; E R1, R14, R45 | **Changed.** M4 keeps the M3A.2 gather / evidence / checkpoint / ledger machinery and **retires** the keyword extractor and deliverable templates as the source of the objective and the shape of the answer: objective established under general consent and ledgered (RES-023, R32), objective-led composition (RES-080–084). §1.4's "reuse as the engine" is narrowed accordingly. |
+| 2 | **Stage 0 is a continuous fixture harness and the first implementation slice.** Document G §7 step 5: "the Stage 0 fixture harness for Invariants is the first slice"; Document F §2.3 lists its contents. | F §2.3; G §7 | **Changed.** M1 is recorded as that slice. The Stage 0 mapping (which bullet is covered by which test now, which later) is in `docs/TEST_MATRIX.md` and summarised in §9.2. |
+| 3 | **Deferred-capability rule (G4).** Recurrence proposals (PLAN-047) are P1 and deferred (D-R3); PLAN-045 was extended at the freeze so recurrence is never silently enabled; the Stage 0 fixture asserts no recurrence rule without confirmation; absence expectations are always graded. | H §1; E G4, D-R3; G §4 | **Changed.** Test-matrix rows depending on PLAN-047 are marked *(conditional on PLAN-047)*. The app has no task recurrence; the absence fixture is covered now by `nothingButAChosenReminderItemEverTouchesReminders` (no reminder policy is written unless a reminder item is explicitly chosen) and by the existing "no silent reminders" tests. |
+| 4 | **Research effort levels.** Document F runs Stage 1/2 at the "Standard" level with "low" and "high" variants; R31 names presets *provisionally* Quick/Standard/Thorough/Deep; OQ-C1 (names and count) is open and assigned to UX; handoff OD-3 leaves it open too. The app has Quick/Thorough/Deep/Custom. | F §2.3, §7; E R31, OQ-C1 | **Owner decision needed before M4** (non-blocking now): adopt the provisional four names, keep three plus Custom and map "Standard" to one of them for Document F runs, or decide otherwise. This plan does not map silently. |
+| 5 | **Milestone order vs. Document G §3.** G §2 says Invariants hold "from the first build" (supports M1 → M2 first). G §3's *suggested* Capability order puts research objective, evidence and continuation (items 1–3, "where the known failures live", first Stage 1 target) before planning output and timing (items 5–6). This plan's M3 (Living Draft) precedes M4 (Investigation thread). | G §1–3, §7 | **Owner decision surfaced.** Recommendation: swap M3 and M4 so the Investigation thread (research objective, composition, continuation, configuration, standalone) follows M2 directly, then the Living Draft, then integration. Draft-origin research (INT-013, I-3) would land with the Living Draft either way. The dependency graph allows both orders; the frozen roadmap's priority favours research first. |
+| 6 | **AI-proposed priority is deferred/out of scope** (D38; G §6), not merely a handoff rule. | E D38; G §6 | Confirms the plan: `ItemKind` has no priority kind; the M2 review never proposes priority; the request sends priority read-only. No change. |
+| 7 | **Binary gates and serious failures** (F §2.1, §6; E3, E5) define release acceptance: Authorization, Preservation, Task safety, Leakage; any §6 failure fails the run; applies to the current release candidate (G5). | F §2.1, §2.2, §6; E E3, E5, G5 | **Changed.** §9.2 maps M1 work to the gates it serves. Two M1 fixes came out of this pass: the double-apply race (Task safety / Preservation) and silent draft truncation (Preservation, "loss of user input"). The Leakage gate adds an RES-087 scan of user-facing text to M4 (the current M3A.2 technical log shows internal ids such as `r-a1`; it is a diagnostics surface, but the scan must confirm nothing reaches result text). |
+| 8 | **OQ-B1 (draft expiry, limits, surfacing) is an open UX question**, explicitly non-blocking; the handoff did not close it. | E "Unresolved questions"; H §5 | **Changed wording.** The M3 assumption "drafts never auto-expire; the user deletes them; the policy is shown" is recorded as a *proposed* UX decision to be accepted by the owner through change control, not as a settled rule. |
+| 9 | **Document G §7 sequence** placed a read-only gap analysis (step 2) before UX design and implementation. | E G2; G §7; H §7 | No change. The owner's kickoff brief explicitly authorised implementation after the UX handoff; Phase 1 of this document is the step-2 assessment, recorded against baseline v1.0. |
+| 10 | **Stage 1–3 are paid live benchmarks** (about twenty investigations for Stage 1; 60–80 runs for Stage 2). | F §2.3 | No change to code. Not run by the agent; they need the owner's explicit authorisation and key. |
+| 11 | **Configuration tests** (F §7) require the ledger to record reasoning effort and requested → actual model per stage, and "unavailable model → no ledger entry for a substituted run". | F §7; E D40/D44, R28/R29/R43 | Confirms M5 scope; the ledger lacks an `effort` field today (noted in §2.6). |
+
+Everything else in E/F/G/H agrees with the plan as written: Invariant vs. Capability tagging (E7), the gap taxonomy kept internal, the four timing roles (D14, D43), conflict-based reconciliation (D18), completed-work protection (D19), durable draft with explicit save (D16, D26), thread-scoped memory (R13), explicit association (R24, I5), selected-findings disclosure (I7), discard disposition (I6), and the three independent ceilings (R41).
+
+## 9.2 Document F Stage 0 — mapping summary
+
+| Stage 0 bullet (F §2.3) | Covered now | Remaining |
+|---|---|---|
+| Draft persistence and recovery; no task / notification / recurrence without confirmation (PLAN-010/013/014/045) | Storage and absence: `DraftRepositoryTest` (5), `nothingButAChosenReminderItemEverTouchesReminders` | User-facing recovery surface and kill-mid-planning test: M3 |
+| Consent/authorization events vs. provider calls (PLAN-012/054/100; RES-021/023/025; INT-014) | Existing M2/M3A.2 gating and ledger tests (partial) | Authorization record per turn and RES-025 boundary: M4/M5 |
+| Outbound payload inspection (PLAN-080–081; RES-093/160; INT-012/020–022/064) | `ContextAllowListTest` (7) on the builders | Wiring the turn builder and the selected-findings path: M4/M5 |
+| Ledger completeness incl. effort and partial/unknown markers (PLAN-102; RES-123/143/154) | Existing `CostCalculatorTest`, `PlanningUsageLedgerTest`, ledger tests | `effort` field, per-turn requested → actual model: M5 |
+| Ceiling precedence (RES-030/141) | Existing `DeepResearchServiceTest` spend-limit trimming (partial) | Named stopping reason and combined budget: M4/M5 |
+| Status derivation, same evidence → same status, caveat guard, negative claims, contradictions, independence (RES-060/062/063/064/070/045) | Existing `CompletionPolicy`/`SessionAssembler`/`ContractParser` tests (partial, M3A.2 semantics) | Re-derived on the claim model after the template layer is retired: M4 |
+| Citation-to-claim linkage (RES-044/085/101) | Existing provenance-pointer tests (partial) | M4 |
+| Reconciliation logic (PLAN-073/074) | `ProposalReconcilerTest` (9), `ProposalApplierTest` (16), `ProposalApplierConcurrencyTest` (1) | UI choice surface: M2 |
+| Provenance and as-of on incorporated findings; report immutability (INT-030/033; RES-092; INT-054) | `ProposalApplierTest` provenance, history and snapshot tests; existing continuation-never-overwrites tests | Research `src` population: M4 |
+| Leakage scan of result text (RES-087) | — | M4 |
+| Timing-field mapping (PLAN-040–041) | Fields and apply rules: `ProposalApplierTest`, `ProposalReconcilerTest` | Language → role mapping in the validator: M3 |
+
+---
+
+# M1 reconciliation pass — report (2026-10-23)
+
+## Concurrent double-apply: real, reproduced, fixed
+
+`ProposalApplier.apply` read the proposal set **before** taking the per-task lock and the Room transaction; only the task was re-read inside. Two Apply requests issued while the set was still OPEN both proceeded from the stale PENDING snapshot. `ProposalApplierConcurrencyTest` reproduces this deterministically: a gating coordinator holds both callers until each has read the set, then serialises them exactly as the production `ReminderEngine` lock does. On the unfixed code the APPEND_NOTE item was applied **twice** (two note lines, two provenance records, two history events; the test failed with "exactly one apply succeeds expected:<1> but was:<2>"). With an ADD_STEP in the same request the second apply happened to be stopped only by the duplicate-wording conflict, which is why the defect was not visible in the earlier tests.
+
+**Fix (minimal):** the set is re-read inside the locked transaction; status must still be OPEN and each chosen item still PENDING; otherwise the request is refused with "These changes were already applied" and nothing is written. A mixed request applies only what is still pending. `undo` re-reads the set under the lock the same way (its `rev` check already made a double undo safe). Partially applied research sets keep their behaviour: unchosen items stay pending, `base` is rebased, `baseOriginal` is untouched (`partialApplyThenTheRestKeepsTheOriginalSnapshotAndRecordsTwoApplies`).
+
+## Draft text: verbatim contract at the limit
+
+`DraftRepository.create`/`update` silently truncated text to 20,000 characters. Now: text is stored exactly as given (whitespace, newlines, non-BMP characters included); input longer than `MAX_TEXT` (20,000 UTF-16 units, as `String.length` counts) is rejected with a `ValidationException` naming the limit and the actual length, and nothing is written; an over-long edit leaves the draft exactly as it was. Boundary tests: exactly 20,000 accepted verbatim; 20,001 rejected on create and on update. The M3 capture surface must show the same limit before the user reaches it.
+
+## Other invariant findings
+
+- **Deadline removed since the snapshot:** a proposed deadline against a task whose user-stated deadline was removed after the snapshot is now a CONFLICT ("You removed your deadline since this was proposed") rather than silently compatible. A task that still has a deadline stays BLOCKED (OD-6).
+- Reviewed and unchanged (tests already cover them): per-item reconciliation, completed-step protection, explicit per-item choice (no bulk concept at the applier), idempotency (now also under concurrency), undo refused after an unrelated revision, provenance kept through a user rename, history snapshot preserved across a second apply, allow-list fingerprints.
+
+## Tests added or modified in this pass
+
+`ProposalApplierConcurrencyTest` (new, 1), `ProposalApplierTest` (+3: partial-then-rest with snapshot preservation and undo of the last apply only; re-apply of a settled item refused; no reminder written without a chosen reminder item), `DraftRepositoryTest` (+2: verbatim storage; exact-limit / over-limit on create and update), `ProposalReconcilerTest` (deadline-removed conflict).
+
+## Gates actually run
+
+_Full gate run on this tree in progress at commit time; results recorded in the next commit._
 

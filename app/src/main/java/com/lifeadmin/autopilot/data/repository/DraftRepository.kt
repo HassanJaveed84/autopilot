@@ -26,19 +26,29 @@ open class DraftRepository(private val db: AppDatabase, private val clock: AppCl
     suspend fun get(id: String): Draft? = dao.get(id)?.let(::decode)
     suspend fun getAll(): List<Draft> = dao.getAll().mapNotNull(::decode)
 
-    /** Creates a draft from the first input. The text is stored verbatim. */
+    /**
+     * Creates a draft from the first input. The text is stored exactly as given — no trimming, no
+     * truncation (PLAN-010). Input longer than [MAX_TEXT] is rejected with a [ValidationException]
+     * and nothing is written; the capture surface (M3) shows the same limit before the user hits it.
+     */
     suspend fun create(text: String, id: String = ids.newId()): Draft {
+        validateText(text)
         val now = clock.now()
-        val draft = Draft(id, now, now, DraftStatus.DRAFT, null, DraftContent(text = text.take(MAX_TEXT)))
+        val draft = Draft(id, now, now, DraftStatus.DRAFT, null, DraftContent(text = text))
         dao.upsert(entity(draft))
         return draft
     }
 
-    /** Replaces the content; the raw text column follows the content so lists never show stale input. */
+    /**
+     * Replaces the content; the raw text column follows the content so lists never show stale input.
+     * Over-long text is rejected and the draft is left exactly as it was.
+     */
     suspend fun update(id: String, transform: (DraftContent) -> DraftContent): Draft? {
         val current = get(id) ?: return null
         if (current.status != DraftStatus.DRAFT) return current
-        val next = current.copy(updatedAt = clock.now(), content = transform(current.content).let { it.copy(text = it.text.take(MAX_TEXT)) })
+        val content = transform(current.content)
+        validateText(content.text)
+        val next = current.copy(updatedAt = clock.now(), content = content)
         dao.upsert(entity(next))
         return next
     }
@@ -78,7 +88,12 @@ open class DraftRepository(private val db: AppDatabase, private val clock: AppCl
     fun entity(d: Draft) = DraftEntity(d.id, d.createdAt, d.updatedAt, d.status.name, d.content.text, d.savedTaskId, DraftJson.encode(d.content))
 
     companion object {
+        /** Characters (UTF-16 units, as `String.length` counts them). Generous: the capture field and notes allow less. */
         const val MAX_TEXT = 20_000
         const val MAX_HISTORY = 50
+
+        fun validateText(text: String) {
+            if (text.length > MAX_TEXT) throw ValidationException("Text is too long (max $MAX_TEXT characters; this is ${text.length})")
+        }
     }
 }
