@@ -101,7 +101,7 @@ sealed interface StartResult2 {
  * M3A.2 orchestrator: gates the request, runs the planned stages one HTTP call at a time with the
  * budget checked before each, merges structured output while preserving provider citations, records
  * every call in the usage ledger, and saves the session. It never writes tasks; proposals are applied
- * later through [Research2Actions] after review.
+ * later through the canonical Proposal Review (ProposalApplier) after the user chooses them.
  */
 class DeepResearchService(
     private val settings: SettingsRepository,

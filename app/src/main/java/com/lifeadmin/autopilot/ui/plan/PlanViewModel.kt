@@ -47,6 +47,8 @@ data class PlanUiState(
     /** FOLLOW_THROUGH: the task as it is now, for the diff. */
     val current: TaskDetails? = null,
     val interrupted: Boolean = false,
+    /** FOLLOW_THROUGH: the saved proposal set handed to the canonical Proposal Review (M2). */
+    val reviewSetId: String? = null,
 )
 
 /**
@@ -71,6 +73,9 @@ class PlanViewModel(
      * process death — those restore the text and wait for a tap).
      */
     autoRequest: Boolean = false,
+    /** Needed for planning on a saved task: the proposals become a [com.lifeadmin.autopilot.domain.proposal.ProposalSet]. */
+    private val proposalSets: com.lifeadmin.autopilot.data.repository.ProposalSetRepository? = null,
+    private val applier: com.lifeadmin.autopilot.data.repository.ProposalApplier? = null,
 ) : ViewModel() {
     private val mode = if (targetTaskId != null) PlanningMode.FOLLOW_THROUGH else PlanningMode.CAPTURE
 
@@ -143,7 +148,7 @@ class PlanViewModel(
             }
             _stage.value = 2
             when (outcome) {
-                is ProposalOutcome.Ready -> {
+                is ProposalOutcome.Ready -> if (targetTaskId != null) handOff(outcome.draft, outcome.usage) else {
                     handle[KEY_DRAFT] = outcome.draft.encode()
                     setPhase(PlanPhase.REVIEW)
                     _state.update { it.copy(draft = outcome.draft, usage = outcome.usage) }
@@ -155,6 +160,32 @@ class PlanViewModel(
                 }
             }
         }
+    }
+
+    /**
+     * Planning on a saved task never shows its own review: the validated draft becomes a proposal
+     * set, saved (nothing applied), and the screen hands off to the one Proposal Review (INT-042).
+     */
+    private suspend fun handOff(draft: ProposalDraft, usage: PlanningUsage?) {
+        val sets = proposalSets
+        val app = applier
+        val taskId = targetTaskId
+        if (sets == null || app == null || taskId == null) {
+            setPhase(PlanPhase.INPUT)
+            _state.update { it.copy(error = PlanningError.Unexpected("review unavailable")) }
+            return
+        }
+        val details = repository.observeDetails(taskId).first()
+        val snapshot = app.snapshot(taskId)
+        if (details == null || snapshot == null) {
+            setPhase(PlanPhase.INPUT)
+            _state.update { it.copy(error = PlanningError.Unexpected("task missing")) }
+            return
+        }
+        val set = com.lifeadmin.autopilot.ai.PlanningProposalBridge.build(draft, details, snapshot, clock.now().toEpochMilli())
+        sets.save(set)
+        setPhase(PlanPhase.INPUT)
+        _state.update { it.copy(usage = usage, reviewSetId = set.id) }
     }
 
     /** Cancels the in-flight request; the text is kept and nothing is saved. */
@@ -194,12 +225,8 @@ class PlanViewModel(
             val now = clock.now()
             val zone = zoneProvider.current()
             runCatching {
-                if (draft.mode == PlanningMode.FOLLOW_THROUGH) {
-                    repository.applyTaskEdit(ProposalMapper.toEdit(draft, now, zone))
-                    draft.targetTaskId!!
-                } else {
-                    repository.createPlannedTask(ProposalMapper.toCreate(draft, now, zone)).first
-                }
+                if (draft.mode == PlanningMode.FOLLOW_THROUGH) error("Changes to a saved task are applied in Proposal Review, never here")
+                repository.createPlannedTask(ProposalMapper.toCreate(draft, now, zone)).first
             }.onSuccess { id ->
                 handle[KEY_SAVED] = id
                 handle.remove<String>(KEY_DRAFT)

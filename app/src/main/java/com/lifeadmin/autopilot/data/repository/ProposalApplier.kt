@@ -286,6 +286,24 @@ class ProposalApplier(
         return ApplyResult.Applied(before.rev, after.rev, applied, declined, finalSet)
     }
 
+    /**
+     * Declines pending items without touching the task ("Reject" / "Keep yours" outside an apply).
+     * Under the per-task lock so it cannot interleave with an apply of the same set.
+     */
+    suspend fun decline(setId: String, itemIds: Collection<String>, reason: String = "Rejected by you"): ProposalSet? {
+        val peek = sets.get(setId) ?: return null
+        return tasks.coordinator.mutateTask(peek.targetId) {
+            db.withTransaction {
+                val set = sets.get(setId) ?: return@withTransaction null
+                val ids = itemIds.toSet()
+                val updated = set.copy(items = set.items.map { if (it.id in ids && it.status == ItemStatus.PENDING) it.copy(status = ItemStatus.DECLINED, statusReason = reason) else it })
+                val finalSet = updated.copy(status = if (updated.status == SetStatus.OPEN && updated.pending.isEmpty()) SetStatus.CLOSED else updated.status)
+                sets.save(finalSet)
+                finalSet
+            }
+        }
+    }
+
     /** Planning sets close on apply; research sets stay open while anything is still pending (OD-1). */
     private fun closeIfDone(set: ProposalSet): SetStatus = when {
         set.source == ProposalSource.PLANNING -> SetStatus.CLOSED

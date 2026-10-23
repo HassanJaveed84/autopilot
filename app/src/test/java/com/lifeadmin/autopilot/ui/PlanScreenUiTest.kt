@@ -1,6 +1,7 @@
 package com.lifeadmin.autopilot.ui
 
 import android.content.Context
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasTestTag
@@ -59,6 +60,7 @@ class PlanScreenUiTest {
     private var openedSettings = false
     private lateinit var container: AppContainer
     private lateinit var vm: PlanViewModel
+    private var reviewOpened: String? = null
 
     private val text = "Need to book the train ride for my daughter, find parking and tickets, remind me at 9 and 6 every day until done."
 
@@ -96,26 +98,30 @@ class PlanScreenUiTest {
         vm = PlanViewModel(
             SavedStateHandle(), container.aiPlanning, container.taskRepository, container.taskActions,
             container.settingsRepository, container.clock, container.zoneProvider, taskId, initial,
+            proposalSets = container.proposalSets, applier = container.proposalApplier,
         )
         compose.setContent {
             LifeAdminTheme(dynamicColor = false) {
-                PlanScreen(vm, zone = CHICAGO, now = container.clock::now, onBack = {}, onOpenTask = { opened = it }, onOpenAiSettings = { openedSettings = true })
+                PlanScreen(vm, zone = CHICAGO, now = container.clock::now, onBack = {}, onOpenTask = { opened = it }, onOpenAiSettings = { openedSettings = true }, onOpenReview = { reviewOpened = it })
             }
         }
     }
 
-    /** "Move this forward" on an existing task: the Apply count follows the selected cards. */
-    @Test fun followThroughCountFollowsTheSelectedCards() {
+    /** "Move this forward" on a saved task hands its proposals to the one Proposal Review; nothing is written and nothing is pre-selected. */
+    @Test fun followThroughHandsOffToTheProposalReviewWithoutWritingOrPreselecting() {
         prepare(aiOn = true)
         val taskId = runBlocking { container.taskRepository.createTask(com.lifeadmin.autopilot.data.repository.NewTask("Cancel the gym membership", status = com.lifeadmin.autopilot.domain.model.TaskStatus.ACTIONABLE)) }
         provider.respond(rawPlan("", steps = listOf("Find the cancellation clause", "Email the gym", "Cancel the direct debit"), nextStep = "Find the cancellation clause"))
         show("What first?", taskId)
         waitFor("plan_request")
         compose.onNodeWithTag("plan_request").performClick()
-        waitFor("review_step_check_1")
-        compose.onNodeWithText("Apply 3 changes").assertExists()
-        compose.onNodeWithTag("review_step_check_1").performClick()
-        compose.waitUntil(5_000) { compose.onAllNodesWithText("Apply 2 changes").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) { shadowOf(android.os.Looper.getMainLooper()).idle(); reviewOpened != null }
+        val set = runBlocking { container.proposalSets.get(reviewOpened!!) }!!
+        assertEquals(taskId, set.targetId)
+        assertEquals(3, set.items.size)
+        assertTrue(set.items.all { it.status == com.lifeadmin.autopilot.domain.proposal.ItemStatus.PENDING && it.kind == com.lifeadmin.autopilot.domain.proposal.ItemKind.ADD_STEP })
+        assertEquals("the task is untouched until the user applies in review", 0, runBlocking { container.taskRepository.getSteps(taskId) }.size)
+        compose.onAllNodes(hasTestTag("plan_approve")).assertCountEquals(0)
     }
 
     @After fun tearDown() = compose.waitForIdle()

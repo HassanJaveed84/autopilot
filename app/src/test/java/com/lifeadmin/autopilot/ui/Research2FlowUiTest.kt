@@ -189,51 +189,62 @@ class Research2FlowUiTest {
         compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Close"))[0].performClick()
         compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("source_sheet")).fetchSemanticsNodes().isEmpty() }
 
-        // Proposals: one per requested item (+ the user's own), sourced steps ticked, research-later unticked, duplicate flagged with Add anyway.
+        // Proposals go to the one Proposal Review: nothing selected; Select recommended picks the two sourced steps;
+        // the duplicate is a conflict the user decides; research-later items are never recommended.
         compose.onNodeWithTag("brief_review").assertIsEnabled().performClick()
-        waitFor("apply_list")
-        waitFor("apply_confirm")
-        // Rows below the fold aren't composed yet: take the proposal list from the saved session and visit each row.
+        waitFor("review_list")
+        waitFor("review_apply")
         val saved = runBlocking { container.sessionRepository.getForTask(taskId) }.single()
         val proposals = saved.content.proposals
         assertEquals(5, proposals.size)
         assertEquals(listOf("r-i0", "r-i1", "r-i2", "r-i3", "r-u0"), proposals.map { it.requirementId })
-        fun stateOf(id: String): String? {
-            listScrollTo("apply_list", "proposal_check_$id")
-            return compose.onNodeWithTag("proposal_check_$id", useUnmergedTree = true).fetchSemanticsNode().config.getOrNull(SemanticsProperties.StateDescription)
-        }
-        assertEquals(listOf("Selected", "Selected", "Will be skipped", "Not selected", "Not selected"), proposals.map { stateOf(it.id) })
+        val set = runBlocking { container.proposalSets.getForTarget(taskId) }.single()
+        assertEquals("one set per session run, every item pending", 5, set.pending.size)
+        compose.onNodeWithTag("review_selected_count").assertTextContainsSafely("0 of 5 selected")
+        compose.onNode(hasText("Nothing selected")).assertIsDisplayed()
         val stepsBefore = runBlocking { container.taskRepository.getSteps(taskId) }.size
+        compose.onNodeWithTag("review_select_recommended").performClick()
         compose.onNode(hasText("Apply 2 changes")).assertIsDisplayed()
-        // Edit a title and add anyway on the duplicate.
-        val firstId = proposals[0].id
-        listScrollTo("apply_list", "proposal_title_$firstId")
-        compose.onNodeWithTag("proposal_title_$firstId").performTextClearance()
-        compose.onNodeWithTag("proposal_title_$firstId").performTextInput("Order the Thorne multivitamin")
-        compose.onNode(hasText("· EDITED BY YOU")).assertIsDisplayed()
+        fun stateOf(id: String): String? {
+            listScrollTo("review_list", "review_check_$id")
+            return compose.onNodeWithTag("review_check_$id", useUnmergedTree = true).fetchSemanticsNode().config.getOrNull(SemanticsProperties.StateDescription)
+        }
+        assertEquals(listOf("Selected", "Selected", "Not selected", "Not selected", "Not selected"), proposals.map { stateOf(it.id) })
+        // The duplicate is flagged, not silently skipped; applying anyway is the user's explicit choice.
         val dupId = proposals[2].id
-        listScrollTo("apply_list", "proposal_anyway_$dupId")
-        compose.onNodeWithTag("proposal_anyway_$dupId").performClick()
+        listScrollTo("review_list", "review_check_note_$dupId")
+        compose.onNodeWithTag("review_check_note_$dupId", useUnmergedTree = true).assertTextContainsSafely("already on the task")
+        compose.onNodeWithTag("review_apply_anyway_$dupId").performClick()
         compose.onNode(hasText("Apply 3 changes")).assertIsDisplayed()
-        compose.onNodeWithTag("apply_confirm").performClick()
-        waitFor("apply_result")
-        compose.onNode(hasText("Added 3 changes")).assertIsDisplayed()
+        // Edit a title before accepting: editing never changes the selection.
+        val firstId = proposals[0].id
+        listScrollTo("review_list", "review_edit_toggle_$firstId")
+        compose.onNodeWithTag("review_edit_toggle_$firstId").performClick()
+        compose.onNodeWithTag("review_edit_$firstId").performTextClearance()
+        compose.onNodeWithTag("review_edit_$firstId").performTextInput("Order the Thorne multivitamin")
+        compose.onNode(hasText("Apply 3 changes")).assertIsDisplayed()
+        compose.onNodeWithTag("review_apply").performClick()
+        waitFor("review_result")
+        compose.onNodeWithTag("review_result_title").assertTextContainsSafely("Applied 3 changes")
         val steps = runBlocking { container.taskRepository.getSteps(taskId) }
         assertEquals(stepsBefore + 3, steps.size)
         assertTrue(steps.any { it.title == "Order the Thorne multivitamin" })
+        assertTrue("research steps carry their origin", steps.filter { it.title == "Order the Thorne multivitamin" }.all { it.origin == com.lifeadmin.autopilot.domain.model.ContentOrigin.RESEARCH && it.provenanceId != null })
         val task = runBlocking { container.taskRepository.getTask(taskId) }!!
-        assertTrue(task.notes!!.contains("From web research:") && task.notes!!.contains("checked 20 Oct 2026"))
+        assertEquals("evidence lives in provenance, not in the notes", "Monthly order", task.notes)
+        assertEquals(3, runBlocking { container.proposalSets.provenanceForTask(taskId) }.size)
         assertTrue("no reminders were created", runBlocking { container.taskRepository.getPolicy(taskId) }?.enabled != true)
         clock.instant = clock.instant.plusSeconds(20)
-        compose.onNodeWithTag("apply_undo").assertIsEnabled().performClick()
-        compose.waitUntil(10_000) { compose.onAllNodes(hasText("Changes removed")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("review_undo").assertIsEnabled().performClick()
+        compose.waitUntil(10_000) { compose.onAllNodes(hasText("Changes removed again")).fetchSemanticsNodes().isNotEmpty() }
         assertEquals(stepsBefore, runBlocking { container.taskRepository.getSteps(taskId) }.size)
-        assertEquals("Monthly order", runBlocking { container.taskRepository.getTask(taskId) }!!.notes)
-        compose.onNodeWithTag("apply_done").performClick()
+        assertEquals(0, runBlocking { container.proposalSets.provenanceForTask(taskId) }.size)
+        compose.onNodeWithTag("review_done").performClick()
         waitFor("detail_list")
+        // The saved task stays separate from pending changes: the banner says what is still waiting.
+        detailScrollTo("detail_review_banner_${set.id}")
+        compose.onNodeWithTag("detail_review_banner_${set.id}").assertIsDisplayed()
         detailScrollTo("detail_research_card")
-        compose.onNodeWithTag("detail_research_latest").assertIsDisplayed()
-
         // Usage: both calls recorded, complete, with an estimate; dashboard reachable from AI settings.
         val recs = runBlocking { container.usageLedger.getAll() }
         assertEquals(2, recs.size)

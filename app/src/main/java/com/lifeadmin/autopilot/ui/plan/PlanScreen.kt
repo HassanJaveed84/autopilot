@@ -85,6 +85,8 @@ fun PlanScreen(
     onOpenTask: (String) -> Unit,
     onOpenAiSettings: () -> Unit,
     onReminderEnabled: () -> Unit = {},
+    /** FOLLOW_THROUGH: the proposals were saved as a set; open the canonical Proposal Review for it. */
+    onOpenReview: (setId: String) -> Unit = {},
 ) {
     val s by viewModel.state.collectAsStateWithLifecycle()
     val stage by viewModel.stage.collectAsStateWithLifecycle()
@@ -100,6 +102,7 @@ fun PlanScreen(
             onOpenTask(id)
         }
     }
+    LaunchedEffect(s.reviewSetId) { s.reviewSetId?.let(onOpenReview) }
 
     Scaffold(
         containerColor = c.paper,

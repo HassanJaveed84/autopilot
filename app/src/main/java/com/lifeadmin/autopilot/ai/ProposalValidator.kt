@@ -394,6 +394,7 @@ object ProposalValidator {
     private fun oneLine(s: String): String = s.replace(Regex("""\s+"""), " ").trim()
 
     private fun normalizeKey(s: String): String = s.lowercase().replace(Regex("""[^\p{L}\p{N}]+"""), " ").trim()
+    fun normalizeKeyPublic(s: String): String = normalizeKey(s)
 
     /** Case- and whitespace-insensitive containment, so quoted phrases ground in the source text. */
     fun containsLoosely(haystack: String, needle: String): Boolean {

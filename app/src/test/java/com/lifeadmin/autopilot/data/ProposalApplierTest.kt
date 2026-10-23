@@ -373,4 +373,22 @@ class ProposalApplierTest {
         assertEquals(ItemStatus.PENDING, sets.get(set.id)!!.item("r")!!.status)
         assertTrue(db.eventDao().getForTask(id).none { it.eventType == EventType.POLICY_EDITED })
     }
+
+    @Test fun declineMarksItemsWithoutTouchingTheTaskAndClosesWhenNothingIsLeft() = runTest {
+        val id = seedTask()
+        val before = tasks.getTask(id)!!
+        val set = makeSet(id, ProposalSource.RESEARCH,
+            ProposalItem("a", ItemKind.ADD_STEP, value = ItemValue.Step("Book appointment")),
+            ProposalItem("b", ItemKind.APPEND_NOTE, value = ItemValue.Text("Processing takes 3 weeks")))
+        val afterOne = applier.decline(set.id, listOf("a"))!!
+        assertEquals(ItemStatus.DECLINED, afterOne.item("a")!!.status)
+        assertEquals("Rejected by you", afterOne.item("a")!!.statusReason)
+        assertEquals("still one pending", SetStatus.OPEN, afterOne.status)
+        assertEquals("the task is untouched", before, tasks.getTask(id))
+        val afterAll = applier.decline(set.id, listOf("b"), "Kept yours")!!
+        assertEquals(SetStatus.CLOSED, afterAll.status)
+        assertEquals("Kept yours", afterAll.item("b")!!.statusReason)
+        assertEquals(before, tasks.getTask(id))
+        assertEquals(ApplyResult.Rejected::class, applier.apply(set.id, listOf(ApplyChoice("a")))::class)
+    }
 }

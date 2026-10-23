@@ -222,3 +222,25 @@ Legend: ✅ covered by deterministic tests now · 🟡 partially covered by exis
 
 **Gates (Document F §2.1) served by M1 code:** Task safety and Preservation — `ProposalApplier` (one explicit choice per item, re-reconciled and re-read inside the lock, undo only while `rev` is unchanged), `DraftRepository` (verbatim, no truncation). Leakage — payload builders. Authorization — unchanged in M1 (M4/M5). Stage 1–3 live benchmarks: not run; require the owner's authorisation and key.
 
+## Production M2 — the one Proposal Review (2026-10-23)
+
+| Requirement | Tests | Status |
+|---|---|---|
+| OD-5 / PLAN-071: nothing selected on open; "Select recommended" picks only recommended, non-material, non-conflicting items; individual select/deselect; editing never selects | `ProposalReviewViewModelTest.nothingIsSelectedOnOpen…`, `ProposalReviewUiTest.nothingSelectedSelectRecommended…`, `Research2FlowUiTest.supplementsBenchmark…` | ✅ |
+| PLAN-072: material changes (deadline, target, reminder, status, user wording) in their own section with a visible per-item Accept; never bulk-selected | `ProposalReviewUiTest.nothingSelected…` (reminder stays unaccepted and unwritten; target accepted explicitly), `ProposalReviewLargeTextUiTest` | ✅ |
+| Current vs proposed shown per item; explanations collapsed until asked | `ProposalReviewUiTest` (`review_current_e`, `review_why_a`), `ReviewPresenter` via view-model tests | ✅ |
+| PLAN-073 in the UI: a step ticked mid-review is flagged prominently without rewriting the proposal; the rest still applies; Keep yours declines without writing; an undecided conflict disables Apply | `ProposalReviewUiTest.aStepTickedMidReview…`, `ProposalReviewViewModelTest.applyWritesOnlyChosenItems…` | ✅ |
+| OD-6 / PLAN-041 in the UI: a proposed deadline against a user-stated deadline is blocked and labelled; the target applies apart from the deadline; the deadline is unchanged after apply | `ProposalReviewUiTest.nothingSelected…` | ✅ |
+| INT-042 / INT-050: research proposals go through the one review; the task is unchanged until Apply; applied steps carry `RESEARCH` origin and provenance; evidence lives in provenance, not note lines; undo restores | `Research2FlowUiTest.supplementsBenchmark_preflightToProposalsApplyUndoAndUsage` | ✅ |
+| Planning on a saved task hands off to the review; nothing written, nothing pre-selected, no `plan_approve` | `PlanScreenUiTest.followThroughHandsOffToTheProposalReview…`, `AiPlanApprovalTest.followThroughSendsOnlyTheSelectedTask…ThroughTheReview` | ✅ |
+| Unrelated edits meanwhile never invalidate a compatible planning change; a duplicate wording is a conflict, nothing written | `AiPlanApprovalTest.unrelatedEditsMeanwhileNeverInvalidate…` | ✅ |
+| Bridge mapping: planning (steps/next recommended, material flags, target vs deadline, unsupported schedule alternative, no priority, advice/questions carried) | `PlanningProposalBridgeTest` (4) | ✅ |
+| Bridge mapping: research (kinds → items, origins, recommendation only for sourced steps, `src` from refs/sources with status and as-of, legacy applied kept, idempotent set id) | `ResearchProposalBridgeTest` (3) | ✅ |
+| Reject / Reject all decline without touching the task and close the set when nothing is pending | `ProposalApplierTest.declineMarksItems…`, `ProposalReviewUiTest.rejectAllClosesTheSet…` | ✅ |
+| INT-031/032: provenance marker on the task step opens the record (findings, status, as-of, evidence keys, model) | `ProposalReviewUiTest.nothingSelected…` (`step_prov_*`, `provenance_sheet`) | ✅ |
+| Task-detail banner per open set with the pending count; the saved task stays separate from pending changes | `ProposalReviewUiTest`, `Research2FlowUiTest` | ✅ |
+| Process recovery: selection, edits and conflict decisions survive view-model recreation (SavedStateHandle) | `ProposalReviewViewModelTest.selectionEditsAndDecisionsSurviveRecreation` | ✅ |
+| Concurrent apply / idempotency (unchanged from M1, now the only path for both features) | `ProposalApplierConcurrencyTest`, `ProposalApplierTest.reapplyingASettledItemIsRefused…` | ✅ |
+| Narrow width (320 dp) at 200 % text: review usable end to end; 48 dp targets and labelled controls | `ProposalReviewLargeTextUiTest`, `ProposalReviewUiTest.touchTargetsAndLabelsAreAccessible` | ✅ |
+| Screenshot tour through the review (emulator, CI screenshot workflow) | `ScreenshotTour` s16/s16b/s17/s28, `ScreenshotTourAiReview` j2–j4 | 🟦 runs on the CI emulator job; not run locally |
+

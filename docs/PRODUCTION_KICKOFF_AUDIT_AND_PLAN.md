@@ -368,3 +368,44 @@ Run locally in this container on the reconciled tree (commit `46d54b4`, 2026-10-
 | Android CI (PR #6) | runs 118 and 119 green on the M1 heads (`638a187`, `0756670`); runs 120/121 on `46d54b4` recorded in the PR when complete |
 | Emulator instrumentation, physical device, live provider | not run by the agent |
 
+---
+
+# Milestone 2 report — the one Proposal Review (branch `prod-ux-m2-proposal-review`, stacked on M1)
+
+Baseline: v1.0 + addenda A1–A3 (`docs/DECISION_LOG_ADDENDA.md`). Acceptance authorities: Document F (Task safety and Preservation gates, §5.1 P10, §5.3 I-1 handoff rules) and `docs/TEST_MATRIX.md` ("Production M2").
+
+## What changed
+
+| Area | Files | Notes |
+|---|---|---|
+| Review UI | `ui/review/ProposalReviewScreen.kt`, `ProposalReviewViewModel.kt`, `ReviewPresenter.kt`, `ProvenanceSheet.kt`, `Routes.REVIEW` | Nothing selected on open; Select recommended; plain vs material sections; current → proposed; inline edit / date change; conflicts with Apply anyway / Keep yours; stale banner; Apply → summary with Undo; Reject / Reject all; explanations collapsed; selection, edits and decisions in `SavedStateHandle`. |
+| Bridges | `ai/PlanningProposalBridge.kt`, `ai/research2/ResearchProposalBridge.kt` (+ `ResearchProposalSets`) | Pure mapping into `ProposalSet`; nothing written to tasks. |
+| Entry points | `ui/detail/TaskDetailScreen.kt` / `TaskDetailViewModel.kt` (banner per open set, provenance marker + sheet on steps), `ui/research2/ResearchSessionScreen.kt` / `Research2ViewModels.kt` (hand-off), `ui/plan/PlanViewModel.kt` / `PlanScreen.kt` (follow-through hand-off), `LifeAdminRoot.kt`, `AppContainer.kt` | |
+| Domain | `ProposalSet.title/advice/assumptions/questions`, `ProposalApplier.decline` | Backward-compatible fields with defaults. |
+| Retired | `ui/research2/ProposalsScreen.kt` (+ `ProposalsViewModel`), `ai/research2/Research2Actions.kt`, `ProposalMapper.toEdit`, route `RESEARCH2_PROPOSALS`, `Research2ActionsTest` | Replaced only after the new tests covered the same behaviour. Stored M3A.2 reports and their `applied` history remain readable: legacy applied moves show as "Applied earlier". |
+
+## Old proposal paths: migrated or retired
+
+| Path | Before | Now |
+|---|---|---|
+| M3A.2 research proposals | `ProposalsScreen` → `Research2Actions.apply` → `TaskRepository.applyTaskEdit` (note lines with evidence) | "Review N changes" → `ResearchProposalSets.ensure` → canonical review → `ProposalApplier` (provenance records instead of note lines) |
+| Planning on a saved task | `PlanReview` on the plan screen → `ProposalMapper.toEdit` → `applyTaskEdit` | `PlanningProposalBridge` → set saved → canonical review → `ProposalApplier`; the plan screen leaves the stack |
+| M3A brief moves (legacy) | `ResearchApply` → `ResearchActions` → `applyTaskEdit` | **Unchanged** — the last parallel write path; retires with the M3A entry points in the Research Online milestone (M4) |
+| New task from a draft | `ProposalMapper.toCreate` → `createPlannedTask` | Unchanged (a save, not a proposal apply; Living Draft milestone) |
+
+## Acceptance mapping
+
+See `docs/TEST_MATRIX.md` → "Production M2" (17 rows) and the M1 rows it builds on. Document F: Task-safety gate (no change without an explicit accept; material changes individually accepted; conflicts flagged, never overwritten) and Preservation gate (prior reports, ledger and task history intact; undo restores) are exercised by `ProposalReviewUiTest`, `ProposalReviewViewModelTest`, `Research2FlowUiTest` and the M1 applier tests. P10 turn 2 ("user ticks step 3 during review → remaining proposal applies; touched item flagged") is `ProposalReviewUiTest.aStepTickedMidReviewIsFlaggedAndKeepYoursDeclinesWithoutWriting`.
+
+## Gates actually run
+
+M2_GATES_PLACEHOLDER
+
+## Remaining risks and deferred work
+
+- The M3A brief apply path still exists (see above); two write paths remain until M4, both transactional.
+- Research `src` is derived from the M3A.2 contract (refs → sources, coverage status → finding status). The claim-level model and the retirement of the keyword/template layer are M4; `src` will be re-derived there.
+- Dates are editable in review through a date picker; reminder schedules and status values are accept/reject only in M2 (the planning validator already resolved the schedule; a reminder editor in review is deferred).
+- Draft-targeted sets (`TargetKind.DRAFT`) are stored but the review opens task sets only until the Living Draft milestone (M3).
+- Emulator instrumentation and screenshots run in CI only; no physical device and no live provider call in this milestone.
+
