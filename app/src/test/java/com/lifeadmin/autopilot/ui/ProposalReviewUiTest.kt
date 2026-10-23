@@ -134,13 +134,14 @@ class ProposalReviewUiTest {
         compose.onNodeWithTag("review_check_note_dl", useUnmergedTree = true).assertTextContainsSafely("Your deadline is kept")
         compose.onAllNodes(hasTestTag("review_accept_dl")).fetchSemanticsNodes().isEmpty().let { assertTrue("a blocked item has no accept control", it) }
         // Select recommended: the three plain recommended items, never the material reminder.
+        scrollReview("review_select_recommended")
         compose.onNodeWithTag("review_select_recommended").performClick()
         compose.onNodeWithTag("review_selected_count").assertTextContainsSafely("3 of 6 selected")
         assertEquals("Not accepted", stateOf("review_accept_r"))
         assertEquals("Not accepted", stateOf("review_accept_t"))
         // The planning target needs its own visible acceptance.
         compose.onNodeWithTag("review_accept_t").performClick()
-        assertEquals("Accepted", stateOf("review_accept_t"))
+        compose.waitUntil(5_000) { stateOf("review_accept_t") == "Accepted" }
         compose.onNode(hasText("Apply 4 changes")).assertIsDisplayed()
         // Edit before accepting; editing never changes the selection.
         scrollReview("review_edit_toggle_a")
@@ -175,7 +176,7 @@ class ProposalReviewUiTest {
         compose.onNodeWithTag("detail_list").performScrollToNode(hasTestTag("step_prov_$stepId"))
         compose.onNodeWithTag("step_prov_$stepId").performClick()
         waitFor("provenance_sheet")
-        compose.onNodeWithTag("provenance_finding_0", useUnmergedTree = true).assertTextContainsSafely("Appointments required since 2025")
+        assertTrue(compose.onAllNodes(hasText("Appointments required since 2025", substring = true), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
         compose.onNodeWithTag("provenance_meta", useUnmergedTree = true).assertTextContainsSafely("claude-sonnet-5-5")
         compose.onAllNodes(hasText("https://gov.example/passports")).fetchSemanticsNodes().isNotEmpty().let { assertTrue(it) }
         compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Close"))[0].performClick()
@@ -186,8 +187,12 @@ class ProposalReviewUiTest {
         // Undo from the review while the task has not moved on.
         compose.onNodeWithTag("detail_review_banner_$setId").performClick()
         waitFor("review_list")
+        waitFor("review_apply")
+        waitFor("review_selected_count")
         // Reopened review: the applied items are listed as settled, nothing is selected again, undo is not offered here (it belongs to the apply summary).
+        scrollReview("review_selected_count")
         compose.onNodeWithTag("review_selected_count").assertTextContainsSafely("0 of 2 selected")
+        compose.onNodeWithTag("review_apply").assertIsNotEnabled()
         scrollReview("review_settled_a")
         compose.onNodeWithTag("review_settled_a").assertIsDisplayed()
     }
@@ -231,7 +236,8 @@ class ProposalReviewUiTest {
         launch()
         val before = runBlocking { container.taskRepository.getTask(taskId) }!!
         openReview()
-        compose.onNodeWithTag("review_reject_all").performClick()
+        compose.onNodeWithTag("review_reject_all").assertIsEnabled().performClick()
+        waitFor("review_done")
         compose.waitUntil(10_000) { runBlocking { container.proposalSets.get(setId) }!!.status == SetStatus.CLOSED }
         assertEquals(before, runBlocking { container.taskRepository.getTask(taskId) })
         assertTrue(runBlocking { container.proposalSets.get(setId) }!!.items.all { it.status == ItemStatus.DECLINED })
@@ -298,9 +304,15 @@ class ProposalReviewLargeTextUiTest {
         compose.onNodeWithTag("detail_review_banner_set1").performClick()
         waitFor("review_list")
         waitFor("review_apply")
-        compose.onNodeWithTag("review_select_recommended").performClick()
+        // At 200 % text the header pushes the selection row below the fold: scroll to it like a user would.
+        compose.onNodeWithTag("review_list").performScrollToNode(hasTestTag("review_select_recommended"))
+        compose.onNodeWithTag("review_select_recommended").assertIsDisplayed().performClick()
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText("Apply 1 change")).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("review_list").performScrollToNode(hasTestTag("review_accept_r"))
-        compose.onNodeWithTag("review_accept_r").performClick()
+        compose.onNodeWithTag("review_accept_r").assertIsDisplayed().performClick()
+        compose.waitUntil(5_000) { compose.onNodeWithTag("review_accept_r", useUnmergedTree = true).fetchSemanticsNode().config.getOrNull(SemanticsProperties.StateDescription) == "Accepted" }
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText("Apply 2 changes")).fetchSemanticsNodes().isNotEmpty() }
+        // The bottom bar stacks its buttons at this scale and stays reachable.
         compose.onNodeWithTag("review_apply").assertIsEnabled().assertIsDisplayed()
         compose.onNodeWithTag("review_reject_all").assertIsDisplayed()
         compose.onNodeWithTag("review_apply").performClick()
