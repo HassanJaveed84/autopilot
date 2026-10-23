@@ -168,6 +168,34 @@ data model and the write path did.
 - Backup format unchanged (schemaVersion 1) with optional `drafts`, `proposals`, `provenance` arrays and the new task
   and step fields; pre-v6 files import unchanged.
 
+## Production M2: the one Proposal Review (2026-10-23)
+
+Both AI features now propose through one path (handoff §1, §7; INT-042): a `ProposalSet` saved by a bridge, reviewed in
+`ui/review/ProposalReviewScreen`, applied by `ProposalApplier`.
+
+- **Bridges (pure mapping, nothing written to tasks).** `ai/PlanningProposalBridge` turns a validated follow-through
+  `ProposalDraft` into a set: steps and the suggested next step are recommended additions; title/notes rewrites,
+  reminders, status and dates are material; a date on a task that already has a deadline becomes a planning target with
+  its basis (OD-6); priority is never proposed (D38). `ai/research2/ResearchProposalBridge` turns an M3A.2 session run's
+  proposals into a set (`rps-<session>-<run>`, idempotent): sourced steps recommended, checks/research as
+  verify items (`UNVERIFIED`), notes as appends, `src` from refs → sources (claim → finding → evidence key), legacy
+  applied moves shown as already applied. `ResearchProposalSets.ensure` finds or creates the set for a session.
+- **Review (`ProposalReviewViewModel` + screen).** Reconciles against the live task on every change; nothing selected on
+  first open; "Select recommended" uses `ProposalReconciler.recommendedSelection`; material items in their own section
+  with an Accept control; current value against proposed value; inline text edit and date change before acceptance
+  (editing never selects); conflicts need Apply anyway / Keep yours (Keep yours declines through
+  `ProposalApplier.decline`); a stale banner says what moved without rewriting the proposal; Apply → summary
+  (applied / kept / still pending) with Undo while `rev` is unchanged; selection, edits and decisions persist in
+  `SavedStateHandle`. Explanations (advice, assumptions, questions) stay collapsed.
+- **Entry points.** Task detail shows one banner per open set and a provenance marker on applied steps that opens
+  `ProvenanceSheet` (origin, applied time, model, findings with status and as-of, evidence keys, link to the research).
+  The research session screen's "Review N changes" hands off through `ResearchProposalSets`; "Plan next step" on a
+  saved task hands off from `PlanViewModel` and leaves the plan screen (`Routes.REVIEW`).
+- **Retired.** M3A.2 `ProposalsScreen`/`ProposalsViewModel`/`Research2Actions` and `ProposalMapper.toEdit`. The M3A brief
+  apply (`ResearchActions` → `TaskRepository.applyTaskEdit`) remains the only other write path until the M3A entry
+  points retire in the Research Online milestone; `createPlannedTask` (saving a new task from a draft) is not a proposal
+  apply and stays.
+
 ## Extension points for later milestones (not implemented)
 
 - M3 agents (research, email/calendar) would reuse the proposal → review → command pattern with

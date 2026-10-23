@@ -175,7 +175,12 @@ class AiPlanApprovalTest {
         assertEquals(at(CHICAGO, 2026, 10, 15, 15, 0), alarms.single().triggerAt)
     }
 
-    @Test fun followThroughSendsOnlyTheSelectedTaskAndAppliesTheConfirmedDiffOnce() {
+    private fun reviewPath(): Pair<com.lifeadmin.autopilot.data.repository.ProposalSetRepository, com.lifeadmin.autopilot.data.repository.ProposalApplier> {
+        val sets = com.lifeadmin.autopilot.data.repository.ProposalSetRepository(db)
+        return sets to com.lifeadmin.autopilot.data.repository.ProposalApplier(db, repo, sets, clock, SequentialIds("ap"))
+    }
+
+    @Test fun followThroughSendsOnlyTheSelectedTaskAndAppliesChosenChangesOnceThroughTheReview() {
         val (id, _) = approve(propose())
         provider.respond(rawPlan(
             "Book train ride for daughter",
@@ -189,24 +194,43 @@ class AiPlanApprovalTest {
         assertEquals("Book train ride for daughter", req.task!!.title)
         assertEquals("existing step is not suggested again", listOf("Ask about a child discount"), d.steps.map { it.text })
         assertFalse("suggested reminders are never pre-applied to an existing task", d.reminder.apply)
-        val edit = ProposalMapper.toEdit(d, clock.now(), zone.current())
-        runBlocking { repo.applyTaskEdit(edit) }
+
+        // The draft becomes a proposal set; saving it applies nothing (INT-050).
+        val (sets, applier) = reviewPath()
+        val details = runBlocking { repo.observeDetails(id).first() }!!
+        val set = PlanningProposalBridge.build(d, details, runBlocking { applier.snapshot(id) }!!, clock.now().toEpochMilli())
+        runBlocking { sets.save(set) }
+        assertTrue(set.items.all { it.status == com.lifeadmin.autopilot.domain.proposal.ItemStatus.PENDING })
+        assertEquals(1, set.items.size)
+        assertEquals(3, runBlocking { repo.getSteps(id) }.size)
+
+        val applied = runBlocking { applier.apply(set.id, set.items.map { com.lifeadmin.autopilot.domain.proposal.ApplyChoice(it.id) }) }
+        assertTrue(applied is com.lifeadmin.autopilot.domain.proposal.ApplyResult.Applied)
         assertEquals(4, runBlocking { repo.getSteps(id) }.size)
-        // Applying the same suggestion again is refused (the task changed), so no duplicate steps.
+        // Applying the same set again is refused: an item is applied at most once.
         clock.instant = clock.instant.plusSeconds(5)
-        try { runBlocking { repo.applyTaskEdit(edit) }; fail("expected duplicate apply rejection") } catch (e: ValidationException) { assertTrue(e.message!!.contains("already been applied")) }
+        val again = runBlocking { applier.apply(set.id, set.items.map { com.lifeadmin.autopilot.domain.proposal.ApplyChoice(it.id) }) }
+        assertTrue(again is com.lifeadmin.autopilot.domain.proposal.ApplyResult.Rejected)
         assertEquals(4, runBlocking { repo.getSteps(id) }.size)
         assertEquals("reminders untouched", listOf(LocalTime.of(9, 0), LocalTime.of(18, 0)), runBlocking { repo.getPolicy(id) }!!.times)
     }
 
-    @Test fun staleSuggestionIsRejectedIfTheUserEditedTheTaskMeanwhile() {
+    @Test fun unrelatedEditsMeanwhileNeverInvalidateACompatibleChangeButADuplicateDoes() {
         val (id, _) = approve(propose())
         provider.respond(rawPlan("Book train ride", steps = listOf("New step")))
         val d = (runBlocking { service.proposeFollowThrough(id, "") } as ProposalOutcome.Ready).draft
+        val (sets, applier) = reviewPath()
+        val details = runBlocking { repo.observeDetails(id).first() }!!
+        val set = PlanningProposalBridge.build(d, details, runBlocking { applier.snapshot(id) }!!, clock.now().toEpochMilli())
+        runBlocking { sets.save(set) }
         clock.instant = clock.instant.plusSeconds(60)
+        // PLAN-073: unrelated activity after the snapshot does not block the proposal.
         runBlocking { repo.addStep(id, "User added this meanwhile") }
-        try { runBlocking { repo.applyTaskEdit(ProposalMapper.toEdit(d, clock.now(), zone.current())) }; fail() } catch (e: ValidationException) { }
-        assertFalse(runBlocking { repo.getSteps(id) }.any { it.title == "New step" })
+        // ...but the same wording added by the user is a conflict the user must decide; nothing is written.
+        runBlocking { repo.addStep(id, "New step") }
+        val r = runBlocking { applier.apply(set.id, set.items.map { com.lifeadmin.autopilot.domain.proposal.ApplyChoice(it.id) }) }
+        assertTrue(r is com.lifeadmin.autopilot.domain.proposal.ApplyResult.NeedsReview)
+        assertEquals(1, runBlocking { repo.getSteps(id) }.count { it.title == "New step" })
     }
 
     @Test fun disabledAiMakesNoCallAndReportsDisabled() {

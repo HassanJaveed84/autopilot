@@ -257,6 +257,12 @@ data class ProposalSet(
     val base: TargetSnapshot,
     val items: List<ProposalItem>,
     val lastApply: ApplyRecord? = null,
+    /** Short heading for the review ("Plan next step", "From research: Thorne & Pure picks"). */
+    val title: String = "",
+    /** Explanations stay collapsed in review: changes first (handoff §7 rule 1). */
+    val advice: String = "",
+    val assumptions: List<String> = emptyList(),
+    val questions: List<String> = emptyList(),
 ) {
     val pending: List<ProposalItem> get() = items.filter { it.status == ItemStatus.PENDING }
     fun item(id: String): ProposalItem? = items.firstOrNull { it.id == id }

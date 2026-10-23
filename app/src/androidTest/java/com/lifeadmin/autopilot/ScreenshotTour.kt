@@ -163,6 +163,13 @@ private fun ComposeTestRule.waitForTag(tag: String) =
 private fun ComposeTestRule.waitForText(text: String) =
     waitUntil(15_000) { onAllNodes(hasText(text, substring = true)).fetchSemanticsNodes().isNotEmpty() }
 
+/** The review's Apply button once something is selected ("Apply N changes"), whatever N the fixture yields. */
+private fun ComposeTestRule.waitForApplyCount() = waitUntil(15_000) {
+    onAllNodes(SemanticsMatcher("Apply N changes") { n ->
+        n.config.getOrNull(SemanticsProperties.Text)?.any { it.text.matches(Regex("Apply \\d+ changes?")) } == true
+    }).fetchSemanticsNodes().isNotEmpty()
+}
+
 private fun ComposeTestRule.scrollTo(list: String, child: String) = onNodeWithTag(list).performScrollToNode(hasTestTag(child))
 
 /**
@@ -729,11 +736,21 @@ class ScreenshotTourAiReview {
         )
     }
 
+    /** Planning on a saved task hands off to the canonical Proposal Review; the tour renders that review in place. */
+    private val reviewSetId = androidx.compose.runtime.mutableStateOf<String?>(null)
+
     private fun planScreen(c: AppContainer, text: String, taskId: String? = null): PlanViewModel {
-        val vm = PlanViewModel(SavedStateHandle(), c.aiPlanning, c.taskRepository, c.taskActions, c.settingsRepository, c.clock, c.zoneProvider, taskId, text)
+        val vm = PlanViewModel(SavedStateHandle(), c.aiPlanning, c.taskRepository, c.taskActions, c.settingsRepository, c.clock, c.zoneProvider, taskId, text, proposalSets = c.proposalSets, applier = c.proposalApplier)
+        reviewSetId.value = null
         compose.setContent {
             LifeAdminTheme {
-                PlanScreen(vm, zone = c.zoneProvider.current(), now = c.clock::now, onBack = {}, onOpenTask = {}, onOpenAiSettings = {})
+                val setId: String? = reviewSetId.value
+                if (setId == null || taskId == null) {
+                    PlanScreen(vm, zone = c.zoneProvider.current(), now = c.clock::now, onBack = {}, onOpenTask = {}, onOpenAiSettings = {}, onOpenReview = { reviewSetId.value = it })
+                } else {
+                    val rvm = androidx.compose.runtime.remember(setId) { com.lifeadmin.autopilot.ui.review.ProposalReviewViewModel(SavedStateHandle(), taskId, setId, c.proposalSets, c.taskRepository, c.proposalApplier, c.clock, c.zoneProvider) }
+                    com.lifeadmin.autopilot.ui.review.ProposalReviewScreen(rvm, onBack = {}, onOpenTask = {})
+                }
             }
         }
         compose.waitForTag("plan_list")
@@ -822,13 +839,15 @@ class ScreenshotTourAiReview {
         planScreen(c, "I keep putting this off. What's the first thing to do?", taskId)
         screenshot("j1-move-forward-input")
         compose.onNodeWithTag("plan_request").tap()
-        compose.waitForTag("plan_approve")
+        compose.waitForTag("review_list") // the proposals land in the one Proposal Review: nothing selected
         screenshot("j2-move-forward-review")
-        compose.onNodeWithTag("plan_list").performTouchInput { swipeUp() }
-        screenshot("j3-move-forward-review-scrolled")
+        compose.onNodeWithTag("review_select_recommended").tap()
+        compose.waitForText("Apply 3 changes")
+        screenshot("j3-move-forward-recommended-selected")
         compose.soft("deselect a change") {
-            compose.scrollTo("plan_list", "review_step_check_1")
-            compose.onNodeWithTag("review_step_check_1").tap() // the Apply count follows the selection
+            val set = runBlocking { c.proposalSets.get(reviewSetId.value!!) }!!
+            compose.scrollTo("review_list", "review_check_${set.items[1].id}")
+            compose.onNodeWithTag("review_check_${set.items[1].id}").tap() // the Apply count follows the selection
             compose.waitForText("Apply 2 changes")
             screenshot("j4-move-forward-two-changes")
         }
@@ -1188,12 +1207,16 @@ class ScreenshotTourResearch2 {
         compose.scrollTo("brief_list", "brief_log")
         screenshot("s15-result-how-researched")
         compose.onNodeWithTag("brief_review").tap()
-        compose.waitForTag("apply_list")
-        screenshot("s16-proposals")
-        compose.onNodeWithTag("apply_confirm").tap()
-        compose.waitForTag("apply_result")
-        screenshot("s17-applied-undo")
-        compose.onNodeWithTag("apply_done").tap()
+        compose.waitForTag("review_list")
+        screenshot("s16-review-nothing-selected")
+        compose.onNodeWithTag("review_select_recommended").tap()
+        // The follow-up run adds a sourced glucosamine step, so the recommended count differs from the Robolectric flow test; the tour only needs a non-empty selection.
+        compose.waitForApplyCount()
+        screenshot("s16b-review-recommended-selected")
+        compose.onNodeWithTag("review_apply").tap()
+        compose.waitForTag("review_result")
+        screenshot("s17-review-applied-undo")
+        compose.onNodeWithTag("review_done").tap()
         compose.waitForTag("detail_list")
         compose.scrollTo("detail_list", "detail_research_card")
         screenshot("s18-detail-research-card")
@@ -1235,8 +1258,8 @@ class ScreenshotTourResearch2 {
         compose.back()
         compose.waitForTag("brief_review")
         compose.onNodeWithTag("brief_review").tap()
-        compose.waitForTag("apply_list")
-        screenshot("s28-proposals-gift")
+        compose.waitForTag("review_list")
+        screenshot("s28-review-gift")
     }
 
     private val FOLLOW_UP_QUESTION = "Does Thorne sell glucosamine directly?"

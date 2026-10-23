@@ -184,6 +184,8 @@ Canonical components per handoff §3: Living Draft (Today), Proposal Review (one
 
 Each milestone ships on its own branch stacked on the previous one with a draft PR, a report section in this document's companion report, and no merges.
 
+**Execution order (owner decision G6, 2026-10-23, `docs/DECISION_LOG_ADDENDA.md`):** M1 → **M2 → M4 → M3** → M5 → M6. Milestone numbers above are kept for traceability; the Investigation Thread (M4) is built before the Living Draft (M3), and draft-origin research (INT-013) lands with M3. The research presets are Quick / Standard / Thorough / Deep + Custom (R48) and drafts never expire automatically (D52).
+
 ## 5. Blockers, contradictions and recorded assumptions
 
 1. **Documents E/F/G/H** were missing at kickoff and are now reconciled (§9). Two owner decisions are surfaced there (milestone order vs. Document G §3; research preset names vs. Document F's "Standard" level, OQ-C1).
@@ -191,7 +193,7 @@ Each milestone ships on its own branch stacked on the previous one with a draft 
 3. **OD-5 vs. current pre-selection** (resolved by handoff): nothing pre-selected; `selectedByDefault` and EXPLICIT pre-selection are removed from review; "Select recommended" is the one-tap path that satisfies PLAN-071's acceptance.
 4. **Priority proposals** (behaviour change from M2): the handoff forbids proposing priority; planning may still *read* priority. New drafts let the user set priority manually.
 5. **Research without a task** needs a table rebuild (M4). Existing sessions are migrated 1:1; saved M3A briefs stay readable but gain no new features.
-6. **Draft expiry (OQ-B1)**: assumption for M3 — drafts never expire automatically; the user deletes them; the policy is stated on the draft surface. This is a "clearly established policy" per PLAN-013.
+6. **Draft expiry (OQ-B1)**: decided by the owner on 2026-10-23 (D52): drafts never expire automatically; the user saves or discards them; the policy is stated on the draft surface (PLAN-013).
 7. **Reasoning effort**: supported by the Anthropic SDK (`output_config.effort`); Claude 5.5 models run adaptive thinking by default and Sonnet/Opus 5.5 cannot disable it, so "effort" is exposed only where the provider supports it and recorded per turn (PLAN-093/RES-135). Implemented in M5, not M1.
 8. **Two research generations in code**: the plan retires the M3A brief UI in M4 for the "one canonical implementation" rule. Data is kept. This is an engineering consolidation, not a product change.
 9. **Prototype suites are not production acceptance**: they are run (see §6) only to confirm the behavioural reference is intact.
@@ -300,11 +302,11 @@ All four documents were read in full. The frozen documents were not modified. Fi
 | 1 | **The M3A.2 template layer cannot be the objective source.** RES-010/011 ("explicit objective; never inferred from topic, keyword or template") and RES-087 are **P0 Invariants** in Document G §2. Today `RequirementExtractor` derives requirements from keywords and `DeliverableTemplate` (A–E) shapes the result; Document F §9 classifies a category-keyed structure that dictates the answer as a *template defect*, and Document G §8 names this exact fork ("if its structured-contract design is the root of Problems 2 and 9, replacement is the cheaper path"). | G §2, §8; F §9; E R1, R14, R45 | **Changed.** M4 keeps the M3A.2 gather / evidence / checkpoint / ledger machinery and **retires** the keyword extractor and deliverable templates as the source of the objective and the shape of the answer: objective established under general consent and ledgered (RES-023, R32), objective-led composition (RES-080–084). §1.4's "reuse as the engine" is narrowed accordingly. |
 | 2 | **Stage 0 is a continuous fixture harness and the first implementation slice.** Document G §7 step 5: "the Stage 0 fixture harness for Invariants is the first slice"; Document F §2.3 lists its contents. | F §2.3; G §7 | **Changed.** M1 is recorded as that slice. The Stage 0 mapping (which bullet is covered by which test now, which later) is in `docs/TEST_MATRIX.md` and summarised in §9.2. |
 | 3 | **Deferred-capability rule (G4).** Recurrence proposals (PLAN-047) are P1 and deferred (D-R3); PLAN-045 was extended at the freeze so recurrence is never silently enabled; the Stage 0 fixture asserts no recurrence rule without confirmation; absence expectations are always graded. | H §1; E G4, D-R3; G §4 | **Changed.** Test-matrix rows depending on PLAN-047 are marked *(conditional on PLAN-047)*. The app has no task recurrence; the absence fixture is covered now by `nothingButAChosenReminderItemEverTouchesReminders` (no reminder policy is written unless a reminder item is explicitly chosen) and by the existing "no silent reminders" tests. |
-| 4 | **Research effort levels.** Document F runs Stage 1/2 at the "Standard" level with "low" and "high" variants; R31 names presets *provisionally* Quick/Standard/Thorough/Deep; OQ-C1 (names and count) is open and assigned to UX; handoff OD-3 leaves it open too. The app has Quick/Thorough/Deep/Custom. | F §2.3, §7; E R31, OQ-C1 | **Owner decision needed before M4** (non-blocking now): adopt the provisional four names, keep three plus Custom and map "Standard" to one of them for Document F runs, or decide otherwise. This plan does not map silently. |
-| 5 | **Milestone order vs. Document G §3.** G §2 says Invariants hold "from the first build" (supports M1 → M2 first). G §3's *suggested* Capability order puts research objective, evidence and continuation (items 1–3, "where the known failures live", first Stage 1 target) before planning output and timing (items 5–6). This plan's M3 (Living Draft) precedes M4 (Investigation thread). | G §1–3, §7 | **Owner decision surfaced.** Recommendation: swap M3 and M4 so the Investigation thread (research objective, composition, continuation, configuration, standalone) follows M2 directly, then the Living Draft, then integration. Draft-origin research (INT-013, I-3) would land with the Living Draft either way. The dependency graph allows both orders; the frozen roadmap's priority favours research first. |
+| 4 | **Research effort levels.** Document F runs Stage 1/2 at the "Standard" level with "low" and "high" variants; R31 names presets *provisionally* Quick/Standard/Thorough/Deep; OQ-C1 (names and count) is open and assigned to UX; handoff OD-3 leaves it open too. The app has Quick/Thorough/Deep/Custom. | F §2.3, §7; E R31, OQ-C1 | **Decided 2026-10-23 (R48, `docs/DECISION_LOG_ADDENDA.md`):** Quick / Standard / Thorough / Deep + Custom; saved settings keep their preset, model, budget and limit exactly; Standard is a new choice. Implemented in M4. |
+| 5 | **Milestone order vs. Document G §3.** G §2 says Invariants hold "from the first build" (supports M1 → M2 first). G §3's *suggested* Capability order puts research objective, evidence and continuation (items 1–3, "where the known failures live", first Stage 1 target) before planning output and timing (items 5–6). | G §1–3, §7 | **Decided 2026-10-23 (G6, `docs/DECISION_LOG_ADDENDA.md`):** M2 → M4 → M3 → M5 → M6. Numbers kept for traceability. |
 | 6 | **AI-proposed priority is deferred/out of scope** (D38; G §6), not merely a handoff rule. | E D38; G §6 | Confirms the plan: `ItemKind` has no priority kind; the M2 review never proposes priority; the request sends priority read-only. No change. |
 | 7 | **Binary gates and serious failures** (F §2.1, §6; E3, E5) define release acceptance: Authorization, Preservation, Task safety, Leakage; any §6 failure fails the run; applies to the current release candidate (G5). | F §2.1, §2.2, §6; E E3, E5, G5 | **Changed.** §9.2 maps M1 work to the gates it serves. Two M1 fixes came out of this pass: the double-apply race (Task safety / Preservation) and silent draft truncation (Preservation, "loss of user input"). The Leakage gate adds an RES-087 scan of user-facing text to M4 (the current M3A.2 technical log shows internal ids such as `r-a1`; it is a diagnostics surface, but the scan must confirm nothing reaches result text). |
-| 8 | **OQ-B1 (draft expiry, limits, surfacing) is an open UX question**, explicitly non-blocking; the handoff did not close it. | E "Unresolved questions"; H §5 | **Changed wording.** The M3 assumption "drafts never auto-expire; the user deletes them; the policy is shown" is recorded as a *proposed* UX decision to be accepted by the owner through change control, not as a settled rule. |
+| 8 | **OQ-B1 (draft expiry, limits, surfacing)** was an open UX question; the handoff did not close it. | E "Unresolved questions"; H §5 | **Decided 2026-10-23 (D52, `docs/DECISION_LOG_ADDENDA.md`):** v1 drafts never expire automatically; users save or discard. Count/surfacing details remain UX (M3). |
 | 9 | **Document G §7 sequence** placed a read-only gap analysis (step 2) before UX design and implementation. | E G2; G §7; H §7 | No change. The owner's kickoff brief explicitly authorised implementation after the UX handoff; Phase 1 of this document is the step-2 assessment, recorded against baseline v1.0. |
 | 10 | **Stage 1–3 are paid live benchmarks** (about twenty investigations for Stage 1; 60–80 runs for Stage 2). | F §2.3 | No change to code. Not run by the agent; they need the owner's explicit authorisation and key. |
 | 11 | **Configuration tests** (F §7) require the ledger to record reasoning effort and requested → actual model per stage, and "unavailable model → no ledger entry for a substituted run". | F §7; E D40/D44, R28/R29/R43 | Confirms M5 scope; the ledger lacks an `effort` field today (noted in §2.6). |
@@ -365,4 +367,56 @@ Run locally in this container on the reconciled tree (commit `46d54b4`, 2026-10-
 | `assembleDebug` / `assembleRelease` / `assembleDebugAndroidTest` | APKs built (30.1 MB / 4.4 MB / 1.2 MB); local debug key only |
 | Android CI (PR #6) | runs 118 and 119 green on the M1 heads (`638a187`, `0756670`); runs 120/121 on `46d54b4` recorded in the PR when complete |
 | Emulator instrumentation, physical device, live provider | not run by the agent |
+
+---
+
+# Milestone 2 report — the one Proposal Review (branch `prod-ux-m2-proposal-review`, stacked on M1)
+
+Baseline: v1.0 + addenda A1–A3 (`docs/DECISION_LOG_ADDENDA.md`). Acceptance authorities: Document F (Task safety and Preservation gates, §5.1 P10, §5.3 I-1 handoff rules) and `docs/TEST_MATRIX.md` ("Production M2").
+
+## What changed
+
+| Area | Files | Notes |
+|---|---|---|
+| Review UI | `ui/review/ProposalReviewScreen.kt`, `ProposalReviewViewModel.kt`, `ReviewPresenter.kt`, `ProvenanceSheet.kt`, `Routes.REVIEW` | Nothing selected on open; Select recommended; plain vs material sections; current → proposed; inline edit / date change; conflicts with Apply anyway / Keep yours; stale banner; Apply → summary with Undo; Reject / Reject all; explanations collapsed; selection, edits and decisions in `SavedStateHandle`. |
+| Bridges | `ai/PlanningProposalBridge.kt`, `ai/research2/ResearchProposalBridge.kt` (+ `ResearchProposalSets`) | Pure mapping into `ProposalSet`; nothing written to tasks. |
+| Entry points | `ui/detail/TaskDetailScreen.kt` / `TaskDetailViewModel.kt` (banner per open set, provenance marker + sheet on steps), `ui/research2/ResearchSessionScreen.kt` / `Research2ViewModels.kt` (hand-off), `ui/plan/PlanViewModel.kt` / `PlanScreen.kt` (follow-through hand-off), `LifeAdminRoot.kt`, `AppContainer.kt` | |
+| Domain | `ProposalSet.title/advice/assumptions/questions`, `ProposalApplier.decline` | Backward-compatible fields with defaults. |
+| Retired | `ui/research2/ProposalsScreen.kt` (+ `ProposalsViewModel`), `ai/research2/Research2Actions.kt`, `ProposalMapper.toEdit`, route `RESEARCH2_PROPOSALS`, `Research2ActionsTest` | Replaced only after the new tests covered the same behaviour. Stored M3A.2 reports and their `applied` history remain readable: legacy applied moves show as "Applied earlier". |
+
+## Old proposal paths: migrated or retired
+
+| Path | Before | Now |
+|---|---|---|
+| M3A.2 research proposals | `ProposalsScreen` → `Research2Actions.apply` → `TaskRepository.applyTaskEdit` (note lines with evidence) | "Review N changes" → `ResearchProposalSets.ensure` → canonical review → `ProposalApplier` (provenance records instead of note lines) |
+| Planning on a saved task | `PlanReview` on the plan screen → `ProposalMapper.toEdit` → `applyTaskEdit` | `PlanningProposalBridge` → set saved → canonical review → `ProposalApplier`; the plan screen leaves the stack |
+| M3A brief moves (legacy) | `ResearchApply` → `ResearchActions` → `applyTaskEdit` | **Unchanged** — the last parallel write path; retires with the M3A entry points in the Research Online milestone (M4) |
+| New task from a draft | `ProposalMapper.toCreate` → `createPlannedTask` | Unchanged (a save, not a proposal apply; Living Draft milestone) |
+
+## Acceptance mapping
+
+See `docs/TEST_MATRIX.md` → "Production M2" (17 rows) and the M1 rows it builds on. Document F: Task-safety gate (no change without an explicit accept; material changes individually accepted; conflicts flagged, never overwritten) and Preservation gate (prior reports, ledger and task history intact; undo restores) are exercised by `ProposalReviewUiTest`, `ProposalReviewViewModelTest`, `Research2FlowUiTest` and the M1 applier tests. P10 turn 2 ("user ticks step 3 during review → remaining proposal applies; touched item flagged") is `ProposalReviewUiTest.aStepTickedMidReviewIsFlaggedAndKeepYoursDeclinesWithoutWriting`.
+
+## Gates actually run
+
+Local, on `bd6b367` (the head after the test-synchronisation fixes below), `./gradlew lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest --continue`: **exit 0**.
+
+| Gate | Result |
+|---|---|
+| `testDebugUnitTest` | 595 tests, 0 failures, 0 errors (whole suite; includes the new review, bridge and migrated flow tests) |
+| `lintDebug` | "No issues found." |
+| `assembleDebug` / `assembleRelease` / `assembleDebugAndroidTest` | all three APKs built |
+| Emulator instrumentation + screenshot tour | CI only (`Instrumented tests (emulator API 34)` job); not run locally |
+
+Earlier heads on this branch were red in CI and locally for test-synchronisation reasons, each fixed in its own commit rather than by loosening the assertion: the end-to-end review test asserted before the reopened review had loaded (`5ae6e37`); the view-model apply test read a message left over from the previous apply, and the research 200 % flow test still walked the retired proposals screen (`6d8520d`); under full-suite load the apply summary can arrive before the observed task and set carry the new revision, so the view-model test now waits for Undo to be offered (`bd6b367`). One product change came out of this: deciding a flagged change (Apply anyway / Keep yours) now clears the "Decide on the flagged change first" message.
+
+**Android CI:** runs 134 (push) and 135 (pull_request) on `34e556c` — **green**, both jobs ("Lint, unit/Robolectric tests, APKs" and "Instrumented tests (emulator API 34)", 18 instrumentation tests). Before that: run 131 on `bd6b367` was **green** in "Lint, unit/Robolectric tests, APKs" and **red** in "Instrumented tests (emulator API 34)": `ScreenshotTourResearch2.s1_…` waited for the literal "Apply 2 changes" after Select recommended, but the tour's follow-up run adds a sourced glucosamine step, so the count differs from the Robolectric flow test; the tour now waits for any "Apply N changes" (fixed in the following commit; the other 17 emulator tests, including the AI-review tour j1–j4 through the new review, passed). Earlier heads (`b81372d` cancelled by the next push, `4802301`, `5ae6e37`, `6d8520d`) were **red** in the "Lint, unit/Robolectric tests, APKs" job for the test-synchronisation reasons above, each fixed by the following commit.
+
+## Remaining risks and deferred work
+
+- The M3A brief apply path still exists (see above); two write paths remain until M4, both transactional.
+- Research `src` is derived from the M3A.2 contract (refs → sources, coverage status → finding status). The claim-level model and the retirement of the keyword/template layer are M4; `src` will be re-derived there.
+- Dates are editable in review through a date picker; reminder schedules and status values are accept/reject only in M2 (the planning validator already resolved the schedule; a reminder editor in review is deferred).
+- Draft-targeted sets (`TargetKind.DRAFT`) are stored but the review opens task sets only until the Living Draft milestone (M3).
+- Emulator instrumentation and screenshots run in CI only; no physical device and no live provider call in this milestone.
 

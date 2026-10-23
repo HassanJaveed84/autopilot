@@ -288,6 +288,8 @@ data class Session2Ui(
     val continueNote: String = "",
     val continueError: ResearchError? = null,
     val settings: AppSettings = AppSettings(),
+    /** Proposals still waiting for a decision in the canonical review (M2). */
+    val pendingProposals: Int = 0,
 ) {
     val isStale: Boolean get() = session?.isStale(now) == true
     val continueConfig: RunConfig get() = ResearchModes.config(continueMode, modelOverride = Preflight2Ui.settingsModelFor(continueMode, settings), searches = continueSearches, spendLimitCents = settings.researchSpendLimitCents.takeIf { it > 0 })
@@ -303,6 +305,8 @@ class Session2ViewModel(
     settings: SettingsRepository,
     private val network: NetworkStatus,
     private val clock: AppClock,
+    private val proposalSets: com.lifeadmin.autopilot.ai.research2.ResearchProposalSets,
+    sets: com.lifeadmin.autopilot.data.repository.ProposalSetRepository,
 ) : ViewModel() {
     private val local = MutableStateFlow(
         Session2Ui(
@@ -312,10 +316,20 @@ class Session2ViewModel(
         ),
     )
 
-    val state: StateFlow<Session2Ui> = combine(store.observe(sessionId), tasks.observeDetails(taskId), local, service.state, settings.settings) { s, d, l, run, st ->
+    private val sessionAndSets = combine(store.observe(sessionId), sets.observeForTarget(taskId)) { s, all ->
+        val set = s?.let { ss -> all.firstOrNull { it.id == com.lifeadmin.autopilot.ai.research2.ResearchProposalBridge.setId(sessionId, ss.content.latestRun?.id ?: "run") } }
+        s to (s?.let { proposalSets.pendingCount(it, set) } ?: 0)
+    }
+
+    val state: StateFlow<Session2Ui> = combine(sessionAndSets, tasks.observeDetails(taskId), local, service.state, settings.settings) { (s, pending), d, l, run, st ->
         val running = (run as? DeepRunState.Running)?.takeIf { it.sessionId == sessionId }
-        l.copy(loading = false, session = s, details = d, online = network.isOnline(), now = clock.now(), running = running != null, runId = running?.runId, settings = st)
+        l.copy(loading = false, session = s, details = d, online = network.isOnline(), now = clock.now(), running = running != null, runId = running?.runId, settings = st, pendingProposals = pending)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Session2Ui())
+
+    /** Finds or creates the canonical proposal set for this session's latest run, then hands off to Proposal Review. */
+    fun openReview(onReady: (setId: String) -> Unit) = viewModelScope.launch {
+        proposalSets.ensure(sessionId)?.let { onReady(it.id) }
+    }
 
     fun openSource(n: Int) = local.update { it.copy(sourceSheet = n) }
     fun closeSource() = local.update { it.copy(sourceSheet = null) }

@@ -1,7 +1,9 @@
 package com.lifeadmin.autopilot.ui
 
 import android.content.Context
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -95,13 +97,20 @@ class ResearchFlowLargeTextUiTest {
         waitFor("source_sheet")
         compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Close"))[0].performClick()
         compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("source_sheet")).fetchSemanticsNodes().isEmpty() }
+        // M2: "Review N changes" opens the canonical Proposal Review. Nothing is selected on open;
+        // at 200 % the selection row sits below the header, so scroll to it like a user would.
         compose.onNodeWithTag("brief_review").assertIsEnabled().performClick()
-        waitFor("apply_list")
-        waitFor("apply_confirm")
-        compose.onNodeWithTag("apply_confirm").assertIsEnabled().performClick()
-        waitFor("apply_result")
-        compose.onNodeWithTag("apply_done").performClick()
+        waitFor("review_list")
+        waitFor("review_apply")
+        waitFor("review_selected_count")
+        compose.onNodeWithTag("review_apply").assertIsNotEnabled()
+        compose.onNodeWithTag("review_list").performScrollToNode(hasTestTag("review_select_recommended"))
+        compose.onNodeWithTag("review_select_recommended").assertIsDisplayed().performClick()
+        compose.waitUntil(10_000) { compose.onAllNodes(hasText("Apply 1 change")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("review_apply").assertIsEnabled().assertIsDisplayed().performClick()
+        waitFor("review_result")
+        compose.onNodeWithTag("review_done").assertIsDisplayed().performClick()
         waitFor("detail_list")
-        assertEquals("the 'Buy Fresh Aqua' step (evidence inherited from the candidate) was pre-selected; the decide step was not", 1, runBlocking { container.taskRepository.getSteps(taskId) }.size)
+        assertEquals("the sourced 'Buy Fresh Aqua' step is the recommended one; the decide step is not recommended and was never selected", 1, runBlocking { container.taskRepository.getSteps(taskId) }.size)
     }
 }

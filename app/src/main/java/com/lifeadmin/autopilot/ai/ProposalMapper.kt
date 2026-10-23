@@ -7,7 +7,6 @@ import com.lifeadmin.autopilot.domain.model.PlannedTaskCommand
 import com.lifeadmin.autopilot.domain.model.PolicySpec
 import com.lifeadmin.autopilot.domain.model.Priority
 import com.lifeadmin.autopilot.domain.model.ReminderKind
-import com.lifeadmin.autopilot.domain.model.TaskEditCommand
 import com.lifeadmin.autopilot.domain.model.TaskStatus
 import java.time.Instant
 import java.time.LocalDate
@@ -42,29 +41,10 @@ object ProposalMapper {
         )
     }
 
-    fun toEdit(draft: ProposalDraft, now: Instant, zone: ZoneId): TaskEditCommand {
-        val taskId = draft.targetTaskId ?: throw ValidationException("No task to update")
-        val waiting = draft.waiting.takeIf { it.apply }
-        val checkIn = waiting?.checkInLocal?.let { toInstant(it, zone) }
-        if (checkIn != null && !checkIn.isAfter(now)) throw ValidationException("The check-in time is in the past")
-        return TaskEditCommand(
-            taskId = taskId,
-            proposalId = draft.proposalId,
-            expectedUpdatedAt = draft.targetUpdatedAtMillis?.let(Instant::ofEpochMilli),
-            title = draft.title.trim().takeIf { draft.applyTitle }?.also {
-                if (it.isEmpty()) throw ValidationException("Title can't be empty")
-            },
-            notes = draft.notes.trim().takeIf { draft.applyNotes },
-            priority = priorityOf(draft),
-            addSteps = selectedSteps(draft),
-            deadline = deadlineSpec(draft.deadline, now, zone),
-            policy = policySpec(draft.reminder, now, zone),
-            markWaiting = waiting != null,
-            waitingReason = waiting?.waitingFor?.trim()?.ifEmpty { null },
-            waitingCheckInAt = checkIn,
-            source = "ai_follow_through",
-        )
-    }
+    /*
+     * Follow-through (planning on a saved task) no longer maps to a TaskEditCommand: the validated
+     * draft becomes a ProposalSet (PlanningProposalBridge) reviewed and applied by ProposalApplier.
+     */
 
     fun selectedSteps(draft: ProposalDraft): List<String> {
         val steps = draft.steps.filter { it.include }.map { it.text.trim() }.filter { it.isNotEmpty() }.toMutableList()

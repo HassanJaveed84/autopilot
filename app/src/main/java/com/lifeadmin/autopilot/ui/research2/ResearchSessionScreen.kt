@@ -96,7 +96,7 @@ fun ResearchSessionScreen(
     viewModel: Session2ViewModel,
     zone: ZoneId,
     onBack: () -> Unit,
-    onReview: () -> Unit,
+    onReview: (setId: String) -> Unit,
     onContinueStarted: (runId: String) -> Unit,
     onOpenUsage: () -> Unit,
 ) {
@@ -126,11 +126,10 @@ fun ResearchSessionScreen(
                         HorizontalDivider(color = c.line)
                         Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
                             val terminal = s.details?.task?.status?.isTerminal == true
-                            val applied = session.applied.map { it.proposalId }.toSet()
-                            val n = session.content.proposals.count { it.id !in applied }
+                            val n = s.pendingProposals
                             ButtonPair(
                                 secondary = { m -> SecondaryButton("Done", onClick = onBack, modifier = m.testTag("brief_done")) },
-                                primary = { m -> PrimaryButton(if (n == 0) "Nothing to add" else "Review $n ${if (n == 1) "change" else "changes"}", onClick = onReview, enabled = n > 0 && !terminal && s.details != null && !s.running, modifier = m.testTag("brief_review")) },
+                                primary = { m -> PrimaryButton(if (n == 0) "Nothing to add" else "Review $n ${if (n == 1) "change" else "changes"}", onClick = { viewModel.openReview(onReview) }, enabled = n > 0 && !terminal && s.details != null && !s.running, modifier = m.testTag("brief_review")) },
                             )
                             Text(if (terminal) "This task is done. Reopen it to add proposals." else if (s.running) "Continuing research — proposals update when it finishes." else "Saved to this task's research. Your task hasn't changed.", style = MaterialTheme.typography.bodySmall, color = c.ink3, modifier = Modifier.padding(top = 8.dp))
                         }

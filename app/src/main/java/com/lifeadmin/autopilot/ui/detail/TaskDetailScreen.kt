@@ -114,6 +114,8 @@ fun TaskDetailScreen(
     onOpenAiSettings: () -> Unit = {},
     /** Research (M3) navigation; null hides the research tile and card. */
     research: ResearchNav? = null,
+    /** Opens the canonical Proposal Review for a pending set (M2); null hides the banners. */
+    onOpenReview: ((setId: String) -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val c = AutopilotTheme.colors
@@ -148,7 +150,7 @@ fun TaskDetailScreen(
                 details, state.now, state.zone, viewModel, Modifier.padding(padding), onBack = onBack,
                 openDialog = { dialog = it }, stallHint = state.stallHint, onMoveForward = onMoveForward, onOpenAiSettings = onOpenAiSettings,
                 aiEnabled = state.settings.aiEnabled,
-                research = research, state = state,
+                research = research, state = state, onOpenReview = onOpenReview,
                 onDone = {
                     viewModel.complete()
                     scope.launch {
@@ -241,9 +243,16 @@ private fun DetailContent(
     state: TaskDetailUiState,
     onDone: () -> Unit,
     onPause: () -> Unit,
+    onOpenReview: ((String) -> Unit)? = null,
 ) {
     val c = AutopilotTheme.colors
     val task = d.task
+    var provenanceOpen by rememberSaveable { mutableStateOf<String?>(null) }
+    provenanceOpen?.let { id ->
+        val record = state.provenance[id]
+        if (record == null) provenanceOpen = null
+        else com.lifeadmin.autopilot.ui.review.ProvenanceSheet(record, zone, onDismiss = { provenanceOpen = null }, onOpenInvestigation = research?.onOpenSession)
+    }
     val summary = TaskSummary(task, d.steps.count { it.isDone }, d.steps.size, d.steps.sortedBy { it.sortOrder }.firstOrNull { !it.isDone }?.title, d.nextReminder, d.policy)
     val pill = TaskPresentation.pill(summary, now, zone)
     val isDone = task.status.isTerminal
@@ -273,6 +282,9 @@ private fun DetailContent(
             Text(task.title, style = MaterialTheme.typography.headlineMedium, color = c.ink, modifier = Modifier.padding(top = 14.dp, bottom = 6.dp).semantics { heading() }.testTag("detail_title"))
             task.notes?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyLarge, color = c.ink2) }
         }
+        if (onOpenReview != null && !isDone) {
+            state.openSets.forEach { set -> item(key = "review-" + set.id) { ReviewBanner(set, onOpenReview) } }
+        }
         item { FollowUpCard(d, summary, now, zone, vm, openDialog) }
         item {
             Column(Modifier.padding(top = 14.dp)) {
@@ -299,7 +311,7 @@ private fun DetailContent(
             }
         }
         if (stallHint != null) item { StallHintCard(stallHint, vm, openDialog) }
-        item { StepsCard(d, vm) }
+        item { StepsCard(d, vm, state.provenance, onShowProvenance = { provenanceOpen = it }) }
         item { DeadlineAndPriorityCard(d, now, zone, vm, openDialog) }
         if (onMoveForward != null && !task.status.isTerminal) item { AiCard(aiEnabled, onMoveForward, onOpenAiSettings, research = research, researching = state.researching) }
         if (research != null && (state.briefs.isNotEmpty() || state.sessions.isNotEmpty() || state.researching)) item { ResearchCard(state, now, zone, research) }
@@ -319,6 +331,27 @@ private fun DetailContent(
 }
 
 /** "Nudging 09:00 & 18:00 daily · until it's done · next today 09:00 · Change" in plain words. */
+/** One banner per open proposal set (handoff §2): the saved task stays separate from pending changes until the user reviews them. */
+@Composable
+private fun ReviewBanner(set: com.lifeadmin.autopilot.domain.proposal.ProposalSet, onOpenReview: (String) -> Unit) {
+    val c = AutopilotTheme.colors
+    val n = set.pending.size
+    val from = if (set.source == com.lifeadmin.autopilot.domain.proposal.ProposalSource.PLANNING) "Plan with AI" else "research"
+    Row(
+        Modifier.fillMaxWidth().padding(top = 12.dp).clip(RoundedCornerShape(16.dp)).background(c.routeSoft)
+            .clickable(role = Role.Button, onClickLabel = "Review $n proposed ${if (n == 1) "change" else "changes"}") { onOpenReview(set.id) }
+            .padding(14.dp).testTag("detail_review_banner_${set.id}"),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Icon(AutopilotIcons.Route, contentDescription = null, tint = c.onRouteSoft, modifier = Modifier.size(22.dp))
+        Column(Modifier.weight(1f)) {
+            Text("$n ${if (n == 1) "change" else "changes"} waiting for your review", style = MaterialTheme.typography.titleSmall, color = c.onRouteSoft)
+            Text("From $from · nothing is applied until you say so", style = MaterialTheme.typography.bodySmall, color = c.onRouteSoft)
+        }
+        Icon(AutopilotIcons.ChevronRight, contentDescription = null, tint = c.onRouteSoft, modifier = Modifier.size(20.dp))
+    }
+}
+
 @Composable
 private fun FollowUpCard(d: TaskDetails, summary: TaskSummary, now: Instant, zone: ZoneId, vm: TaskDetailViewModel, openDialog: (DetailDialog) -> Unit) {
     val c = AutopilotTheme.colors
@@ -397,7 +430,7 @@ private fun ActionTile(icon: ImageVector, label: String, modifier: Modifier = Mo
 }
 
 @Composable
-private fun StepsCard(d: TaskDetails, vm: TaskDetailViewModel) {
+private fun StepsCard(d: TaskDetails, vm: TaskDetailViewModel, provenance: Map<String, com.lifeadmin.autopilot.domain.proposal.ProvenanceRecord> = emptyMap(), onShowProvenance: (String) -> Unit = {}) {
     val c = AutopilotTheme.colors
     var newStep by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -432,6 +465,16 @@ private fun StepsCard(d: TaskDetails, vm: TaskDetailViewModel) {
                 )
                 if (firstOpen?.id == step.id) {
                     Text("Next", style = MaterialTheme.typography.labelSmall, color = c.onSignalSoft, modifier = Modifier.padding(end = 6.dp).clip(RoundedCornerShape(12.dp)).background(c.signalSoft).padding(horizontal = 8.dp, vertical = 4.dp))
+                }
+                // Provenance is a property of the content, shown lightly (INT-032): one marker, the full record on tap.
+                step.provenanceId?.let { pid ->
+                    val record = provenance[pid]
+                    if (record != null && !editing) {
+                        RoundIconButton(
+                            AutopilotIcons.Info, tint = c.ink3, onClick = { onShowProvenance(pid) }, modifier = Modifier.size(40.dp).testTag("step_prov_${step.id}"),
+                            contentDescription = if (record.source == com.lifeadmin.autopilot.domain.proposal.ProposalSource.RESEARCH) "From research: where this step came from" else "From Plan with AI: where this step came from",
+                        )
+                    }
                 }
                 if (editing) {
                     if (index > 0) RoundIconButton(AutopilotIcons.ChevronDown, contentDescription = "Move ${step.title} up", tint = c.ink3, onClick = { vm.moveStep(step.id, -1) }, modifier = Modifier.size(40.dp).rotate(180f))
