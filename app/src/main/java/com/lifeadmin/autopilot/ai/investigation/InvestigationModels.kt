@@ -119,14 +119,42 @@ data class EvidenceRef(
     /** Registry number of the source. */
     val sourceN: Int,
     val excerpt: String,
-    /** What the evidence is about when that differs from the claim's scope (variant, jurisdiction, date). */
+    /** Set when the source is about another variant, jurisdiction, population, seller or period than the claim: it then supports nothing (RES-044). */
     val scopeNote: String = "",
+    /** When the source says the fact held; not when it was fetched (RES-046). */
+    val asOf: String? = null,
+    /** What kind of source this is for this claim (RES-043/047); null when not stated. */
+    val kind: EvidenceKind? = null,
     val retrievedAtMs: Long,
     /** Publisher host: repetitions of one origin count once (RES-045). */
     val originKey: String,
     /** The model pointed at a source the provider cited elsewhere; a pointer, never verification. */
     val pointerOnly: Boolean = false,
 )
+
+/** RES-043/047: the standing of one source for one claim. General, not a domain list. */
+@Serializable
+enum class EvidenceKind {
+    /** The body that issues or directly measures the fact: the regulator for a rule, the operator for a timetable, the seller for its own price, the maker for its own specification. */
+    PRIMARY,
+    /** A systematic review, meta-analysis or guideline that weighs many studies. */
+    REVIEW,
+    /** One study, test or measurement. */
+    STUDY,
+    /** News, blogs, aggregators, forums, reviews of products, or anyone reporting what someone else said. */
+    SECONDARY,
+}
+
+/** RES-043: what this claim needs, judged from the claim and its consequences; never a fixed source count. */
+@Serializable
+enum class EvidenceStandard(val label: String) {
+    /** One source about the claim's own scope settles it. */
+    DIRECT("one direct source"),
+    /** The issuer itself, a review, or independent sources that agree. */
+    CORROBORATED("the issuer, a review, or independent confirmation"),
+    /** Only review-level evidence (systematic review, meta-analysis, guideline) can settle it. */
+    REVIEW("review-level evidence"),
+}
 
 @Serializable
 data class Claim(
@@ -140,6 +168,10 @@ data class Claim(
     val loadBearing: Boolean,
     /** Changes in days (prices, schedules, availability): never reused on a continuation; checked fresh. */
     val volatile: Boolean = false,
+    /** How long this fact stays true, judged for this claim (RES-046); null = volatile default, or no limit for a stable fact. */
+    val freshForDays: Int? = null,
+    /** The evidence this claim needs (RES-043); null = the objective's default. */
+    val needs: EvidenceStandard? = null,
     /** Only the person can resolve it (their requirement, situation or decision): a condition, not a gap (RES-062). */
     val dependsOnUser: Boolean = false,
     val support: List<EvidenceRef> = emptyList(),

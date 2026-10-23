@@ -53,10 +53,13 @@ object InvestigationParser {
         }
 
         fun refsOfLine(line: Pair<String, IntRange>): LineRefs = EvidenceText.settle(EvidenceText.providerRefsOf(spans, line.second, registry), EvidenceText.srcTokens(line.first, registry), EvidenceText.clean(line.first), knownEvidence)
-        fun evidence(line: Pair<String, IntRange>, excerpt: String): List<EvidenceRef> {
+        fun evidence(line: Pair<String, IntRange>, excerpt: String, attrs: EvidenceAttrs = EvidenceAttrs()): List<EvidenceRef> {
             val r = refsOfLine(line)
-            return r.verified.map { n -> EvidenceRef(n, excerpt.take(300), retrievedAtMs = nowMs, originKey = registry.originKey(n)) } +
-                r.reused.map { n -> EvidenceRef(n, excerpt.take(300), retrievedAtMs = nowMs, originKey = registry.originKey(n), pointerOnly = true) }
+            fun ref(n: Int, pointer: Boolean) = EvidenceRef(
+                n, excerpt.take(300), scopeNote = attrs.scopeNote, asOf = attrs.asOf,
+                kind = attrs.kind ?: EvidenceKind.PRIMARY.takeIf { registry.official(n) }, retrievedAtMs = nowMs, originKey = registry.originKey(n), pointerOnly = pointer,
+            )
+            return r.verified.map { ref(it, false) } + r.reused.map { ref(it, true) }
         }
         fun segment(text: String, range: IntRange, extraIds: List<String> = emptyList()): AnswerSegment =
             AnswerSegment(EvidenceText.clean(text, keepTrailingSpace = true).replace(Regex("\\s+"), " ").trim(), (EvidenceText.markers(text) + extraIds).distinct())
@@ -117,12 +120,13 @@ object InvestigationParser {
                     val support = ArrayList<EvidenceRef>()
                     val against = ArrayList<EvidenceRef>()
                     val premises = ArrayList<String>()
+                    val claimScope = kv["scope"]?.takeIf { it != "-" }.orEmpty()
                     for (line in b.lines) {
                         val t = EvidenceText.clean(line.first)
                         val lower = t.lowercase(Locale.ROOT)
                         when {
-                            lower.startsWith("evidence:") -> support += evidence(line, t.substringAfter(':').trim())
-                            lower.startsWith("against:") -> against += evidence(line, t.substringAfter(':').trim())
+                            lower.startsWith("evidence:") -> EvidenceAttrs.split(t.substringAfter(':'), claimScope).let { (a, rest) -> support += evidence(line, rest, a) }
+                            lower.startsWith("against:") -> EvidenceAttrs.split(t.substringAfter(':'), claimScope).let { (a, rest) -> against += evidence(line, rest, a) }
                             lower.startsWith("premises:") -> premises += CLAIM_ID.findAll(t).map { it.groupValues[1] }
                             text.isEmpty() -> { text = t.take(400); support += evidence(line, t) }
                             else -> text = (text + " " + t).take(400)
@@ -133,6 +137,7 @@ object InvestigationParser {
                     claims[id] = Claim(
                         id = id, text = text, type = type, scope = kv["scope"]?.takeIf { it != "-" }.orEmpty().take(120),
                         asOf = kv["asof"]?.takeIf { it != "-" && it.isNotBlank() }, loadBearing = EvidenceText.yes(kv["load"]), volatile = EvidenceText.yes(kv["volatile"]),
+                        freshForDays = EvidenceAttrs.days(kv["fresh"]), needs = EvidenceAttrs.standard(kv["needs"]),
                         dependsOnUser = EvidenceText.yes(kv["needs_input"]), support = support.distinctBy { it.sourceN to it.pointerOnly }, against = against.distinctBy { it.sourceN },
                         premises = premises.distinct(), turnId = turnId, inheritedFromTurnId = prior?.inheritedFromTurnId ?: prior?.turnId?.takeIf { it != turnId },
                     )
@@ -263,4 +268,47 @@ object InvestigationParser {
 
     /** Highest claim number in use, so a later call continues the numbering. */
     fun nextClaimNumber(claims: List<Claim>): Int = (claims.mapNotNull { Regex("""^c(\d+)$""").find(it.id)?.groupValues?.get(1)?.toIntOrNull() }.maxOrNull() ?: 0) + 1
+}
+
+/**
+ * What a reply says about one EVIDENCE or AGAINST line, written as a leading `(about=… · asof=… · kind=…)`.
+ * These can only narrow what the evidence supports; the assessor still decides every status.
+ */
+data class EvidenceAttrs(val scopeNote: String = "", val asOf: String? = null, val kind: EvidenceKind? = null) {
+    companion object {
+        private val LEAD = Regex("""^\s*\(([^()]*)\)\s*""")
+
+        /** Splits the attributes from the excerpt. An `about` that restates the claim's own scope is no mismatch. */
+        fun split(raw: String, claimScope: String): Pair<EvidenceAttrs, String> {
+            val m = LEAD.find(raw) ?: return EvidenceAttrs() to raw.trim()
+            val kv = EvidenceText.kv(m.groupValues[1].replace(';', '·'))
+            if (kv.isEmpty()) return EvidenceAttrs() to raw.trim()
+            val about = kv["about"]?.takeIf { it != "-" && it.isNotBlank() }?.take(120)
+            val note = if (about == null || norm(about) == norm(claimScope)) "" else "About $about"
+            val kind = when (kv["kind"]?.lowercase(Locale.ROOT)) {
+                "primary", "official", "issuer" -> EvidenceKind.PRIMARY
+                "review", "meta-analysis", "guideline" -> EvidenceKind.REVIEW
+                "study", "test", "measurement" -> EvidenceKind.STUDY
+                "secondary", "news", "blog", "forum", "aggregator" -> EvidenceKind.SECONDARY
+                else -> null
+            }
+            return EvidenceAttrs(note, kv["asof"]?.takeIf { it != "-" && it.isNotBlank() }?.take(20), kind) to raw.substring(m.range.last + 1).trim()
+        }
+
+        /** `7d`, `3w`, `6m`, `1y` (or a bare number of days); anything else is no window. */
+        fun days(v: String?): Int? {
+            val m = Regex("""^\s*(\d{1,4})\s*([dwmy]?)\s*$""", RegexOption.IGNORE_CASE).find(v ?: return null) ?: return null
+            val n = m.groupValues[1].toInt()
+            return when (m.groupValues[2].lowercase(Locale.ROOT)) { "w" -> n * 7; "m" -> n * 30; "y" -> n * 365; else -> n }.takeIf { it > 0 }
+        }
+
+        fun standard(v: String?): EvidenceStandard? = when (v?.trim()?.lowercase(Locale.ROOT)) {
+            "direct" -> EvidenceStandard.DIRECT
+            "corroborated", "corroboration", "corroborate" -> EvidenceStandard.CORROBORATED
+            "review" -> EvidenceStandard.REVIEW
+            else -> null
+        }
+
+        private fun norm(s: String) = s.lowercase(Locale.ROOT).replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
+    }
 }

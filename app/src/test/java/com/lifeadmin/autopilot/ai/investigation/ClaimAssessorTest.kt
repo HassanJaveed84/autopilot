@@ -52,15 +52,22 @@ class ClaimAssessorTest {
         assertEquals("a cited judgment with no premises is still not established by its citation", ClaimStatus.NOT_ESTABLISHED, out["j2"]!!.status)
     }
 
-    @Test fun volatileClaimsWithOldEvidenceAreOnlyIndicative() {
-        val eightDays = now - 8L * 24 * 3600 * 1000
-        val stale = ClaimAssessor.assessOne(claim("c1", volatile = true, support = listOf(ev(1, at = eightDays))), now)
-        val fresh = ClaimAssessor.assessOne(claim("c2", volatile = true, support = listOf(ev(1))), now)
-        val stable = ClaimAssessor.assessOne(claim("c3", volatile = false, support = listOf(ev(1, at = eightDays))), now)
-        assertEquals(ClaimStatus.INDICATIVE, stale.status)
-        assertTrue(stale.statusReason.contains("8 days old"))
-        assertEquals(ClaimStatus.ESTABLISHED, fresh.status)
-        assertEquals("a stable fact is not stale after a week", ClaimStatus.ESTABLISHED, stable.status)
+    @Test fun volatileClaimsAreJudgedByTheFactsOwnDateNotTheFetchTime() {
+        val day = 24L * 3600 * 1000
+        val today = java.time.Instant.ofEpochMilli(now).atZone(java.time.ZoneOffset.UTC).toLocalDate()
+        fun e(n: Int, asOf: String?, at: Long = now) = ev(n, at = at).copy(asOf = asOf)
+        val fetchedLongAgo = ClaimAssessor.assessOne(claim("c1", volatile = true, support = listOf(e(1, today.minusDays(8).toString(), at = now - 8 * day))), now)
+        val datedToday = ClaimAssessor.assessOne(claim("c2", volatile = true, support = listOf(e(1, today.toString()))), now)
+        val oldFactFetchedNow = ClaimAssessor.assessOne(claim("c3", volatile = true, support = listOf(e(1, today.minusDays(40).toString()))), now)
+        val undated = ClaimAssessor.assessOne(claim("c4", volatile = true, support = listOf(e(1, null))), now)
+        val stable = ClaimAssessor.assessOne(claim("c5", volatile = false, support = listOf(e(1, "2019", at = now - 8 * day))), now)
+        assertEquals(ClaimStatus.INDICATIVE, fetchedLongAgo.status)
+        assertTrue(fetchedLongAgo.statusReason, fetchedLongAgo.statusReason.contains("8 days old"))
+        assertEquals(ClaimStatus.ESTABLISHED, datedToday.status)
+        assertEquals("fetched today is not the same as true today", ClaimStatus.INDICATIVE, oldFactFetchedNow.status)
+        assertTrue(oldFactFetchedNow.statusReason, oldFactFetchedNow.statusReason.startsWith("As of"))
+        assertEquals("a fast-changing fact with no date cannot be called current", ClaimStatus.INDICATIVE, undated.status)
+        assertEquals("a stable fact is not stale because its page is old", ClaimStatus.ESTABLISHED, stable.status)
     }
 
     @Test fun sameEvidenceSameStatusWhateverTheRunConfiguration() {

@@ -12,7 +12,7 @@ object LeakageScan {
         Regex("""\[\s*c\d+(?:\s*,\s*c\d+)*\s*]""") to "claim marker",
         Regex("""\b(?:NOT_ESTABLISHED|ESTABLISHED|INDICATIVE|CONTESTED|DEPENDS_ON_INPUT|ANSWERED_WITH_CONDITIONS|PARTIALLY_ANSWERED|NEEDS_INPUT|RESOLVED_CONFLICT|NEEDS_CHECK|YOUR_CALL|NOT_FOUND)\b""") to "status label",
         Regex("""#{1,4}\s*(?:TITLE|ANSWER|CLAIM|REQ|CAND|ATTR|PICK|STEPS?|COMPARE|RECOMMEND|CHANGED|CONFIRMED|PROPOSE|UNRESOLVED|CONDITION|NEEDS_INPUT|WORTH_KNOWING|CALLOUT|EXCLUDED|CONFLICT)\b""") to "contract heading",
-        Regex("""\b(?:status|load|asof|volatile|needs_input|type|claims|req|tag|kind)=\S+""") to "heading attribute",
+        Regex("""\b(?:status|load|asof|volatile|needs_input|needs|fresh|about|type|claims|req|tag|kind)=\S+""") to "heading attribute",
         Regex("""\bsrc\s*=\s*s\d+""") to "source pointer",
     )
 
@@ -100,9 +100,9 @@ object AnswerComposer {
         return Answer(title = title, stateLine = derivation.stateLine, lead = lead.ifEmpty { listOf(AnswerSegment(emptyLead(derivation))) }, caveats = caveats, sections = sections, recommendation = rec)
     }
 
-    /** Markers stay only on claims that can carry a citation (RES-085); internal residue is removed from the text. */
+    /** Markers stay only on current claims that can carry a citation (RES-085, RES-107); internal residue is removed from the text. */
     private fun scrub(seg: AnswerSegment, byId: Map<String, Claim>): AnswerSegment {
-        val ids = seg.claimIds.filter { id -> byId[id]?.type?.citable == true }
+        val ids = seg.claimIds.filter { id -> byId[id]?.let { it.type.citable && !it.superseded } == true }
         return AnswerSegment(LeakageScan.clean(seg.text), ids)
     }
 

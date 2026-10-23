@@ -17,6 +17,8 @@ class TurnWork(
     private val lineage: Map<String, String> = emptyMap(),
     /** Claim ids the person excluded: never reinserted, whatever a reply says (OD-4). */
     private val excluded: Set<String> = emptySet(),
+    /** The objective is consequential (RES-043/053): claims that declare no evidence standard need more than one secondary source. */
+    private val consequential: Boolean = false,
 ) {
     val claims = LinkedHashMap<String, Claim>().apply { inherited.forEach { put(it.id, it.copy(reused = true, inheritedFromTurnId = it.inheritedFromTurnId ?: it.turnId.takeIf { t -> t != turnId })) } }
     var title: String? = null
@@ -82,7 +84,7 @@ class TurnWork(
         for (q in out.queries) if (q !in queries) queries += q
         if (changed) merged = true
         // Statuses follow the evidence after every call, never the model's words.
-        val assessed = ClaimAssessor.assess(current(), nowMs)
+        val assessed = ClaimAssessor.assess(current(), nowMs, consequential)
         assessed.forEach { claims[it.id] = it }
         return changed
     }
@@ -94,7 +96,7 @@ class TurnWork(
             // The run never reached the pass that would have checked these: say so instead of calling them unsupported.
             list = list.map { if (it.loadBearing && !it.superseded && !it.dependsOnUser && it.status != ClaimStatus.ESTABLISHED && it.support.none { e -> !e.pointerOnly } && !it.reused) it.copy(checked = false) else it }
         }
-        val assessed = ClaimAssessor.assess(list, nowMs)
+        val assessed = ClaimAssessor.assess(list, nowMs, consequential)
         val derivation = ResultDeriver.derive(assessed, ending)
         val out = TurnOutput(title, answer, assessed, steps, compareRows, compareOptions, options, recommendation, worthKnowing, changes.toList(), unresolved.toList(), proposals.values.toList(), queries.toList(), injectionNoticed)
         val composed = AnswerComposer.compose(objective, out, assessed, derivation, AnswerComposer.fallbackTitle(objective))
@@ -117,7 +119,8 @@ class TurnWork(
         var held = 0
         for (p in all) {
             val basis = p.claimIds.mapNotNull { byId[it] }
-            if (basis.isEmpty() || basis.any { !it.checked || it.status == ClaimStatus.NOT_ESTABLISHED }) { held++; continue }
+            // RES-107: a proposal resting on a replaced finding has no current basis.
+            if (basis.isEmpty() || basis.any { !it.checked || it.superseded || it.status == ClaimStatus.NOT_ESTABLISHED }) { held++; continue }
             val weakest = basis.minByOrNull { statusRank(it.status) }!!
             kept += when (weakest.status) {
                 ClaimStatus.ESTABLISHED -> p

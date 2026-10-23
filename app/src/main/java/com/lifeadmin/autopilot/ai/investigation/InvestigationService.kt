@@ -391,7 +391,7 @@ class InvestigationService(
         val inherited = inv.currentClaims().filter { it.id in sentIds && it.id !in excluded }
         val seed = inv.turns.sortedBy { it.index }.flatMap { it.result?.sources.orEmpty() }.distinctBy { it.n }
         val lineage = inv.currentClaims().associate { it.id to (it.inheritedFromTurnId ?: it.turnId) }
-        val ctx = RunCtx(inv, turn, config, key, payload, SourceRegistry(seed, turn.id), TurnWork(turn.id, inherited, inv.taskId != null, lineage, excluded), startedAt)
+        val ctx = RunCtx(inv, turn, config, key, payload, SourceRegistry(seed, turn.id), TurnWork(turn.id, inherited, inv.taskId != null, lineage, excluded, consequential = turn.objective.consequential), startedAt)
         _state.value = TurnRunState.Running(
             turn.id, inv.id, inv.taskId, inv.title, config, startedAt, null, 0, config.stages.size, emptyList(), 0, seed.size, inherited.size, inherited.count { it.status == ClaimStatus.ESTABLISHED }, 0L, false,
             continuation = turn.kind != TurnKind.INITIAL,

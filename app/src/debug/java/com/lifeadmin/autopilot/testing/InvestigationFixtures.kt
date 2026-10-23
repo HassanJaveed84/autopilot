@@ -75,17 +75,17 @@ object InvestigationFixtures {
             seg(" while Pure Encapsulations O.N.E. is one capsule a day [c2].", pure),
             seg(" Independent label testing passed both [c3],", labReview),
             seg(" but whether Thorne's product currently carries NSF certification is disputed between the brand page and a user report [c4]. Which suits you depends on whether you want a single capsule and on any allergens you avoid.\n"),
-            seg("## CLAIM c1 · type=fact · load=yes · scope=Thorne Basic Nutrients 2/Day · asof=2026-10 · volatile=no · needs_input=no\nThorne Basic Nutrients 2/Day is taken as two capsules daily.\nEVIDENCE: "),
+            seg("## CLAIM c1 · type=fact · load=yes · scope=Thorne Basic Nutrients 2/Day · asof=2026-10 · volatile=no · needs_input=no\nThorne Basic Nutrients 2/Day is taken as two capsules daily.\nEVIDENCE: (kind=primary) "),
             seg("Two capsules daily; NSF Certified for Sport.", thorne),
-            seg("\n## CLAIM c2 · type=fact · load=yes · scope=Pure Encapsulations O.N.E. · asof=2026-10 · volatile=no · needs_input=no\nPure Encapsulations O.N.E. is one capsule daily and free from wheat, gluten and nuts.\nEVIDENCE: "),
+            seg("\n## CLAIM c2 · type=fact · load=yes · scope=Pure Encapsulations O.N.E. · asof=2026-10 · volatile=no · needs_input=no\nPure Encapsulations O.N.E. is one capsule daily and free from wheat, gluten and nuts.\nEVIDENCE: (kind=primary) "),
             seg("One capsule daily; free from wheat, gluten, nuts.", pure),
-            seg("\n## CLAIM c3 · type=fact · load=yes · scope=both products, 2026 testing round · asof=2026 · volatile=no · needs_input=no\nBoth products passed independent label-claim testing in 2026.\nEVIDENCE: "),
+            seg("\n## CLAIM c3 · type=fact · load=yes · scope=both products, 2026 testing round · asof=2026 · volatile=no · needs_input=no\nBoth products passed independent label-claim testing in 2026.\nEVIDENCE: (kind=primary) "),
             seg("Both products passed label-claim testing in our 2026 round.", labReview),
-            seg("\nEVIDENCE: "),
+            seg("\nEVIDENCE: (kind=primary) "),
             seg("Both products passed label-claim testing in our 2026 round.", labReviewDup),
-            seg("\n## CLAIM c4 · type=fact · load=yes · scope=Thorne Basic Nutrients 2/Day certification · asof=2026 · volatile=no · needs_input=no\nThorne Basic Nutrients 2/Day is NSF Certified for Sport.\nEVIDENCE: "),
+            seg("\n## CLAIM c4 · type=fact · load=yes · scope=Thorne Basic Nutrients 2/Day certification · asof=2026 · volatile=no · needs_input=no\nThorne Basic Nutrients 2/Day is NSF Certified for Sport.\nEVIDENCE: (kind=primary) "),
             seg("Two capsules daily; NSF Certified for Sport.", thorne),
-            seg("\nAGAINST: "),
+            seg("\nAGAINST: (kind=secondary) "),
             seg("A user says Thorne dropped NSF certification on this product in 2025.", forumPost),
             seg("\n## COMPARE criterion=Daily dose\nThorne: two capsules [c1] | Pure Encapsulations: one capsule [c2]\n"),
             seg("## COMPARE criterion=Independent testing\nThorne: passed 2026 label testing [c3] | Pure Encapsulations: passed 2026 label testing [c3]\n"),
@@ -165,7 +165,7 @@ object InvestigationFixtures {
     /** Second pass fixture: the open claim is now checked and rewritten with fresh evidence (verify stage). */
     fun multisVerifyResolvesCertification(): CallResult.Done = done(
         listOf(
-            seg("## CLAIM c4 · type=fact · load=yes · scope=Thorne Basic Nutrients 2/Day certification · asof=2026-10 · volatile=no · needs_input=no\nThorne Basic Nutrients 2/Day is NSF Certified for Sport.\nEVIDENCE: "),
+            seg("## CLAIM c4 · type=fact · load=yes · scope=Thorne Basic Nutrients 2/Day certification · asof=2026-10 · volatile=no · needs_input=no\nThorne Basic Nutrients 2/Day is NSF Certified for Sport.\nEVIDENCE: (kind=primary) "),
             seg("Basic Nutrients 2/Day: NSF Certified for Sport, certificate renewed 2026.", RawCitation("https://www.nsf.example/listing/thorne-bn", "NSF listing | Thorne Basic Nutrients", "Basic Nutrients 2/Day: NSF Certified for Sport, certificate renewed 2026.")),
             seg("\n## UNRESOLVED\n- none\n"),
         ),
@@ -221,9 +221,9 @@ object InvestigationFixtures {
 
     fun multisVerifyStillContested(): CallResult.Done = done(
         listOf(
-            seg("## CLAIM c4 · type=fact · load=yes · scope=Thorne Basic Nutrients 2/Day certification · asof=2026 · volatile=no · needs_input=no\nThorne Basic Nutrients 2/Day is NSF Certified for Sport.\nEVIDENCE: "),
+            seg("## CLAIM c4 · type=fact · load=yes · scope=Thorne Basic Nutrients 2/Day certification · asof=2026 · volatile=no · needs_input=no\nThorne Basic Nutrients 2/Day is NSF Certified for Sport.\nEVIDENCE: (kind=primary) "),
             seg("Two capsules daily; NSF Certified for Sport.", thorne),
-            seg("\nAGAINST: "),
+            seg("\nAGAINST: (kind=secondary) "),
             seg("A user says Thorne dropped NSF certification on this product in 2025.", forumPost),
             seg("\n## UNRESOLVED\n- Thorne NSF status — the brand page and the forum post still disagree; no registry page found yet\n"),
         ),
@@ -233,9 +233,9 @@ object InvestigationFixtures {
 
     fun multisReconcile(): CallResult.Done = done(
         listOf(
-            seg("## CLAIM c5 · type=fact · load=yes · scope=Thorne Basic Nutrients 2/Day certification, 2025–2026 · asof=2026-01 · volatile=no · needs_input=no\nThorne Basic Nutrients 2/Day lost its NSF Certified for Sport listing in March 2025 and regained it in January 2026.\nEVIDENCE: "),
+            seg("## CLAIM c5 · type=fact · load=yes · scope=Thorne Basic Nutrients 2/Day certification, 2025–2026 · asof=2026-01 · volatile=no · needs_input=no\nThorne Basic Nutrients 2/Day lost its NSF Certified for Sport listing in March 2025 and regained it in January 2026.\nEVIDENCE: (kind=primary) "),
             seg("Basic Nutrients 2/Day: NSF Certified for Sport, certificate lapsed March 2025, renewed January 2026.", nsfListing),
-            seg("\nEVIDENCE: "),
+            seg("\nEVIDENCE: (kind=secondary) "),
             seg("A user says Thorne dropped NSF certification on this product in 2025.", forumPost),
             seg("\n## CHANGED c4 -> c5\nNot a disagreement: the forum post described the 2025 lapse; the brand page describes the current, renewed certificate.\n"),
             seg("## UNRESOLVED\n- none\n"),

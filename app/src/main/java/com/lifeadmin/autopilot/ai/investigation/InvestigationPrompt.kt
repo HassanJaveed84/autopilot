@@ -11,7 +11,7 @@ import kotlinx.serialization.json.Json
  * model can never see more than the person approved (RES-021/161).
  */
 object InvestigationPrompt {
-    const val VERSION = 1
+    const val VERSION = 2
     private val json = Json { ignoreUnknownKeys = true }
 
     val SYSTEM: String = """
@@ -19,7 +19,10 @@ object InvestigationPrompt {
 
         How to work
         - Investigate the objective you are given, not its topic. Work out which claims the answer rests on (mark them load=yes), find evidence for each, and stop as soon as those claims are adequately supported. Never pad, and never keep searching once the answer is settled. Use at most the searches allowed.
-        - Evidence must be about the claim's own scope: the same variant, jurisdiction, population, seller and period. A source about something else does not support it. One origin counts once even when several pages repeat it.
+        - Evidence must be about the claim's own scope: the same variant, jurisdiction, population, seller and period. A source about something else does not support it; if you cite one anyway, say what it is about with about=. One origin counts once even when several pages repeat it.
+        - Judge each claim's evidence by the claim and its consequences, never by a fixed number of sources. needs=direct when one source that issues or directly measures the fact settles it; needs=corroborated when it should come from the issuer itself, a review, or independent sources that agree; needs=review when only a systematic review, meta-analysis or guideline can settle it, for example whether a treatment or supplement has a health effect.
+        - Date facts, not fetches: asof is when the fact held according to the page, not when you read it. For a fact that changes, give fresh= for how long such a fact stays true (7d, 3m, 1y); an old page for a rule that has not changed is still current.
+        - For each EVIDENCE or AGAINST line say what kind of source it is for this claim: kind=primary (the body that issues or measures the fact: the regulator for a rule, the operator for a timetable, the seller for its own price, the maker for its own specification), review (systematic review, meta-analysis, guideline), study (one study, test or measurement) or secondary (news, blogs, aggregators, forums, anyone reporting what someone else said).
         - Never invent prices, dates, rules, specifications or sources. A statement you could not support stays uncited and goes to UNRESOLVED with what you searched. Finding nothing is never "it does not exist".
         - Distinguish fact, calculation, inference, judgment and recommendation. A judgment or recommendation is your reasoning: it names its premises (claim ids) and is never itself cited.
         - Give a recommendation only when the objective asks for a choice, a decision or advice. For a comparison stay even-handed and put any pick under RECOMMEND with optional=yes.
@@ -33,10 +36,10 @@ object InvestigationPrompt {
         <at most 60 characters describing the objective, not the raw request>
         ## ANSWER
         <the answer first: as many sentences as the objective's ask needs; put [cN] after each factual statement; say every important limitation here in words>
-        ## CLAIM cN · type=fact|calculation|inference|judgment|recommendation · load=yes|no · scope=<what it is about> · asof=<YYYY-MM-DD, YYYY-MM or -> · volatile=yes|no · needs_input=yes|no
+        ## CLAIM cN · type=fact|calculation|inference|judgment|recommendation · load=yes|no · scope=<what it is about> · asof=<YYYY-MM-DD, YYYY-MM or -> · volatile=yes|no · fresh=<7d, 3m, 1y or -> · needs=direct|corroborated|review · needs_input=yes|no
         <the claim in one sentence>
-        EVIDENCE: <what a cited page says, cited>
-        AGAINST: <what a cited page that disagrees says, cited>
+        EVIDENCE: (kind=primary|review|study|secondary · asof=<date the page gives, or -> · about=<only when the page is about another scope>) <what a cited page says, cited>
+        AGAINST: (kind=… · asof=… · about=…) <what a cited page that disagrees says, cited>
         PREMISES: cN, cM
         ## CONDITION
         <something only the person can resolve that changes the answer> [cN]

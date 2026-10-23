@@ -724,11 +724,11 @@ private fun EvidenceSheet(claim: Claim, r: TurnResult, onSource: (Int) -> Unit, 
             }
             if (claim.support.isNotEmpty()) {
                 Text("SUPPORTING", style = MaterialTheme.typography.labelSmall, color = c.ink2, modifier = Modifier.padding(top = 6.dp))
-                claim.support.forEach { e -> EvidenceRow(e.excerpt, title(e.sourceN), e.sourceN, if (e.pointerOnly) "Points to a source cited elsewhere; it doesn't verify this." else e.scopeNote.ifBlank { null }, onSource) }
+                claim.support.forEach { e -> EvidenceRow(e.excerpt, title(e.sourceN), e.sourceN, if (e.pointerOnly) "Points to a source cited elsewhere; it doesn't verify this." else e.scopeNote.ifBlank { e.asOf?.let { d -> "As of $d" } }, onSource) }
             }
             if (claim.against.isNotEmpty()) {
                 Text("POINTING THE OTHER WAY", style = MaterialTheme.typography.labelSmall, color = c.ink2, modifier = Modifier.padding(top = 6.dp))
-                claim.against.forEach { e -> EvidenceRow(e.excerpt, title(e.sourceN), e.sourceN, null, onSource) }
+                claim.against.forEach { e -> EvidenceRow(e.excerpt, title(e.sourceN), e.sourceN, e.scopeNote.ifBlank { e.asOf?.let { d -> "As of $d" } }, onSource) }
             }
             if (claim.support.isEmpty() && claim.against.isEmpty() && !claim.type.derived) Text(if (claim.dependsOnUser) "This depends on your situation or choice; no source can settle it." else "No source was found for this. That doesn't make it false.", style = MaterialTheme.typography.bodyMedium, color = c.ink2)
         }
