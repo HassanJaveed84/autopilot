@@ -40,10 +40,11 @@ class AiSettingsViewModel(
     private val keyStore: ApiKeyStore,
     private val service: AiPlanningService,
     private val clock: AppClock,
-    private val research: com.lifeadmin.autopilot.ai.research.ResearchService? = null,
+    private val research: com.lifeadmin.autopilot.ai.investigation.InvestigationService? = null,
     private val briefs: com.lifeadmin.autopilot.data.repository.ResearchRepository? = null,
-    private val deep: com.lifeadmin.autopilot.ai.research2.DeepResearchService? = null,
-    private val sessions: com.lifeadmin.autopilot.ai.research2.ResearchSessionStore? = null,
+    private val investigations: com.lifeadmin.autopilot.data.repository.InvestigationRepository? = null,
+    /** Drops the cached research HTTP client that still holds an old key. */
+    private val forgetResearchClient: () -> Unit = {},
 ) : ViewModel() {
     private val _state = MutableStateFlow(AiSettingsState())
     val state: StateFlow<AiSettingsState> = _state.asStateFlow()
@@ -58,7 +59,7 @@ class AiSettingsViewModel(
                 loading = false, enabled = s.aiEnabled, consentAt = s.aiConsentAt, hasKey = has, keyHint = hint,
                 model = AiConfig.modelOrDefault(s.aiModel), requestsToday = service.requestsToday(),
                 researchToday = research?.requestsToday(s) ?: 0,
-                briefCount = (briefs?.getAll()?.size ?: 0) + (sessions?.getAll()?.size ?: 0),
+                briefCount = (briefs?.getAll()?.size ?: 0) + (investigations?.getAll()?.size ?: 0),
                 researchExplainerAccepted = s.researchExplainerVersion >= com.lifeadmin.autopilot.ai.research.ResearchConfig.EXPLAINER_VERSION,
             )
         }
@@ -66,8 +67,9 @@ class AiSettingsViewModel(
 
     /** "Delete all research": every saved brief plus the one-time note acceptance. Tasks are untouched. */
     fun deleteAllResearch() = viewModelScope.launch {
-        research?.deleteAllResearch()
-        deep?.deleteAll()
+        research?.deleteAll()
+        briefs?.deleteAll()
+        settings.update { it.copy(researchExplainerVersion = 0) }
         _state.update { it.copy(message = "All research results were deleted. Your tasks are unchanged.") }
         refresh()
     }
@@ -103,7 +105,7 @@ class AiSettingsViewModel(
 
     fun deleteKey() = viewModelScope.launch {
         withContext(Dispatchers.IO) { keyStore.delete() }
-        research?.forgetCredentials()
+        forgetResearchClient()
         _state.update { it.copy(testResult = null, message = "API key deleted from this device") }
         refresh()
     }
@@ -121,7 +123,7 @@ class AiSettingsViewModel(
 
     fun deleteAllAiData() = viewModelScope.launch {
         service.deleteAllAiData()
-        research?.forgetCredentials()
+        forgetResearchClient()
         _state.update { it.copy(testResult = null, message = "AI settings and the API key were deleted. Your tasks are unchanged.") }
         refresh()
     }

@@ -97,7 +97,6 @@ fun ResearchSessionScreen(
     zone: ZoneId,
     onBack: () -> Unit,
     onReview: (setId: String) -> Unit,
-    onContinueStarted: (runId: String) -> Unit,
     onOpenUsage: () -> Unit,
 ) {
     val s by viewModel.state.collectAsStateWithLifecycle()
@@ -129,9 +128,9 @@ fun ResearchSessionScreen(
                             val n = s.pendingProposals
                             ButtonPair(
                                 secondary = { m -> SecondaryButton("Done", onClick = onBack, modifier = m.testTag("brief_done")) },
-                                primary = { m -> PrimaryButton(if (n == 0) "Nothing to add" else "Review $n ${if (n == 1) "change" else "changes"}", onClick = { viewModel.openReview(onReview) }, enabled = n > 0 && !terminal && s.details != null && !s.running, modifier = m.testTag("brief_review")) },
+                                primary = { m -> PrimaryButton(if (n == 0) "Nothing to add" else "Review $n ${if (n == 1) "change" else "changes"}", onClick = { viewModel.openReview(onReview) }, enabled = n > 0 && !terminal && s.details != null, modifier = m.testTag("brief_review")) },
                             )
-                            Text(if (terminal) "This task is done. Reopen it to add proposals." else if (s.running) "Continuing research — proposals update when it finishes." else "Saved to this task's research. Your task hasn't changed.", style = MaterialTheme.typography.bodySmall, color = c.ink3, modifier = Modifier.padding(top = 8.dp))
+                            Text(if (terminal) "This task is done. Reopen it to add proposals." else "Saved with the earlier research format. To follow up, ask in its research thread.", style = MaterialTheme.typography.bodySmall, color = c.ink3, modifier = Modifier.padding(top = 8.dp))
                         }
                     }
                 }
@@ -155,8 +154,7 @@ fun ResearchSessionScreen(
                 LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(padding).testTag("brief_list"), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 32.dp)) {
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            OutcomeBanner(content.outcome, affected, latest?.technical, onContinue = if (!s.running) viewModel::openContinue else null)
-                            if (s.running) ResearchBanner("Continuing research now", "New findings merge into this result when the run finishes.", icon = AutopilotIcons.Research, tag = "brief_running", action = { LinkButton("Watch progress", onClick = { s.runId?.let(onContinueStarted) }, modifier = Modifier.padding(top = 4.dp)) })
+                            OutcomeBanner(content.outcome, affected, latest?.technical, onContinue = null)
                             if (s.isStale) ResearchBanner("Researched ${Format.relativeLower(session.updatedAt, s.now, zone)}", "Prices, stock and rules may have changed since.", warn = true, tag = "brief_stale")
                             if (s.online == false) ResearchBanner("You're offline", "This saved result is fully readable; links open once you're back online.", icon = AutopilotIcons.WifiOff, tag = "brief_offline")
                             if (sources.none { it.citedCount > 0 }) ResearchBanner("Nothing here could be verified", "The answer came back without any source citations, so nothing below counts as a fact and no steps are pre-selected.", warn = true, icon = AutopilotIcons.Warn, tag = "brief_unverified")
@@ -240,12 +238,6 @@ fun ResearchSessionScreen(
                         items(content.unresolved) { u -> Text("• ${u.topic} — ${u.why}", style = MaterialTheme.typography.bodyMedium, color = c.ink2, modifier = Modifier.padding(bottom = 6.dp)) }
                     }
                     item {
-                        if (!s.running && (content.outcome != SessionOutcome.COMPLETE || open.isNotEmpty() || content.unresolved.isNotEmpty())) {
-                            Spacer(Modifier.heightIn(min = 16.dp))
-                            ContinueCard(open.map { it.label } + content.unresolved.map { it.topic }.take(3), s.continueConfig.estimate(), onContinue = viewModel::openContinue)
-                        }
-                    }
-                    item {
                         BriefSectionTitle("Sources", count = sources.size)
                         if (sources.isEmpty()) Text("No web pages were cited or read.", style = MaterialTheme.typography.bodyMedium, color = c.ink2)
                     }
@@ -288,7 +280,6 @@ fun ResearchSessionScreen(
                     }
                 }
                 s.candidateSheet?.let { id -> content.body.candidates.firstOrNull { it.id == id }?.let { cd -> CandidateSheet(cd, content, s, zone, viewModel) } }
-                if (s.continueSheet) ContinueSheet(s, viewModel, onContinueStarted)
             }
         }
     }
@@ -358,46 +349,6 @@ private fun CandidateSheet(cd: com.lifeadmin.autopilot.ai.research2.Candidate, c
                 }
             }
             Text("Facts come from cited pages; Judgment lines are Claude's view and say so.", style = MaterialTheme.typography.bodySmall, color = c.ink3)
-        }
-    }
-}
-
-@Composable
-private fun ContinueSheet(s: Session2Ui, viewModel: Session2ViewModel, onStarted: (String) -> Unit) {
-    val c = AutopilotTheme.colors
-    val content = s.session!!.content
-    val cfg = s.continueConfig
-    val est = cfg.estimate()
-    val (soFar, partial) = sessionEstimate(content)
-    AutopilotSheet(
-        title = "Continue researching", onDismiss = viewModel::closeContinue,
-        footer = {
-            PrimaryButton("Continue · ${cfg.mode.label} · ${cfg.searchBudget} searches", onClick = { viewModel.continueResearch(onStarted) }, enabled = s.continueFocus.isNotEmpty() || s.continueNote.isNotBlank() || true, modifier = Modifier.fillMaxWidth().testTag("continue_go"))
-            Text((est?.let { "${UsdEstimate.formatRange(it.lowUsd, it.highUsd)} estimate" } ?: "No price table") + " · this result so far ${if (partial) "≥ " else "~"}${UsdEstimate.format(soFar.usd)}. Billed to your key when you tap.", style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(top = 8.dp).testTag("continue_estimate"))
-        },
-    ) {
-        Column(Modifier.fillMaxWidth().padding(bottom = 12.dp).testTag("continue_sheet"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Picks up from this result — the sources already found keep their numbers and nothing is searched again.", style = MaterialTheme.typography.bodyMedium, color = c.ink2)
-            s.continueError?.let { ResearchBanner(it.headline, it.message, warn = true, icon = AutopilotIcons.Warn, tag = "continue_error") }
-            Text("Focus on", style = MaterialTheme.typography.titleSmall, color = c.ink)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                content.requirements.filter { it.type != RequirementType.OUTPUT }.forEach { r ->
-                    val st = content.coverageOf(r.id).status
-                    ChoiceChip(r.label + if (st == RequirementStatus.NOT_FOUND) " · not found" else "", selected = r.id in s.continueFocus, onClick = { viewModel.toggleFocus(r.id) }, modifier = Modifier.testTag("focus_${r.id}"))
-                }
-            }
-            OutlinedTextField(value = s.continueNote, onValueChange = viewModel::setContinueNote, placeholder = { Text("Anything to add? e.g. try the brand site directly", color = c.ink3) }, modifier = Modifier.fillMaxWidth().testTag("continue_note"), shape = RoundedCornerShape(14.dp), colors = fieldColors(), maxLines = 3)
-            Text("How deep", style = MaterialTheme.typography.titleSmall, color = c.ink)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                ResearchModes.PRESETS.forEach { p -> ChoiceChip("${p.mode.label} · ${p.searches}", selected = s.continueMode == p.mode, onClick = { viewModel.setContinueMode(p.mode) }, modifier = Modifier.testTag("continue_mode_${p.mode.name.lowercase()}")) }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                RoundIconButton(AutopilotIcons.Minus, contentDescription = "Fewer searches", onClick = { viewModel.setContinueSearches(cfg.searchBudget - 1) })
-                Text("${cfg.searchBudget} searches max · ${AiConfig.label(cfg.model)}", style = MaterialTheme.typography.bodyMedium, color = c.ink, modifier = Modifier.testTag("continue_searches"))
-                RoundIconButton(AutopilotIcons.Plus, contentDescription = "More searches", onClick = { viewModel.setContinueSearches(cfg.searchBudget + 1) })
-            }
-            if (cfg.spendLimitCents != null) Text("Stops near ${UsdEstimate.format(cfg.spendLimitCents / 100.0)} (your last limit). Change it on the research screen.", style = MaterialTheme.typography.bodySmall, color = c.ink3)
-            if (cfg.mode == ResearchMode.DEEP) Text("Deep adds a cross-check and a final write-up call.", style = MaterialTheme.typography.bodySmall, color = c.ink3)
         }
     }
 }

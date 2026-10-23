@@ -62,6 +62,8 @@ fun ScreenHeader(
     modifier: Modifier = Modifier,
     showMark: Boolean = false,
     healthDot: Boolean = false,
+    /** Standalone research (M4): opens the research history; null hides the button. */
+    onOpenResearch: (() -> Unit)? = null,
 ) {
     val c = AutopilotTheme.colors
     Row(modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -72,6 +74,7 @@ fun ScreenHeader(
             Spacer(Modifier.width(10.dp))
         }
         Text(dateText, style = MaterialTheme.typography.titleSmall, color = c.ink2, modifier = Modifier.weight(1f).testTag("header_date"), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (onOpenResearch != null) RoundIconButton(AutopilotIcons.Research, contentDescription = "Research", onClick = onOpenResearch, modifier = Modifier.testTag("nav_research"))
         Box {
             RoundIconButton(
                 AutopilotIcons.Sliders,

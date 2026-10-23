@@ -1,5 +1,7 @@
 package com.lifeadmin.autopilot.ai.research
 
+import com.lifeadmin.autopilot.ai.AiAvailability
+
 import com.lifeadmin.autopilot.ai.PlanningError
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -313,3 +315,30 @@ data class BriefContent(
 
 @Serializable
 data class AppliedMove(val moveId: String, val atEpochMs: Long, val stepTitle: String? = null, val stepId: String? = null)
+
+/** Everything the authorization surface needs to decide whether research can start, computed without any request. */
+data class ResearchGate(
+    val availability: AiAvailability,
+    val explainerAccepted: Boolean,
+    val requestsToday: Int,
+    /** null = unknown; the request is then attempted. */
+    val online: Boolean?,
+    /** Daily cap this gate enforces (M3A requests or M3A.2 sessions). */
+    val cap: Int = ResearchConfig.MAX_REQUESTS_PER_DAY,
+) {
+    val model: String? get() = (availability as? AiAvailability.Ready)?.model
+    val remaining: Int get() = (cap - requestsToday).coerceAtLeast(0)
+
+    /** The first reason research cannot start right now, or null. */
+    val blocker: ResearchError?
+        get() = when (val a = availability) {
+            AiAvailability.Off -> ResearchError.Disabled
+            is AiAvailability.NeedsSetup -> if (a.needsConsent) ResearchError.NoConsent else ResearchError.NoApiKey
+            is AiAvailability.Ready -> when {
+                !explainerAccepted -> ResearchError.NoResearchConsent
+                remaining == 0 -> ResearchError.DailyLimit
+                online == false -> ResearchError.Offline
+                else -> null
+            }
+        }
+}

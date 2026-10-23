@@ -251,7 +251,7 @@ private fun DetailContent(
     provenanceOpen?.let { id ->
         val record = state.provenance[id]
         if (record == null) provenanceOpen = null
-        else com.lifeadmin.autopilot.ui.review.ProvenanceSheet(record, zone, onDismiss = { provenanceOpen = null }, onOpenInvestigation = research?.onOpenSession)
+        else com.lifeadmin.autopilot.ui.review.ProvenanceSheet(record, zone, onDismiss = { provenanceOpen = null }, onOpenInvestigation = research?.onOpenInvestigation)
     }
     val summary = TaskSummary(task, d.steps.count { it.isDone }, d.steps.size, d.steps.sortedBy { it.sortOrder }.firstOrNull { !it.isDone }?.title, d.nextReminder, d.policy)
     val pill = TaskPresentation.pill(summary, now, zone)
@@ -314,7 +314,7 @@ private fun DetailContent(
         item { StepsCard(d, vm, state.provenance, onShowProvenance = { provenanceOpen = it }) }
         item { DeadlineAndPriorityCard(d, now, zone, vm, openDialog) }
         if (onMoveForward != null && !task.status.isTerminal) item { AiCard(aiEnabled, onMoveForward, onOpenAiSettings, research = research, researching = state.researching) }
-        if (research != null && (state.briefs.isNotEmpty() || state.sessions.isNotEmpty() || state.researching)) item { ResearchCard(state, now, zone, research) }
+        if (research != null && (state.briefs.isNotEmpty() || state.investigations.isNotEmpty() || state.researching)) item { ResearchCard(state, now, zone, research) }
         item {
             LinkButton(if (showHistory) "Hide history" else "History · ${d.events.size} entries", onClick = { showHistory = !showHistory }, modifier = Modifier.padding(top = 12.dp).testTag("detail_history_toggle"))
         }
@@ -570,10 +570,8 @@ data class ResearchNav(
     val onResearch: () -> Unit,
     val onOpenBrief: (briefId: String) -> Unit,
     val onOpenHistory: () -> Unit,
-    val onOpenRun: (runId: String, question: String) -> Unit,
-    /** M3A.2 sessions and runs. */
-    val onOpenSession: (sessionId: String) -> Unit = {},
-    val onOpenDeepRun: (sessionId: String, runId: String) -> Unit = { _, _ -> },
+    /** Investigation Threads (M4); a running turn opens its thread. */
+    val onOpenInvestigation: (investigationId: String) -> Unit = {},
 )
 
 /** "Move this forward": two ways Claude can help. Nothing changes until the user approves. */
@@ -640,55 +638,42 @@ private fun HelpTile(icon: ImageVector, title: String, body: String, modifier: M
 private fun ResearchCard(state: TaskDetailUiState, now: Instant, zone: ZoneId, nav: ResearchNav) {
     val c = AutopilotTheme.colors
     val latestBrief = state.briefs.firstOrNull()
-    val latestSession = state.sessions.firstOrNull()
-    // Show whichever is newer: an M3A.2 session or a legacy brief.
-    val latest = if (latestSession != null && (latestBrief == null || latestSession.updatedAt >= latestBrief.createdAt)) null else latestBrief
-    val total = state.briefs.size + state.sessions.size
+    val latestThread = state.investigations.firstOrNull()
+    // Show whichever is newer: an Investigation Thread or a legacy M3A brief.
+    val latest = if (latestThread != null && (latestBrief == null || latestThread.updatedAtMs >= latestBrief.createdAt.toEpochMilli())) null else latestBrief
+    val total = state.briefs.size + state.investigations.size
     SurfaceCard(radius = 20.dp, contentPadding = PaddingValues(0.dp), modifier = Modifier.padding(top = 12.dp).testTag("detail_research_card")) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Research", style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp), color = c.ink, modifier = Modifier.weight(1f).semantics { heading() })
             LinkButton(if (total > 1) "All $total" else "History", onClick = nav.onOpenHistory, modifier = Modifier.padding(end = 8.dp).testTag("detail_research_history"))
         }
-        if (state.deepRunId != null && state.deepSessionId != null) {
+        if (state.threadRunId != null && state.threadInvestigationId != null) {
             GroupDivider()
             Row(
-                Modifier.fillMaxWidth().clickable(role = Role.Button) { nav.onOpenDeepRun(state.deepSessionId, state.deepRunId) }.padding(16.dp).testTag("detail_research_running"),
+                Modifier.fillMaxWidth().clickable(role = Role.Button) { nav.onOpenInvestigation(state.threadInvestigationId) }.padding(16.dp).testTag("detail_research_running"),
                 horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconCircle(AutopilotIcons.Research, tint = c.route, background = c.routeSoft, size = 36.dp)
                 Column(Modifier.weight(1f)) {
                     Text("Researching now…", style = MaterialTheme.typography.bodyLarge, color = c.ink)
-                    state.deepTitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = c.ink2, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
+                    state.threadTitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = c.ink2, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
                 }
                 Icon(AutopilotIcons.ChevronRight, contentDescription = null, tint = c.ink3)
             }
         }
-        if (latestSession != null && latest == null) {
+        if (latestThread != null && latest == null) {
             GroupDivider()
-            val content = latestSession.content
-            Column(Modifier.fillMaxWidth().clickable(role = Role.Button) { nav.onOpenSession(latestSession.id) }.padding(16.dp).testTag("detail_research_latest"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            val result = latestThread.latestResult
+            val searches = latestThread.turns.sumOf { it.usage.webSearches }
+            val sources = result?.sources?.count { it.citedCount > 0 } ?: 0
+            Column(Modifier.fillMaxWidth().clickable(role = Role.Button) { nav.onOpenInvestigation(latestThread.id) }.padding(16.dp).testTag("detail_research_latest"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    ("Researched " + Format.relative(latestSession.updatedAt, now, zone) + " · ${content.searchesTotal} ${if (content.searchesTotal == 1) "search" else "searches"} · ${content.sources.size} ${if (content.sources.size == 1) "source" else "sources"}" +
-                        (if (latestSession.isStale(now)) " · may be out of date" else "")).uppercase(),
+                    ("Researched " + Format.relative(Instant.ofEpochMilli(latestThread.updatedAtMs), now, zone) + " · ${latestThread.turns.size} ${if (latestThread.turns.size == 1) "turn" else "turns"}" +
+                        (if (searches > 0) " · $searches ${if (searches == 1) "search" else "searches"}" else "") + (if (sources > 0) " · $sources ${if (sources == 1) "source" else "sources"}" else "")).uppercase(),
                     style = com.lifeadmin.autopilot.ui.theme.TimeTextStyle.copy(fontSize = 12.sp, lineHeight = 16.sp), color = c.ink2,
                 )
-                Text(content.title, style = MaterialTheme.typography.bodyLarge, color = c.ink, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                Text(content.outcome.label + " · " + com.lifeadmin.autopilot.ai.research2.SessionAssembler.coverageLine(content).ifBlank { "${content.proposals.size} proposals" }, style = MaterialTheme.typography.bodySmall, color = if (content.outcome.success) c.ink2 else c.onSignalSoft, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                if (latestSession.applied.isNotEmpty()) Text("${latestSession.applied.size} applied to this task", style = MaterialTheme.typography.labelSmall, color = c.onDoneSoft)
-            }
-        }
-        if (state.researching && state.researchRunId != null && state.deepRunId == null) {
-            GroupDivider()
-            Row(
-                Modifier.fillMaxWidth().clickable(role = Role.Button) { nav.onOpenRun(state.researchRunId, state.researchQuestion.orEmpty()) }.padding(16.dp).testTag("detail_research_running"),
-                horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconCircle(AutopilotIcons.Research, tint = c.route, background = c.routeSoft, size = 36.dp)
-                Column(Modifier.weight(1f)) {
-                    Text("Researching now…", style = MaterialTheme.typography.bodyLarge, color = c.ink)
-                    state.researchQuestion?.let { Text("“$it”", style = MaterialTheme.typography.bodySmall, color = c.ink2, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
-                }
-                Icon(AutopilotIcons.ChevronRight, contentDescription = null, tint = c.ink3)
+                Text(latestThread.title, style = MaterialTheme.typography.bodyLarge, color = c.ink, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                result?.answer?.stateLine?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = c.ink2, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
             }
         }
         if (latest != null) {

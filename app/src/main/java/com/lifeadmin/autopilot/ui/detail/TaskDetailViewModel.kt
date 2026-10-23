@@ -21,7 +21,6 @@ import com.lifeadmin.autopilot.domain.usecase.TaskActions
 import com.lifeadmin.autopilot.ui.tickerFlow
 import com.lifeadmin.autopilot.ui.userMessage
 import kotlinx.coroutines.channels.Channel
-import com.lifeadmin.autopilot.ai.research.ResearchRunState
 import com.lifeadmin.autopilot.data.repository.ResearchBrief
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -49,14 +48,12 @@ data class TaskDetailUiState(
     val briefs: List<ResearchBrief> = emptyList(),
     /** True while a research run for this task is in flight. */
     val researching: Boolean = false,
-    val researchRunId: String? = null,
-    val researchQuestion: String? = null,
-    /** Saved M3A.2 research sessions for this task, newest first. */
-    val sessions: List<com.lifeadmin.autopilot.ai.research2.ResearchSession> = emptyList(),
-    /** M3A.2 run in flight for this task (the running row opens the investigation screen). */
-    val deepRunId: String? = null,
-    val deepSessionId: String? = null,
-    val deepTitle: String? = null,
+    /** Investigation Threads linked to this task, newest first (M4; legacy M3A.2 sessions included). */
+    val investigations: List<com.lifeadmin.autopilot.ai.investigation.Investigation> = emptyList(),
+    /** Investigation turn in flight for this task (the running row opens its thread). */
+    val threadRunId: String? = null,
+    val threadInvestigationId: String? = null,
+    val threadTitle: String? = null,
     /** Proposal sets for this task (M2); open ones show a "waiting for review" banner each. */
     val proposalSets: List<com.lifeadmin.autopilot.domain.proposal.ProposalSet> = emptyList(),
     /** Provenance records by id for the "where did this come from" marker on applied content. */
@@ -81,9 +78,8 @@ class TaskDetailViewModel(
     private val zoneProvider: ZoneProvider,
     private val hintDismissals: HintDismissals = InMemoryHintDismissals(),
     researchBriefs: Flow<List<ResearchBrief>> = flowOf(emptyList()),
-    researchRun: Flow<ResearchRunState> = flowOf(ResearchRunState.Idle),
-    researchSessions: Flow<List<com.lifeadmin.autopilot.ai.research2.ResearchSession>> = flowOf(emptyList()),
-    deepRun: Flow<com.lifeadmin.autopilot.ai.research2.DeepRunState> = flowOf(com.lifeadmin.autopilot.ai.research2.DeepRunState.Idle),
+    investigations: Flow<List<com.lifeadmin.autopilot.ai.investigation.Investigation>> = flowOf(emptyList()),
+    threadRun: Flow<com.lifeadmin.autopilot.ai.investigation.TurnRunState> = flowOf(com.lifeadmin.autopilot.ai.investigation.TurnRunState.Idle),
     proposalSets: Flow<List<com.lifeadmin.autopilot.domain.proposal.ProposalSet>> = flowOf(emptyList()),
     provenance: Flow<List<com.lifeadmin.autopilot.domain.proposal.ProvenanceRecord>> = flowOf(emptyList()),
 ) : ViewModel() {
@@ -93,24 +89,23 @@ class TaskDetailViewModel(
     val eventFlow: Flow<DetailEvent> = events.receiveAsFlow()
 
     private data class ResearchBits(
-        val briefs: List<ResearchBrief>, val run: ResearchRunState, val sessions: List<com.lifeadmin.autopilot.ai.research2.ResearchSession>, val deep: com.lifeadmin.autopilot.ai.research2.DeepRunState,
+        val briefs: List<ResearchBrief>, val investigations: List<com.lifeadmin.autopilot.ai.investigation.Investigation>, val thread: com.lifeadmin.autopilot.ai.investigation.TurnRunState,
         val sets: List<com.lifeadmin.autopilot.domain.proposal.ProposalSet> = emptyList(), val provenance: List<com.lifeadmin.autopilot.domain.proposal.ProvenanceRecord> = emptyList(),
     )
     private val proposals = combine(proposalSets.catch { emit(emptyList()) }, provenance.catch { emit(emptyList()) }) { a, b -> a to b }
-    private val research = combine(researchBriefs.catch { emit(emptyList()) }, researchRun, researchSessions.catch { emit(emptyList()) }, deepRun, proposals) { b, r, s2, d, (sets, prov) -> ResearchBits(b, r, s2, d, sets, prov) }
+    private val research = combine(researchBriefs.catch { emit(emptyList()) }, investigations.catch { emit(emptyList()) }, threadRun, proposals) { b, s2, d, (sets, prov) -> ResearchBits(b, s2, d, sets, prov) }
 
     val state: StateFlow<TaskDetailUiState> = combine(
         repository.observeDetails(taskId), settings.settings, tickerFlow(clock), dismissedTick, research,
     ) { d, s, now, _, bits ->
-        val (briefs, run, sessions, deep) = bits
+        val (briefs, threads, thread) = bits
         val zone = zoneProvider.current()
         val hint = d?.let { StallDetector.detect(it, now, zone) }?.takeUnless { hintDismissals.isDismissed(taskId, it.signature) }
-        val running = (run as? ResearchRunState.Running)?.takeIf { it.taskId == taskId }
-        val deepRunning = (deep as? com.lifeadmin.autopilot.ai.research2.DeepRunState.Running)?.takeIf { it.taskId == taskId }
+        val threadRunning = (thread as? com.lifeadmin.autopilot.ai.investigation.TurnRunState.Running)?.takeIf { it.taskId == taskId }
         TaskDetailUiState(
             loading = false, missing = d == null, details = d, settings = s, now = now, zone = zone, stallHint = hint,
-            briefs = briefs, researching = running != null || deepRunning != null, researchRunId = running?.runId, researchQuestion = running?.question,
-            sessions = sessions, deepRunId = deepRunning?.runId, deepSessionId = deepRunning?.sessionId, deepTitle = deepRunning?.title,
+            briefs = briefs, researching = threadRunning != null,
+            investigations = threads, threadRunId = threadRunning?.turnId, threadInvestigationId = threadRunning?.investigationId, threadTitle = threadRunning?.title,
             proposalSets = bits.sets, provenance = bits.provenance.associateBy { it.id },
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TaskDetailUiState())
