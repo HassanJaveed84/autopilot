@@ -35,7 +35,7 @@ import com.lifeadmin.autopilot.testing.FakeZoneProvider
 import com.lifeadmin.autopilot.testing.InvestigationFixtures
 import com.lifeadmin.autopilot.testing.SequentialIds
 import com.lifeadmin.autopilot.testing.at
-import com.lifeadmin.autopilot.testing.inMemoryDatabase
+import com.lifeadmin.autopilot.testing.fileDatabase
 import com.lifeadmin.autopilot.ui.theme.LifeAdminTheme
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
@@ -48,6 +48,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+
+/** Robolectric under full-suite load can take several seconds per recomposition. */
+private const val WAIT_MS = 20_000L
 
 /**
  * The Investigation Thread on the real shell with a scripted provider (M4): question → objective →
@@ -68,7 +71,7 @@ class InvestigationThreadUiTest {
     private fun launch(title: String = "Renew passport", openTask: Boolean = true, seed: suspend () -> Unit = {}) {
         container = AppContainer(
             context = ApplicationProvider.getApplicationContext<Context>(), clock = clock, zoneProvider = FakeZoneProvider(CHICAGO), ids = SequentialIds("ui"),
-            database = inMemoryDatabase(),
+            database = fileDatabase("investigation-ui.db"),
             settingsRepository = InMemorySettingsRepository(AppSettings(onboardingCompleted = true, aiEnabled = true, aiConsentAt = at(CHICAGO, 2026, 10, 1, 9, 0), researchExplainerVersion = ResearchConfig.EXPLAINER_VERSION)),
             apiKeyStore = InMemoryApiKeyStore(FAKE_KEY), researchProvider = FakeResearchProvider(), researchCalls = provider, networkStatus = { true },
         )
@@ -88,8 +91,23 @@ class InvestigationThreadUiTest {
 
     @After fun tearDown() { runCatching { container.database.close() } }
 
-    private fun waitFor(tag: String) = compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
-    private fun gone(tag: String) = compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNodes().isEmpty() }
+    private fun waitFor(tag: String) = compose.waitUntil(WAIT_MS) { compose.onAllNodes(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+    private fun gone(tag: String) = compose.waitUntil(WAIT_MS) { compose.onAllNodes(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNodes().isEmpty() }
+
+    /**
+     * Waits on service or database state rather than on the UI. Compose's waitUntil only runs the
+     * Robolectric main looper while there is UI work, so a coroutine resuming on Main after a
+     * database hop can sit unrun; this pumps the looper explicitly.
+     */
+    private fun until(what: String, condition: () -> Boolean) {
+        val deadline = System.currentTimeMillis() + WAIT_MS
+        while (!condition()) {
+            if (System.currentTimeMillis() > deadline) throw AssertionError("Timed out waiting for $what")
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            Thread.sleep(10)
+        }
+        compose.waitForIdle()
+    }
     private fun scrollTo(tag: String, via: String = tag): SemanticsNodeInteraction {
         // A composed node scrolls itself into view; the list-level search is only for items not composed yet.
         fun composed(t: String) = compose.onAllNodes(hasTestTag(t), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
@@ -123,7 +141,7 @@ class InvestigationThreadUiTest {
         assertTrue(hasTextIn("objective_text", "Work out how to"))
         // Switch the notes off: they must not be in the payload, and the card says so.
         scrollTo("ctx_notes", via = "auth_context").performClick()
-        compose.waitUntil(5_000) { container.investigationService.state.value is com.lifeadmin.autopilot.ai.investigation.TurnRunState.Idle }
+        until("the finished run to be dismissed") { container.investigationService.state.value is com.lifeadmin.autopilot.ai.investigation.TurnRunState.Idle }
         scrollTo("auth_payload").performClick()
         waitFor("payload_json")
         assertTrue(hasTextIn("payload_sheet", "Not sent: Task notes"))
@@ -192,9 +210,12 @@ class InvestigationThreadUiTest {
         scrollTo("depth_standard").performClick()
         provider.gate = CompletableDeferred(); provider.gateCall = 2
         provider.enqueue(InvestigationFixtures.unverifiableNothingFound())
-        compose.onNodeWithTag("auth_start").performClick()
-        waitFor("research_progress")
-        compose.waitUntil(10_000) { provider.calls.size == 2 && (container.investigationService.state.value as? com.lifeadmin.autopilot.ai.investigation.TurnRunState.Running)?.checkpointed == true }
+        compose.waitForIdle()
+        compose.onNodeWithTag("auth_start").assertIsEnabled().performClick()
+        // Under full-suite load the run can start before the list recomposes; wait on the service, then find the card.
+        until("the run started") { container.investigationService.state.value is com.lifeadmin.autopilot.ai.investigation.TurnRunState.Running }
+        scrollTo("research_progress")
+        until("the second call and a checkpoint") { provider.calls.size == 2 && (container.investigationService.state.value as? com.lifeadmin.autopilot.ai.investigation.TurnRunState.Running)?.checkpointed == true }
         compose.onNodeWithTag("research_stop").performClick()
         waitFor("stop_keep")
         compose.onNodeWithTag("stop_keep").performClick()
@@ -227,7 +248,7 @@ class InvestigationThreadUiTest {
         provider.enqueue(InvestigationFixtures.multisVerifyResolvesCertification())
         compose.onNodeWithTag("auth_start").performClick()
         waitFor("turn_1")
-        compose.waitUntil(10_000) { thread().turns.size == 2 && thread().turns[1].state == TurnState.DONE }
+        until("the follow-up turn to finish") { thread().turns.size == 2 && thread().turns[1].state == TurnState.DONE }
         assertEquals(2, provider.calls.size)
         assertFalse("the excluded finding is not in the follow-up request", provider.calls[1].user.contains("- c2 ·"))
         assertTrue(provider.calls[1].user.contains("- c4 ·"))
@@ -261,7 +282,7 @@ class InvestigationThreadLargeTextUiTest {
 
     @After fun tearDown() { runCatching { container.database.close() } }
 
-    private fun waitFor(tag: String) = compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+    private fun waitFor(tag: String) = compose.waitUntil(WAIT_MS) { compose.onAllNodes(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
     private fun scrollTo(tag: String, via: String = tag): SemanticsNodeInteraction {
         // A composed node scrolls itself into view; the list-level search is only for items not composed yet.
         fun composed(t: String) = compose.onAllNodes(hasTestTag(t), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
@@ -278,7 +299,7 @@ class InvestigationThreadLargeTextUiTest {
     @Test fun theWholeThreadWorksAt320dpAnd200Percent() {
         container = AppContainer(
             context = ApplicationProvider.getApplicationContext<Context>(), clock = FakeClock(at(CHICAGO, 2026, 10, 23, 9, 0)), zoneProvider = FakeZoneProvider(CHICAGO), ids = SequentialIds("lt"),
-            database = inMemoryDatabase(),
+            database = fileDatabase("investigation-ui.db"),
             settingsRepository = InMemorySettingsRepository(AppSettings(onboardingCompleted = true, aiEnabled = true, aiConsentAt = at(CHICAGO, 2026, 10, 1, 9, 0), researchExplainerVersion = ResearchConfig.EXPLAINER_VERSION)),
             apiKeyStore = InMemoryApiKeyStore(FAKE_KEY), researchProvider = FakeResearchProvider(), researchCalls = provider, networkStatus = { true },
         )

@@ -33,6 +33,8 @@ import com.lifeadmin.autopilot.data.repository.SettingsRepository
 import com.lifeadmin.autopilot.data.repository.TaskRepository
 import com.lifeadmin.autopilot.data.repository.TaskSummary
 import com.lifeadmin.autopilot.domain.model.AppSettings
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -137,6 +139,8 @@ class InvestigationThreadViewModel(
         ),
     )
     private var excluded: Set<String> = (saved.get<Array<String>>("excl") ?: emptyArray()).toSet()
+    /** Declared before init: the collectors started there take it immediately. */
+    private val rebuildLock = Mutex()
 
     private val invFlow = investigationId.flatMapLatest { id -> if (id == null) flowOf(null) else store.observe(id) }
 
@@ -172,19 +176,33 @@ class InvestigationThreadViewModel(
         local.update { it.copy(pendingProposals = m) }
     }
 
-    private suspend fun rebuild(inv: Investigation?, ch: ThreadChoices) {
+    /** The configuration the person's current choices resolve to for [turn]: the card and Start both use this. */
+    private fun configFor(ch: ThreadChoices, turn: Turn?, s: AppSettings): ResearchRunConfig {
+        val depth = ch.depth ?: turn?.objective?.recommendedDepth?.takeIf { it != ResearchDepth.CUSTOM } ?: ResearchDepth.of(s.researchDefaultDepth) ?: ResearchDepth.STANDARD
+        return ResearchPresets.resolve(depth, s, modelOverride = ch.model, searches = ch.searches, limitCents = if (ch.noLimit) null else ch.limitCents, effort = ch.effort).let { if (ch.noLimit) it.copy(spendLimitCents = null) else it }
+    }
+
+    /**
+     * Rebuilds run one at a time and always from the latest choices: a slower rebuild that began
+     * before a tap must never overwrite the configuration the tap produced.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private suspend fun rebuild(inv: Investigation?, requested: ThreadChoices) = rebuildLock.withLock { rebuildLocked(inv) }
+
+    private suspend fun rebuildLocked(inv: Investigation?) {
+        val ch = local.value.choices
         val turn = inv?.turns?.lastOrNull { it.state == TurnState.AUTHORIZING }
         val s = settings.current()
-        val depth = ch.depth ?: turn?.objective?.recommendedDepth?.takeIf { it != ResearchDepth.CUSTOM } ?: ResearchDepth.of(s.researchDefaultDepth) ?: ResearchDepth.STANDARD
-        val cfg = ResearchPresets.resolve(depth, s, modelOverride = ch.model, searches = ch.searches, limitCents = if (ch.noLimit) null else ch.limitCents, effort = ch.effort).let { if (ch.noLimit) it.copy(spendLimitCents = null) else it }
+        val cfg = configFor(ch, turn, s)
         val taskId = inv?.taskId ?: local.value.taskId
         val ctx = service.contextItems(taskId, ch.scope)
-        if (inv == null || turn == null) { local.update { if (it.config == cfg && it.context == ctx && it.authorization == null) it else it.copy(config = cfg, context = ctx, authorization = null, inheritance = emptyList()) }; return }
+        if (inv == null || turn == null) { local.update { if (it.choices != ch || (it.config == cfg && it.context == ctx && it.authorization == null)) it else it.copy(config = cfg, context = ctx, authorization = null, inheritance = emptyList()) }; return }
         val withExcl = if (excluded.isEmpty()) turn else turn.copy(excludedClaimIds = (turn.excludedClaimIds + excluded).distinct())
         val auth = service.authorization(inv, withExcl, ctx, cfg)
         val inh = service.inheritance(inv, withExcl)
         // approvedAtMs is "now": compare without it so an unchanged card is not re-emitted.
-        local.update { if (it.config == cfg && it.context == ctx && it.inheritance == inh && it.authorization?.copy(approvedAtMs = 0) == auth.copy(approvedAtMs = 0)) it else it.copy(config = cfg, context = ctx, inheritance = inh, authorization = auth) }
+        // Choices changed while this ran: the collector rebuilds again from them, so write nothing stale.
+        local.update { if (it.choices != ch || (it.config == cfg && it.context == ctx && it.inheritance == inh && it.authorization?.copy(approvedAtMs = 0) == auth.copy(approvedAtMs = 0))) it else it.copy(config = cfg, context = ctx, inheritance = inh, authorization = auth) }
     }
 
     // ------------------------------------------------------------------ objective
@@ -256,7 +274,8 @@ class InvestigationThreadViewModel(
         val s = state.value
         val inv = investigationId.value ?: return@launch
         val turn = s.pending ?: return@launch
-        val cfg = s.config ?: return@launch
+        // From the choices as they are now, not a preview that may still be catching up with a tap.
+        val cfg = configFor(local.value.choices, turn, settings.current())
         val gate = service.gate()
         if (gate.blocker == ResearchError.NoResearchConsent) { local.update { it.copy(showExplainer = true) }; return@launch }
         gate.blocker?.let { b -> local.update { it.copy(error = b, gate = gate) }; return@launch }

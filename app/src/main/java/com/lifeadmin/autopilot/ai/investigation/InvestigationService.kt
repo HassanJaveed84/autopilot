@@ -711,11 +711,18 @@ class InvestigationService(
             TurnEnding.STOPPED -> TurnState.STOPPED
             TurnEnding.FAILED -> TurnState.FAILED
             TurnEnding.INTERRUPTED -> TurnState.INTERRUPTED
+            // A ceiling that left nothing gathered is not a finished answer.
+            TurnEnding.BUDGET_SPEND, TurnEnding.BUDGET_SEARCHES -> if (ctx.work.merged) TurnState.DONE else TurnState.FAILED
             else -> TurnState.DONE
         }
         val usage = ctx.usage.copy(spentMicros = ctx.spentMicros, floor = ctx.usage.floor || ctx.spentFloor)
         if (!ctx.work.merged) {
-            val error = ctx.failure ?: if (ctx.ending == TurnEnding.STOPPED) ResearchError.Stopped(ctx.searchesRun) else noFindings(ctx)
+            val error = ctx.failure ?: when {
+                ctx.ending == TurnEnding.STOPPED -> ResearchError.Stopped(ctx.searchesRun)
+                // The ceiling stopped the turn before anything was sent: say so, never "the reply was empty".
+                ctx.ending == TurnEnding.BUDGET_SPEND && ctx.callsSent == 0 -> ResearchError.LimitBelowFirstCall
+                else -> noFindings(ctx)
+            }
             val result = ctx.work.result(ctx.objective, ctx.ending, ctx.registry.sources(), ctx.stages.toList(), ctx.diagnostics.toList(), ctx.technical ?: error.technical, now.toEpochMilli())
             ctx.turn = ctx.turn.copy(state = state, result = result, usage = usage, endingNote = error.headline, stageAtEnd = ctx.stageAtEnd?.name)
             store.saveTurn(ctx.inv.id, ctx.turn, now)

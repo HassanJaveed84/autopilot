@@ -155,6 +155,7 @@ sealed class ResearchError(val headline: String, val message: String, val retrya
     data object NoResearchConsent : ResearchError("Before your first web research", "Read the one-time note about web research before starting.", false, "EXPLAINER NOT ACCEPTED")
     data object Offline : ResearchError("You're offline", "Your question is kept — start when you're back online. Saved briefs still open.", true, "OFFLINE · NOTHING SENT")
     data object DailyLimit : ResearchError("Today's research limit is reached", "You've used ${ResearchConfig.MAX_REQUESTS_PER_DAY} of ${ResearchConfig.MAX_REQUESTS_PER_DAY} research requests. It resets at midnight. Saved briefs still open, and planning still works.", false, "DAILY CAP ${ResearchConfig.MAX_REQUESTS_PER_DAY} · NOTHING SENT")
+    data object LimitBelowFirstCall : ResearchError("Your spending limit is below the first call", "Nothing was sent: the first search alone would pass the limit you set. Raise the limit or lower the searches, then start again.", false, "SPEND LIMIT < FIRST CALL · NOTHING SENT")
     data object Busy : ResearchError("Research is already running", "Wait for the current research to finish or stop it first.", false, "ONE REQUEST AT A TIME")
     data object EmptyQuestion : ResearchError("What should I find out?", "Type a question first.", false, "EMPTY QUESTION")
     data object QuestionTooLong : ResearchError("That question is too long", "Keep it under ${ResearchConfig.MAX_QUESTION_CHARS} characters.", false, "QUESTION > ${ResearchConfig.MAX_QUESTION_CHARS}")

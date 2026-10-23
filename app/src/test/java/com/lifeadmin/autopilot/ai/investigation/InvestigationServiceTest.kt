@@ -304,6 +304,37 @@ class InvestigationServiceTest {
         assertEquals(2, t.usage.webSearches)
     }
 
+    // ------------------------------------------------------------------ ceilings (RES-030/141)
+
+    @Test fun aSpendingLimitBelowTheFirstCallSendsNothingAndSaysWhy() {
+        val ready = prepare(InvestigationFixtures.UNION_STATION)
+        assertTrue(authorize(ready, config(limitCents = 1)) is StartResult.Started)
+        val failed = awaitFinished().outcome as TurnOutcome.Failed
+        assertEquals("not a fake 'empty reply': nothing was sent", ResearchError.LimitBelowFirstCall, failed.error)
+        assertTrue(provider.calls.isEmpty())
+        assertTrue(runBlocking { ledger.getAll() }.isEmpty())
+        val t = runBlocking { store.get(ready.investigationId)!!.turns.first { it.id == ready.turn.id } }
+        assertEquals(TurnState.FAILED, t.state)
+        assertEquals(com.lifeadmin.autopilot.ai.research2.StageResult.BUDGET, t.result!!.stages.single().result)
+        assertEquals(TurnEnding.BUDGET_SPEND, t.result!!.ending)
+    }
+
+    @Test fun aSpendingLimitTrimsTheSearchesOfACallBeforeItIsSentRatherThanAfter() {
+        val cfg0 = config()
+        fun low(n: Int) = com.lifeadmin.autopilot.ai.usage.CostCalculator.estimateRun(cfg0.model, n, cfg0.outputTokens)!!.lowMicros
+        val limitCents = ((low(2) + 9_999) / 10_000).toInt()
+        org.junit.Assume.assumeTrue("the catalogue prices make 3 searches exceed the limit", low(3) > limitCents * 10_000L)
+        val ready = prepare(InvestigationFixtures.UNION_STATION)
+        provider.enqueue { call ->
+            assertEquals("the search allowance is cut to what fits under the limit", 2, call.maxSearches)
+            InvestigationFixtures.unionStationAnswer()
+        }
+        assertTrue(authorize(ready, config(limitCents = limitCents)) is StartResult.Started)
+        val finished = awaitFinished()
+        assertTrue(finished.outcome is TurnOutcome.Saved)
+        assertEquals(1, provider.calls.size)
+    }
+
     @Test fun insufficientEvidenceIsNotEstablishedAndProposesNothing() {
         val ready = prepare("Does the AquaPure X9 remove 99.99% of microplastics?")
         provider.enqueue(InvestigationFixtures.unverifiableNothingFound())
