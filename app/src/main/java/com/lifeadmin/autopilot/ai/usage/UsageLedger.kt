@@ -52,6 +52,8 @@ data class UsageRecord(
     val estimatedMicros: Long? = null,
     val priceVersion: String = PricingCatalog.VERSION,
     val providerMessageId: String? = null,
+    /** Effort level sent with the call (M4), when the model supports one. */
+    val effort: String? = null,
 ) {
     val estimate: UsdEstimate? get() = estimatedMicros?.let { UsdEstimate(it, priceVersion = priceVersion) }
 

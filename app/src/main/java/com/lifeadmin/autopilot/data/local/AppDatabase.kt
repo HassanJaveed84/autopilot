@@ -16,7 +16,8 @@ import androidx.room.TypeConverters
         TaskEventEntity::class,
         ReminderDiagnosticEntity::class,
         ResearchBriefEntity::class,
-        ResearchSessionEntity::class,
+        InvestigationEntity::class,
+        InvestigationTurnEntity::class,
         UsageRecordEntity::class,
         DraftEntity::class,
         ProposalSetEntity::class,
@@ -34,14 +35,15 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun eventDao(): TaskEventDao
     abstract fun diagnosticDao(): DiagnosticDao
     abstract fun researchDao(): ResearchBriefDao
-    abstract fun researchSessionDao(): ResearchSessionDao
+    abstract fun investigationDao(): InvestigationDao
+    abstract fun investigationTurnDao(): InvestigationTurnDao
     abstract fun usageDao(): UsageRecordDao
     abstract fun draftDao(): DraftDao
     abstract fun proposalSetDao(): ProposalSetDao
     abstract fun provenanceDao(): ProvenanceDao
 
     companion object {
-        const val VERSION = 6
+        const val VERSION = 7
         const val NAME = "life_admin.db"
 
         /** No destructive fallback: a missing migration must fail loudly rather than drop tasks. */

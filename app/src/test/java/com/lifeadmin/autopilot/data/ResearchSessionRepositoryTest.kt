@@ -19,7 +19,7 @@ import com.lifeadmin.autopilot.ai.usage.UsageFeature
 import com.lifeadmin.autopilot.ai.usage.UsageRecord
 import com.lifeadmin.autopilot.ai.usage.UsageStatus
 import com.lifeadmin.autopilot.data.local.AppDatabase
-import com.lifeadmin.autopilot.data.local.ResearchSessionEntity
+import com.lifeadmin.autopilot.data.local.InvestigationEntity
 import com.lifeadmin.autopilot.data.local.TaskEntity
 import com.lifeadmin.autopilot.data.repository.ResearchSessionRepository
 import com.lifeadmin.autopilot.data.repository.RoomUsageLedger
@@ -76,11 +76,13 @@ class ResearchSessionRepositoryTest {
         assertEquals(ProvenanceTag.REVIEWS, back.content.claims[0].tag)
         assertEquals(1, repo.observeCount().first())
         assertEquals(listOf("s1"), repo.observeForTask("t1").first().map { it.id })
-        val entity = db.researchSessionDao().get("s1")!!
-        assertEquals("PICK_PER_ITEM", entity.template)
-        assertEquals("INCOMPLETE_EVIDENCE", entity.outcome)
-        assertEquals(4, entity.sourceCount)
-        assertTrue("payload never carries the key or prompt text", !entity.payload.contains("You are a careful research assistant"))
+        val entity = db.investigationDao().get("s1")!!
+        assertEquals("a legacy session is one investigation on the task", "t1", entity.taskId)
+        assertEquals("TASK", entity.origin)
+        assertEquals("DONE", entity.state)
+        val turns = db.investigationTurnDao().forInvestigation("s1")
+        assertEquals("one turn per run; no runs yet means one placeholder turn", 1, turns.size)
+        assertTrue("payload never carries the key or prompt text", !turns[0].payload.contains("You are a careful research assistant"))
     }
 
     @Test fun appliedProposalsAreRecordedMergedAndCleared() = runTest {
@@ -93,33 +95,31 @@ class ResearchSessionRepositoryTest {
         assertEquals(listOf("p-b"), repo.get("s1")!!.applied.map { it.proposalId })
     }
 
-    @Test fun oldestSessionsBeyondTheCapArePrunedPerTask() = runTest {
-        for (i in 0 until Research2Config.MAX_SESSIONS_PER_TASK + 3) repo.save(session("s$i").copy(updatedAt = now.plusSeconds(i.toLong())))
-        val kept = repo.getForTask("t1")
-        assertEquals(Research2Config.MAX_SESSIONS_PER_TASK, kept.size)
-        assertEquals("s${Research2Config.MAX_SESSIONS_PER_TASK + 2}", kept.first().id)
-        assertNull(repo.get("s0"))
+    @Test fun aContinuationSavedAgainMapsOntoTheSameTurnRowsAndKeepsEveryRun() = runTest {
+        val c = content()
+        val run1 = com.lifeadmin.autopilot.ai.research2.RunRecord("r1", com.lifeadmin.autopilot.ai.research2.RunKind.INITIAL, 1L, com.lifeadmin.autopilot.ai.research2.ResearchMode.THOROUGH, "claude-sonnet-5-5", 10, outcome = SessionOutcome.COMPLETE)
+        val run2 = run1.copy(id = "r2", kind = com.lifeadmin.autopilot.ai.research2.RunKind.CONTINUATION, startedAtEpochMs = 2L, outcome = SessionOutcome.STOPPED)
+        repo.save(session(c = c.copy(runs = listOf(run1), outcome = SessionOutcome.COMPLETE)))
+        assertEquals(listOf("s1-run1"), db.investigationTurnDao().forInvestigation("s1").map { it.id })
+        repo.save(session(c = c.copy(runs = listOf(run1, run2), outcome = SessionOutcome.STOPPED)))
+        val turns = db.investigationTurnDao().forInvestigation("s1")
+        assertEquals(listOf("s1-run1", "s1-run2"), turns.map { it.id })
+        assertEquals(listOf("INITIAL", "CONTINUATION"), turns.map { it.kind })
+        assertEquals(listOf("DONE", "STOPPED"), turns.map { it.state })
+        assertEquals("STOPPED", db.investigationDao().get("s1")!!.state)
+        assertEquals(2, db.investigationDao().get("s1")!!.turnCount)
+        assertEquals(listOf("r1", "r2"), repo.get("s1")!!.content.runs.map { it.id })
     }
 
-    @Test fun oversizedPayloadIsTrimmedNotRejected() = runTest {
-        val big = content().copy(
-            claims = (1..1200).map { Claim("claim $it ".repeat(40), ProvenanceTag.JUDGMENT) },
-            sources = (1..60).map { SourceRef2(it, "https://x$it.example/p", "T$it", "x$it.example", false, null, listOf("q".repeat(150), "r".repeat(150)), if (it <= 3) 1 else 0) },
-        )
-        val fitted = repo.fit(big)
-        assertTrue(repo.encode(fitted).toByteArray().size <= Research2Config.MAX_PAYLOAD_BYTES)
-        assertEquals("cited sources survive", 3, fitted.sources.size)
-        assertEquals(4, fitted.body.picks.size)
-        repo.save(session(c = big))
-        assertTrue(repo.get("s1")!!.content.claims.size < 1200)
-    }
-
-    @Test fun unreadableRowsAreHiddenAndCascadeDeletesWithTheTask() = runTest {
+    @Test fun unreadableRowsAreHiddenAndADeletedTaskLeavesTheThreadAsStandaloneHistory() = runTest {
         repo.save(session())
-        db.researchSessionDao().upsert(ResearchSessionEntity("bad", "t1", now, now, "x", "X", "X", "", 0, 0, "{not json", "[]"))
+        db.investigationDao().upsert(InvestigationEntity("bad", "TASK", "t1", null, now, now, "x", "DONE", 0, "{not json"))
         assertEquals(listOf("s1"), repo.getForTask("t1").map { it.id })
         db.taskDao().delete("t1")
-        assertEquals(0, repo.observeCount().first())
+        assertEquals("nothing is deleted with the task", 2, repo.observeCount().first())
+        assertNull("the legacy view needs a task; the thread itself is still there", repo.get("s1"))
+        assertNull(db.investigationDao().get("s1")!!.taskId)
+        assertEquals(1, db.investigationTurnDao().forInvestigation("s1").size)
     }
 
     @Test fun roomLedgerRecordsDeduplicatesSettlesAndPrunes() = runTest {

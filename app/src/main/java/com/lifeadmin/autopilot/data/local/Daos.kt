@@ -255,39 +255,69 @@ interface ResearchBriefDao {
 }
 
 @Dao
-interface ResearchSessionDao {
-    @Query("SELECT * FROM research_sessions WHERE taskId = :taskId ORDER BY updatedAt DESC")
-    fun observeForTask(taskId: String): Flow<List<ResearchSessionEntity>>
+interface InvestigationDao {
+    @Query("SELECT * FROM investigations WHERE taskId = :taskId ORDER BY updatedAt DESC")
+    fun observeForTask(taskId: String): Flow<List<InvestigationEntity>>
 
-    @Query("SELECT * FROM research_sessions WHERE taskId = :taskId ORDER BY updatedAt DESC")
-    suspend fun getForTask(taskId: String): List<ResearchSessionEntity>
+    @Query("SELECT * FROM investigations WHERE taskId = :taskId ORDER BY updatedAt DESC")
+    suspend fun getForTask(taskId: String): List<InvestigationEntity>
 
-    @Query("SELECT * FROM research_sessions WHERE id = :id")
-    suspend fun get(id: String): ResearchSessionEntity?
+    @Query("SELECT * FROM investigations WHERE id = :id")
+    suspend fun get(id: String): InvestigationEntity?
 
-    @Query("SELECT * FROM research_sessions WHERE id = :id")
-    fun observe(id: String): Flow<ResearchSessionEntity?>
+    @Query("SELECT * FROM investigations WHERE id = :id")
+    fun observe(id: String): Flow<InvestigationEntity?>
 
-    @Query("SELECT * FROM research_sessions ORDER BY updatedAt DESC")
-    suspend fun getAll(): List<ResearchSessionEntity>
+    @Query("SELECT * FROM investigations ORDER BY updatedAt DESC")
+    suspend fun getAll(): List<InvestigationEntity>
 
-    @Query("SELECT COUNT(*) FROM research_sessions")
+    @Query("SELECT * FROM investigations ORDER BY updatedAt DESC")
+    fun observeAll(): Flow<List<InvestigationEntity>>
+
+    @Query("SELECT COUNT(*) FROM investigations")
     fun observeCount(): Flow<Int>
 
+    @Query("SELECT * FROM investigations WHERE state = 'RUNNING'")
+    suspend fun running(): List<InvestigationEntity>
+
     @Upsert
-    suspend fun upsert(session: ResearchSessionEntity)
+    suspend fun upsert(investigation: InvestigationEntity)
 
-    @Query("UPDATE research_sessions SET applied = :applied WHERE id = :id")
-    suspend fun updateApplied(id: String, applied: String)
+    @Query("UPDATE investigations SET taskId = :taskId, updatedAt = :at, meta = :meta WHERE id = :id")
+    suspend fun associate(id: String, taskId: String?, meta: String, at: Instant)
 
-    @Query("DELETE FROM research_sessions WHERE id = :id")
+    @Query("DELETE FROM investigations WHERE id = :id")
     suspend fun delete(id: String)
 
-    @Query("DELETE FROM research_sessions WHERE taskId = :taskId")
+    @Query("DELETE FROM investigations WHERE taskId = :taskId")
     suspend fun deleteForTask(taskId: String)
 
-    @Query("DELETE FROM research_sessions")
+    @Query("DELETE FROM investigations")
     suspend fun deleteAll()
+}
+
+@Dao
+interface InvestigationTurnDao {
+    @Query("SELECT * FROM investigation_turns WHERE investigationId = :investigationId ORDER BY turnIndex ASC")
+    suspend fun forInvestigation(investigationId: String): List<InvestigationTurnEntity>
+
+    @Query("SELECT * FROM investigation_turns WHERE investigationId = :investigationId ORDER BY turnIndex ASC")
+    fun observeForInvestigation(investigationId: String): Flow<List<InvestigationTurnEntity>>
+
+    @Query("SELECT * FROM investigation_turns WHERE id = :id")
+    suspend fun get(id: String): InvestigationTurnEntity?
+
+    @Query("SELECT * FROM investigation_turns ORDER BY investigationId, turnIndex")
+    suspend fun getAll(): List<InvestigationTurnEntity>
+
+    @Query("SELECT * FROM investigation_turns WHERE state = 'RUNNING'")
+    suspend fun running(): List<InvestigationTurnEntity>
+
+    @Upsert
+    suspend fun upsert(turn: InvestigationTurnEntity)
+
+    @Query("DELETE FROM investigation_turns WHERE id = :id")
+    suspend fun delete(id: String)
 }
 
 @Dao

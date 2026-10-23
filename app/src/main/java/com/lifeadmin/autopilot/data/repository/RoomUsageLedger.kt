@@ -44,7 +44,7 @@ class RoomUsageLedger(private val db: AppDatabase) : UsageLedger {
         fun UsageRecord.toEntity() = UsageRecordEntity(
             id, feature.name, model, startedAt, runId, sessionId, taskId, stage, durationMs,
             usage?.inputTokens, usage?.outputTokens, usage?.cacheWrite5mTokens, usage?.cacheWrite1hTokens, usage?.cacheReadTokens, usage?.webSearches,
-            outcome.name, usageStatus.name, estimatedMicros, priceVersion, providerMessageId,
+            outcome.name, usageStatus.name, estimatedMicros, priceVersion, providerMessageId, effort,
         )
 
         fun UsageRecordEntity.toRecord(): UsageRecord? {
@@ -53,7 +53,7 @@ class RoomUsageLedger(private val db: AppDatabase) : UsageLedger {
             val status = UsageStatus.entries.firstOrNull { it.name == usageStatus } ?: UsageStatus.UNKNOWN
             val usage = if (inputTokens == null && outputTokens == null && webSearches == null && cacheReadTokens == null) null
             else MeasuredUsage(inputTokens, outputTokens, cacheWrite5mTokens, cacheWrite1hTokens, cacheReadTokens, webSearches)
-            return UsageRecord(id, feature, model, startedAt, runId, sessionId, taskId, stage, durationMs, usage, outcome, status, estimatedMicros, priceVersion, providerMessageId)
+            return UsageRecord(id, feature, model, startedAt, runId, sessionId, taskId, stage, durationMs, usage, outcome, status, estimatedMicros, priceVersion, providerMessageId, effort)
         }
     }
 }

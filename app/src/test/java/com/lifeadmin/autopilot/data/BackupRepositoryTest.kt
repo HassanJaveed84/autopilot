@@ -20,6 +20,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
@@ -213,10 +214,29 @@ class BackupRepositoryTest {
         assertEquals("msg_1 is still one row", 2, tl.getAll().size)
         assertEquals(1, tl.getAll().count { it.providerMessageId == "msg_1" })
 
-        // A session pointing at a missing task rejects the whole import.
-        val at = json.indexOf("\"sessions\"")
-        val broken = json.substring(0, at) + json.substring(at).replaceFirst("\"taskId\": \"$id\"", "\"taskId\": \"ghost\"")
-        assertTrue(broken != json)
+        // The thread also travels as an investigation (v7); the legacy "sessions" copy is for older app versions.
+        assertTrue(json.contains("\"investigations\""))
+        val restoredThread = com.lifeadmin.autopilot.data.repository.InvestigationRepository(target).get("s1")!!
+        assertEquals(id, restoredThread.taskId)
+        assertTrue(restoredThread.meta.legacy)
+
+        // A backup from a pre-M4 app carries only "sessions": it imports into investigations and reads back unchanged (RES-092).
+        val root = kotlinx.serialization.json.Json.parseToJsonElement(json).jsonObject.toMutableMap()
+        root.remove("investigations")
+        val legacyOnly = kotlinx.serialization.json.JsonObject(root).toString()
+        val older = inMemoryDatabase()
+        try {
+            backup(older).importJson(legacyOnly)
+            val viaSessions = com.lifeadmin.autopilot.data.repository.ResearchSessionRepository(older).get("s1")!!
+            assertEquals(content, viaSessions.content)
+            assertEquals(listOf("p-1"), viaSessions.applied.map { it.proposalId })
+            assertEquals(1, com.lifeadmin.autopilot.data.repository.InvestigationRepository(older).get("s1")!!.turns.size)
+        } finally { older.close() }
+
+        // A legacy session pointing at a missing task rejects the whole import, as before.
+        val at = legacyOnly.indexOf("\"sessions\"")
+        val broken = legacyOnly.substring(0, at) + legacyOnly.substring(at).replaceFirst("\"taskId\":\"$id\"", "\"taskId\":\"ghost\"")
+        assertTrue(broken != legacyOnly)
         val fresh = inMemoryDatabase()
         try {
             backup(fresh).importJson(broken)
@@ -225,6 +245,60 @@ class BackupRepositoryTest {
             assertEquals(0, fresh.taskDao().getAll().size)
             assertEquals(0, fresh.usageDao().getAll().size)
         } finally { fresh.close() }
+    }
+
+    @Test fun investigationThreadsRoundTripKeepTurnsAndSettleRunningOnesAsInterrupted() = runTest {
+        val repo = TaskRepository(source, clock, SequentialIds(), { CHICAGO }, ScheduleCoordinator.Direct)
+        val taskId = repo.createTask(NewTask("Renew passport"))
+        val inv = com.lifeadmin.autopilot.data.repository.InvestigationRepository(source)
+        val now = clock.now().toEpochMilli()
+        val objective = com.lifeadmin.autopilot.ai.investigation.Objective("What does renewal cost?", "Find the renewal fee", com.lifeadmin.autopilot.ai.investigation.AskKind.FACT)
+        val claim = com.lifeadmin.autopilot.ai.investigation.Claim("c1", "The fee is $130.", com.lifeadmin.autopilot.ai.investigation.ClaimType.FACT, loadBearing = true, status = com.lifeadmin.autopilot.ai.investigation.ClaimStatus.ESTABLISHED, turnId = "k1")
+        val result = com.lifeadmin.autopilot.ai.investigation.TurnResult(
+            com.lifeadmin.autopilot.ai.investigation.Answer("Fee", "Answered", listOf(com.lifeadmin.autopilot.ai.investigation.AnswerSegment("The fee is $130.", listOf("c1")))),
+            com.lifeadmin.autopilot.ai.investigation.ResultState.ANSWERED, com.lifeadmin.autopilot.ai.investigation.TurnEnding.COMPLETE, listOf(claim), emptyList(), finishedAtMs = now,
+        )
+        val done = com.lifeadmin.autopilot.ai.investigation.Turn("k1", 0, com.lifeadmin.autopilot.ai.investigation.TurnKind.INITIAL, com.lifeadmin.autopilot.ai.investigation.TurnState.DONE, now, objective, result = result)
+        val running = com.lifeadmin.autopilot.ai.investigation.Turn("k2", 1, com.lifeadmin.autopilot.ai.investigation.TurnKind.CONTINUATION, com.lifeadmin.autopilot.ai.investigation.TurnState.RUNNING, now + 1, objective)
+        inv.save(com.lifeadmin.autopilot.ai.investigation.Investigation("linked", com.lifeadmin.autopilot.ai.investigation.InvestigationOrigin.TASK, taskId, null, now, now, com.lifeadmin.autopilot.ai.investigation.InvestigationMeta("Passport fee", "What does renewal cost?"), listOf(done, running)))
+        inv.save(com.lifeadmin.autopilot.ai.investigation.Investigation("solo", com.lifeadmin.autopilot.ai.investigation.InvestigationOrigin.STANDALONE, null, null, now, now, com.lifeadmin.autopilot.ai.investigation.InvestigationMeta("Union Station", "address of Union Station"), listOf(done.copy(id = "u1"))))
+
+        val json = backup(source).exportJson()
+        assertTrue("a native thread has no legacy session copy", !json.contains("\"sessions\": [\n    {"))
+        backup(target).importJson(json)
+        val tInv = com.lifeadmin.autopilot.data.repository.InvestigationRepository(target)
+        val linked = tInv.get("linked")!!
+        assertEquals(taskId, linked.taskId)
+        assertEquals(listOf("k1", "k2"), linked.turns.map { it.id })
+        assertEquals("the finished turn is byte-for-byte", result, linked.turns[0].result)
+        assertEquals("a turn still running in a backup can never finish", com.lifeadmin.autopilot.ai.investigation.TurnState.INTERRUPTED, linked.turns[1].state)
+        assertEquals("INTERRUPTED", target.investigationDao().get("linked")!!.state)
+        assertNull(tInv.get("solo")!!.taskId)
+        assertEquals(1, tInv.get("solo")!!.turns.size)
+
+        // A thread whose task is not in the backup is kept as standalone history and says so; nothing is rejected.
+        val root = kotlinx.serialization.json.Json.parseToJsonElement(json).jsonObject.toMutableMap()
+        root["tasks"] = kotlinx.serialization.json.JsonArray(emptyList())
+        root["steps"] = kotlinx.serialization.json.JsonArray(emptyList()); root["policies"] = kotlinx.serialization.json.JsonArray(emptyList()); root["events"] = kotlinx.serialization.json.JsonArray(emptyList())
+        val fresh = inMemoryDatabase()
+        try {
+            backup(fresh).importJson(kotlinx.serialization.json.JsonObject(root).toString())
+            val orphan = com.lifeadmin.autopilot.data.repository.InvestigationRepository(fresh).get("linked")!!
+            assertNull(orphan.taskId)
+            assertEquals(2, orphan.turns.size)
+            assertTrue(orphan.meta.associations.single().note.contains("not in the backup"))
+        } finally { fresh.close() }
+
+        // A tampered turn payload rejects the whole file.
+        val tampered = json.replace("\"index\": 1", "\"index\": 7")
+        assertTrue(tampered != json)
+        val fresh2 = inMemoryDatabase()
+        try {
+            backup(fresh2).importJson(tampered)
+            fail("expected rejection")
+        } catch (e: ImportException) {
+            assertEquals(0, fresh2.taskDao().getAll().size)
+        } finally { fresh2.close() }
     }
 
     @Test fun draftsProposalSetsAndProvenanceRoundTripAndOlderBackupsStillImport() = runTest {

@@ -454,7 +454,7 @@ data class SourceRef2(
     val firstRunId: String? = null,
 )
 
-/** Everything one research session holds. Persisted as JSON in `research_sessions.payload`. */
+/** Everything one legacy M3A.2 research session holds. Since Room v7 it lives byte-for-byte on a legacy investigation turn (`investigation_turns.payload`). */
 @Serializable
 data class SessionContent(
     val title: String,
