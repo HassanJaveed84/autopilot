@@ -202,25 +202,36 @@ class ProposalReviewViewModel(
 
     fun apply() {
         val s = state.value
-        if (s.applying || s.applied != null) return
-        if (s.undecided.isNotEmpty()) {
-            local.update { it.copy(message = "Decide on the flagged change${if (s.undecided.size == 1) "" else "s"} first: apply anyway or keep yours.") }
+        val l = local.value
+        if (l.applying || l.applied != null) return
+        val set = s.set ?: return
+        val checks = s.rows.associateBy { it.item.id }
+        // Decisions come from the live selection, not from a possibly stale rendering of it.
+        val chosen = set.pending.filter { it.id in l.selected }
+        val undecided = chosen.filter { item ->
+            val row = checks[item.id]
+            val resolution = l.resolutions[item.id] ?: ConflictResolution.NONE
+            row?.blocked == true || (row?.conflict == true && resolution == ConflictResolution.NONE)
+        }
+        if (undecided.isNotEmpty()) {
+            local.update { it.copy(message = "Decide on the flagged change${if (undecided.size == 1) "" else "s"} first: apply anyway or keep yours.") }
             return
         }
-        val choices = s.pending.filter { it.selected }.map { ApplyChoice(it.item.id, it.edited, it.resolution) }
+        val choices = chosen.map { ApplyChoice(it.id, l.edits[it.id], l.resolutions[it.id] ?: ConflictResolution.NONE) }
         if (choices.isEmpty()) { local.update { it.copy(message = "Select at least one change to apply") }; return }
         local.update { it.copy(applying = true, message = null) }
         viewModelScope.launch {
-            when (val r = applier.apply(setId, choices)) {
-                is ApplyResult.Applied -> local.update { it.copy(applying = false, applied = r, selected = emptySet(), edits = emptyMap(), resolutions = emptyMap()) }.also { persist() }
+            val result = try { applier.apply(setId, choices) } catch (e: Exception) { ApplyResult.Rejected("Couldn't apply (${e.javaClass.simpleName}). Your task is unchanged.") }
+            when (result) {
+                is ApplyResult.Applied -> local.update { it.copy(applying = false, applied = result, selected = emptySet(), edits = emptyMap(), resolutions = emptyMap()) }.also { persist() }
                 is ApplyResult.NeedsReview -> local.update { it.copy(applying = false, message = "The task changed while you were reviewing. Check the flagged changes and decide, then apply again. Nothing was changed.") }
-                is ApplyResult.Rejected -> local.update { it.copy(applying = false, message = r.message) }
+                is ApplyResult.Rejected -> local.update { it.copy(applying = false, message = result.message) }
             }
         }
     }
 
     fun undo() = viewModelScope.launch {
-        val ok = applier.undo(setId)
+        val ok = try { applier.undo(setId) } catch (e: Exception) { local.update { it.copy(message = "Undo failed (${e.javaClass.simpleName}). Your task is unchanged.") }; return@launch }
         local.update { it.copy(undone = ok, undoRefused = !ok, message = if (ok) null else "Undo isn't safe any more: the task changed after the apply.") }
     }
 

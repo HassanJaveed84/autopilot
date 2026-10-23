@@ -73,7 +73,7 @@ class ResearchProposalBridgeTest {
         assertNull("no refs, no requirement → no src", note.src)
 
         val research = set.item("p-research")!!
-        assertEquals("Research glucosamine further", (research.value as ItemValue.Step).text)
+        assertEquals("Research: glucosamine further", (research.value as ItemValue.Step).text)
         assertTrue((research.value as ItemValue.Step).verify)
     }
 
