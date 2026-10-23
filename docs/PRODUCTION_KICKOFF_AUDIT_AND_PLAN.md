@@ -272,7 +272,7 @@ Run locally in this container on the M1 tree (2026-10-23):
 
 | Gate | Result |
 |---|---|
-| `lintDebug` | passed (`abortOnError = true`); 1 pre-existing informational issue in the report, no errors |
+| `lintDebug` | passed (`abortOnError = true`); the lint report lists no issues |
 | `testDebugUnitTest` | 577 tests in 74 classes, 0 failures, 0 skipped (incl. the 34 new M1 tests) |
 | `assembleDebug` / `assembleRelease` / `assembleDebugAndroidTest` | APKs built (29.9 MB / 4.4 MB / 1.2 MB); local debug key only, so not installable over the phone's CI-signed build |
 | Emulator instrumentation, screenshots | not run locally; Android CI on the draft PR (results recorded in the PR once available) |
