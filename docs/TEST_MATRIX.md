@@ -177,3 +177,24 @@ All provider tests use fakes or a local MockWebServer. **No test calls the live 
 | Failure screen for a cut-off continuation: honest headline, "unchanged" message, technical record (`stop=max_tokens`, block counts) without the question, Copy, back to the unchanged result with the attempt on the log | `Research2FlowUiTest.aContinuationCutOffBeforeAnyText…` | ✅ |
 | Paused turn with no searches left is never continued past the budget; with budget left it is continued once with the remainder | `ContinuationRegressionTest.toolOnlyPauseTurn…` (2) | ✅ |
 | Live BYOK research against the real API | — | ⏳ pending (not run by the agent) |
+
+## Production kickoff M1 — durable state, proposals, provenance, privacy allow-lists (2026-10-23)
+
+| Requirement | Tests | Status |
+|---|---|---|
+| Room v6 migration keeps tasks, steps, deadlines, sessions and ledger; `rev` starts at 0; steps are USER-origin; new tables empty and FK-free | `MigrationTest.migrateV5ToV6…` | ✅ |
+| PLAN-073: ticking an unrelated step flags only the item touching it; a snooze invalidates nothing; renamed/deleted steps conflict | `ProposalReconcilerTest.tickingAnUnrelatedStep…`, `snoozingNeverInvalidatesAnything`, `deletedOrRenamedSteps…`; `ProposalApplierTest.anUndecidedConflictAtApplyTimeWritesNothing` | ✅ |
+| PLAN-074: a done step changes only through an explicit per-change choice and is never reopened | `ProposalReconcilerTest.deletedOrRenamedStepsConflictAndDoneStepsAreProtected`, `ProposalApplierTest.doneStepsChangeOnlyThroughAnExplicitChoice` | ✅ |
+| OD-6 / PLAN-041 / INT-053: a user-stated deadline is never altered even when chosen; a target lives in its own field with its basis; a proposed deadline applies only when none exists and is labeled | `ProposalReconcilerTest.userStatedDeadlinesAreNeverChanged`, `ProposalApplierTest.userStatedDeadlineIsNeverChangedEvenWhenChosen`, `deadlineProposalAppliesOnlyWhenTheTaskHasNoneAndIsLabeled` | ✅ |
+| OD-5: nothing pre-selected; "Select recommended" picks only recommended, non-material, non-conflicting items; PLAN-072 materiality | `ProposalReconcilerTest.selectRecommendedSkipsMaterialAndConflictingItems`, `materialityFollowsPlan072` | ✅ |
+| INT-050 / PLAN-071: saving a set writes nothing; apply changes only chosen items; edited values apply without rewriting the proposal | `ProposalApplierTest.savingASetWritesNothingToTheTask`, `appliesOnlyChosenItems…`, `editedValueIsApplied…` | ✅ |
+| INT-030–033: every applied element carries provenance with `src`, as-of and investigation; a user rename keeps the origin and marks the user as latest editor | `ProposalApplierTest.appliesOnlyChosenItems…`, `userRenameKeepsTheOriginAndMarksTheUserAsLatestEditor` | ✅ |
+| INT-054 / OD-2: history names the set and both revisions; `baseOriginal` unchanged, `base` rebased; `rev` increments on every change | `ProposalApplierTest.appliesOnlyChosenItems…`, `everyUserChangeBumpsRev` | ✅ |
+| OD-1: research sets stay open while items are pending; planning sets close on apply | `ProposalApplierTest.planningSetsCloseOnApply`, `appliesOnlyChosenItems…` | ✅ |
+| Reminder and status items go through the policy path and state machine; finishing is never a proposal | `ProposalApplierTest.reminderAndStatusItemsGoThroughThePolicyAndStateMachine`, `ProposalReconcilerTest.completedTasksBlockEverything…` | ✅ |
+| Undo restores title, notes, steps (ids, order, origin), reminders and targets while `rev` is unchanged; refuses after any later change | `ProposalApplierTest.undoRestoresEverything…`, `undoRefusesAfterAnyLaterChange` | ✅ |
+| PLAN-010/013/014: drafts persist on every change, never create a task or policy, keep the paid result across a database restart, discard is user-initiated | `DraftRepositoryTest` (3) | ✅ |
+| Handoff §14 items 1 and 4 (payload inspection): new-draft payload = text + timing; task payload = allow-list only, signals switchable, findings only when passed for this request, no internal ids; turn payload = included context + sent findings, counts for excluded/not-sent, fresh checks named; excluded item named in a hand-edited objective warns; stable fingerprint | `ContextAllowListTest` (7) | ✅ |
+| Backup: drafts, proposal sets and provenance round trip; pre-v6 files import unchanged; a set for a missing target rejects the import | `BackupRepositoryTest.draftsProposalSetsAndProvenanceRoundTrip…`, `aProposalSetForAMissingTargetRejectsTheImport` | ✅ |
+| Prototype acceptance suites (behavioural reference only, not production acceptance) | `tests/*.js` from the handoff package, Playwright 1.56 | ✅ 76/76, 31/31, 41/41 at 360 and 412 px |
+

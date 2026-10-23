@@ -235,3 +235,54 @@ Delivered on `prod-ux-m1-foundations` (see the M1 report section appended to thi
 - Allow-listed payload builders for new-draft planning, task planning (with optional selected findings) and investigation turns, with redaction/leak tests.
 - Backup DTOs and round trip for the new tables.
 - No UI change beyond what compiles; no behaviour change for users until M2 wires the review.
+
+---
+
+# Milestone 1 report — foundations (branch `prod-ux-m1-foundations`)
+
+## What changed
+
+| Area | Files | Notes |
+|---|---|---|
+| Room v6 | `data/local/Entities.kt`, `Daos.kt`, `Migrations.kt`, `AppDatabase.kt`, `app/schemas/.../6.json` | `tasks.rev`, `eventLocalDate`/`eventLabel`, `intendedLocalDate`, `targetLocalDate`/`targetBasis`; `task_steps.origin`/`provenanceId`; tables `drafts`, `proposal_sets`, `provenance_records` (no foreign keys). Additive migration; no destructive fallback. |
+| Domain | `domain/model/Enums.kt` (`ContentOrigin`), `domain/model/Task.kt`, `domain/draft/DraftModels.kt`, `domain/proposal/ProposalModels.kt`, `ProposalReconciler.kt`, `ProposalApply.kt` | One proposal model for planning and research, drafts and tasks; pure reconciler; `TargetSnapshot`, `ItemSrc`, `ProvenanceRecord`, `ApplyRecord`. |
+| Repositories | `data/repository/DraftRepository.kt`, `ProposalSetRepository.kt`, `ProposalApplier.kt`, `TaskRepository.kt` | Every task write bumps `rev`; a user rename of a provenance-bearing step marks the user as latest editor without erasing the origin; the applier is the single proposal → task write path with undo. |
+| Privacy | `ai/context/ContextAllowList.kt`, `ai/AiPlanningService.kt` | `PlanningContextBuilder` (new draft, existing task with switchable signals and per-request findings) and `InvestigationTurnBuilder` (turn payload with included context, sent findings, counts for excluded/not-sent, fresh checks, config, warnings). The planning snapshot now comes from the builder; `previewFollowThrough` exposes the exact payload for the disclosure surface. |
+| Backup | `data/repository/BackupRepository.kt` | New optional arrays and task/step fields; pre-v6 files import unchanged; a set for a missing target rejects the import. |
+| DI | `di/AppContainer.kt` | `draftRepository`, `proposalSets`, `proposalApplier`. |
+| Docs | `docs/ARCHITECTURE.md`, `docs/TEST_MATRIX.md`, `docs/ROADMAP.md`, this file | |
+
+**No screen changed.** Users see no difference until M2 wires Proposal Review to the applier. Existing M3A/M3A.2 apply paths keep working through `applyTaskEdit`.
+
+## Requirement coverage delivered in M1 (storage and write-path level)
+
+PLAN-010/013/014 (storage only; the Today surface is M3), PLAN-040/041/042 (fields and apply rules), PLAN-071 (selective apply), PLAN-072 (materiality), PLAN-073 (per-item reconciliation), PLAN-074 (done steps), PLAN-080/081 (allow-listed snapshot), PLAN-110 (atomic), INT-012/020/021/022 (builders), INT-030/031/033 (provenance records), INT-050 (no write without accept), INT-053 (targets apart from deadlines), INT-054 (history with both revisions, original snapshot), RES-160 (turn payload), OD-1, OD-2, OD-5 (recommended selection rule), OD-6.
+
+## Tests added
+
+`ProposalReconcilerTest` (9), `ContextAllowListTest` (7), `ProposalApplierTest` (12), `DraftRepositoryTest` (3), `MigrationTest.migrateV5ToV6…` (1), `BackupRepositoryTest` (+2). All deterministic (fake clock, sequential ids, in-memory or file Room under Robolectric).
+
+## Gates actually run
+
+Run locally in this container on the M1 tree (2026-10-23):
+
+```
+./gradlew -q lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest   # EXIT 0
+```
+
+| Gate | Result |
+|---|---|
+| `lintDebug` | passed (`abortOnError = true`); 1 pre-existing informational issue in the report, no errors |
+| `testDebugUnitTest` | 577 tests in 74 classes, 0 failures, 0 skipped (incl. the 34 new M1 tests) |
+| `assembleDebug` / `assembleRelease` / `assembleDebugAndroidTest` | APKs built (29.9 MB / 4.4 MB / 1.2 MB); local debug key only, so not installable over the phone's CI-signed build |
+| Emulator instrumentation, screenshots | not run locally; Android CI on the draft PR (results recorded in the PR once available) |
+| Prototype suites (reference only) | 76/76, 31/31, 41/41 at 360 px and 412 px |
+
+## Limitations and what M1 does not claim
+
+- No UI uses the new tables yet; drafts are not created from Capture until M3, and the research turn builder is not wired until M4. PLAN-010 is therefore **not yet met for users**; the storage it needs is.
+- `ProposalApplier` targets tasks only. Draft-targeted apply (and retargeting on Save, OD-7) is M3; `ProposalSetRepository.retarget` exists but is unused.
+- Research `src` for proposal items will be populated from the Investigation turn model in M4. Nothing converts today's `SessionContent.proposals` into `ProposalSet`s yet; the M3A.2 proposals screen is unchanged.
+- No live provider call, no device install and no emulator run were performed by this session for M1; CI results are recorded above when available.
+- Documents E/F/G/H remain unavailable; the fixtures above are derived from the B/C/D acceptance lines and handoff §14.
+

@@ -16,6 +16,8 @@ import com.lifeadmin.autopilot.testing.SequentialIds
 import com.lifeadmin.autopilot.testing.inMemoryDatabase
 import com.lifeadmin.autopilot.testing.t
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -223,5 +225,71 @@ class BackupRepositoryTest {
             assertEquals(0, fresh.taskDao().getAll().size)
             assertEquals(0, fresh.usageDao().getAll().size)
         } finally { fresh.close() }
+    }
+
+    @Test fun draftsProposalSetsAndProvenanceRoundTripAndOlderBackupsStillImport() = runTest {
+        val repo = TaskRepository(source, clock, SequentialIds(), { CHICAGO }, ScheduleCoordinator.Direct)
+        val taskId = repo.createTask(NewTask("Renew passport", status = TaskStatus.ACTIONABLE))
+        val drafts = com.lifeadmin.autopilot.data.repository.DraftRepository(source, clock, SequentialIds("d"))
+        val draft = drafts.create("Book the dentist")
+        drafts.attachPlanningResult(draft.id, "{\"proposalId\":\"p1\"}", "claude-haiku-5-5")
+        val sets = com.lifeadmin.autopilot.data.repository.ProposalSetRepository(source)
+        val applier = com.lifeadmin.autopilot.data.repository.ProposalApplier(source, repo, sets, clock, SequentialIds("x"))
+        val snap = applier.snapshot(taskId)!!
+        sets.save(
+            com.lifeadmin.autopilot.domain.proposal.ProposalSet(
+                "set1", com.lifeadmin.autopilot.domain.proposal.ProposalSource.RESEARCH, com.lifeadmin.autopilot.domain.proposal.TargetKind.TASK, taskId,
+                investigationId = "inv1", turnId = "turn1", madeAtMs = clock.now().toEpochMilli(), baseOriginal = snap, base = snap,
+                items = listOf(
+                    com.lifeadmin.autopilot.domain.proposal.ProposalItem("a", com.lifeadmin.autopilot.domain.proposal.ItemKind.ADD_STEP, value = com.lifeadmin.autopilot.domain.proposal.ItemValue.Step("Book appointment")),
+                    com.lifeadmin.autopilot.domain.proposal.ProposalItem("r", com.lifeadmin.autopilot.domain.proposal.ItemKind.SET_REMINDER, value = com.lifeadmin.autopilot.domain.proposal.ItemValue.Reminder("DAILY_TIMES", listOf("18:00")), material = true),
+                ),
+            ),
+        )
+        applier.apply("set1", listOf(com.lifeadmin.autopilot.domain.proposal.ApplyChoice("a")))
+        val json = backup(source).exportJson()
+        assertTrue(json.contains("\"drafts\""))
+        assertTrue(json.contains("\"proposals\""))
+        assertTrue(json.contains("\"provenance\""))
+
+        val result = backup(target).importJson(json)
+        assertEquals(1, result.created)
+        val importedDraft = com.lifeadmin.autopilot.data.repository.DraftRepository(target, clock, SequentialIds("e")).get(draft.id)!!
+        assertEquals("{\"proposalId\":\"p1\"}", importedDraft.content.planningResult)
+        val importedSet = com.lifeadmin.autopilot.data.repository.ProposalSetRepository(target).get("set1")!!
+        assertEquals(com.lifeadmin.autopilot.domain.proposal.ItemStatus.APPLIED, importedSet.item("a")!!.status)
+        assertEquals(snap, importedSet.baseOriginal)
+        val step = target.stepDao().getForTask(taskId).first { it.title == "Book appointment" }
+        assertEquals("RESEARCH", step.origin)
+        val record = com.lifeadmin.autopilot.data.repository.ProposalSetRepository(target).provenance(step.provenanceId!!)!!
+        assertEquals("inv1", record.investigationId)
+        assertEquals(1, target.taskDao().get(taskId)!!.rev.let { if (it > 0) 1 else 0 })
+
+        // A pre-v6 backup has none of the new fields or arrays and must import unchanged.
+        val root = kotlinx.serialization.json.Json.parseToJsonElement(json).jsonObject.toMutableMap()
+        root.remove("drafts"); root.remove("proposals"); root.remove("provenance")
+        fun strip(key: String, vararg fields: String) {
+            root[key] = kotlinx.serialization.json.JsonArray(root.getValue(key).jsonArray.map { e -> kotlinx.serialization.json.JsonObject(e.jsonObject.filterKeys { it !in fields }) })
+        }
+        strip("tasks", "rev", "eventLocalDate", "eventLabel", "intendedLocalDate", "targetLocalDate", "targetBasis")
+        strip("steps", "origin", "provenanceId")
+        val legacy = kotlinx.serialization.json.JsonObject(root).toString()
+        assertTrue(!legacy.contains("\"drafts\""))
+        val fresh = inMemoryDatabase()
+        val r2 = backup(fresh).importJson(legacy)
+        assertEquals(1, r2.created)
+        assertEquals("USER", fresh.stepDao().getForTask(taskId).first().origin)
+        assertEquals(0, fresh.draftDao().getAll().size)
+        fresh.close()
+    }
+
+    @Test fun aProposalSetForAMissingTargetRejectsTheImport() = runTest {
+        val json = seed()
+        val tampered = json.replace("\"provenance\": []", "\"provenance\": []").replace(
+            "\"proposals\": []",
+            "\"proposals\": [{\"id\":\"set9\",\"source\":\"PLANNING\",\"targetKind\":\"TASK\",\"targetId\":\"missing\",\"madeAt\":\"2026-10-23T09:00:00Z\",\"status\":\"OPEN\",\"payload\":\"{}\"}]",
+        )
+        assertTrue(tampered != json)
+        expectImportFailure(tampered)
     }
 }

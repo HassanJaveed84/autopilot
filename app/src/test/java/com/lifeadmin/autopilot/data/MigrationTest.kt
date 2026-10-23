@@ -185,4 +185,54 @@ class MigrationTest {
         room.close()
         context.deleteDatabase(name)
     }
+
+    @Test fun migrateV5ToV6AddsRevTimingRolesDraftsProposalsProvenanceAndKeepsEverything() = runTest {
+        context.deleteDatabase(name)
+        val file = context.getDatabasePath(name).also { it.parentFile?.mkdirs() }
+        SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+            schemaStatements(5).forEach(db::execSQL)
+            db.execSQL(
+                "INSERT INTO tasks (id,title,notes,status,priority,createdAt,updatedAt,completedAt,archivedAt,deadlineType,deadlineLocalDate,deadlineInstant,deadlineZoneId,snoozedUntil,snoozeRemindAtEnd,waitingReason,waitingCheckInAt) " +
+                    "VALUES ('t1','Renew passport','Expires in March','ACTIONABLE','HIGH',1,2,NULL,NULL,'DATE_ONLY','2026-11-01',NULL,NULL,NULL,1,NULL,NULL)",
+            )
+            db.execSQL("INSERT INTO task_steps (id,taskId,sortOrder,title,isDone,completedAt) VALUES ('s1','t1',0,'Find old passport',0,NULL),('s2','t1',1,'Take photo',1,5)")
+            db.execSQL(
+                "INSERT INTO research_sessions (id,taskId,createdAt,updatedAt,title,template,outcome,model,searchCount,sourceCount,payload,applied) " +
+                    "VALUES ('s1','t1',1,1,'Picks','PICK_PER_ITEM','COMPLETE','claude-sonnet-5-5',7,5,'{}','[]')",
+            )
+            db.execSQL(
+                "INSERT INTO usage_records (id,feature,model,startedAt,runId,sessionId,taskId,stage,durationMs,inputTokens,outputTokens,cacheWrite5mTokens,cacheWrite1hTokens,cacheReadTokens,webSearches,outcome,usageStatus,estimatedMicros,priceVersion,providerMessageId) " +
+                    "VALUES ('u1','RESEARCH','claude-sonnet-5-5',1,'r1','s1','t1','GATHER',1000,41000,2600,0,0,0,5,'COMPLETE','COMPLETE',158050,'2026-10','msg_1')",
+            )
+            db.version = 5
+        }
+        val room = Room.databaseBuilder(context, AppDatabase::class.java, name)
+            .addMigrations(*Migrations.ALL)
+            .setQueryCoroutineContext(Dispatchers.IO)
+            .build()
+        val task = room.taskDao().get("t1")!!
+        assertEquals("Renew passport", task.title)
+        assertEquals("Expires in March", task.notes)
+        assertEquals("existing deadline untouched", java.time.LocalDate.of(2026, 11, 1), task.deadlineLocalDate)
+        assertEquals("rev starts at 0", 0, task.rev)
+        assertEquals(null, task.eventLocalDate)
+        assertEquals(null, task.targetLocalDate)
+        val steps = room.stepDao().getForTask("t1")
+        assertEquals(listOf("Find old passport", "Take photo"), steps.map { it.title })
+        assertEquals("existing steps are the user's", listOf("USER", "USER"), steps.map { it.origin })
+        assertTrue(steps[1].isDone)
+        assertEquals(1, room.researchSessionDao().getForTask("t1").size)
+        assertEquals(1, room.usageDao().getAll().size)
+        assertEquals(0, room.draftDao().getAll().size)
+        assertEquals(0, room.proposalSetDao().getAll().size)
+        assertEquals(0, room.provenanceDao().getAll().size)
+        // The new tables accept rows and have no foreign keys: deleting the task leaves them.
+        room.draftDao().upsert(com.lifeadmin.autopilot.data.local.DraftEntity("d1", java.time.Instant.EPOCH, java.time.Instant.EPOCH, "DRAFT", "Book the dentist", null, "{\"text\":\"Book the dentist\"}"))
+        room.provenanceDao().upsert(com.lifeadmin.autopilot.data.local.ProvenanceRecordEntity("p1", "t1", null, "STEP", "s1", "set1", "a", java.time.Instant.EPOCH, false, "{}"))
+        room.taskDao().delete("t1")
+        assertEquals(1, room.draftDao().getAll().size)
+        assertEquals(1, room.provenanceDao().getAll().size)
+        room.close()
+        context.deleteDatabase(name)
+    }
 }

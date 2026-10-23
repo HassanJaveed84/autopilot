@@ -12,13 +12,9 @@ import com.lifeadmin.autopilot.data.repository.TaskDetails
 import com.lifeadmin.autopilot.data.repository.TaskRepository
 import com.lifeadmin.autopilot.data.repository.label
 import com.lifeadmin.autopilot.domain.model.AppSettings
-import com.lifeadmin.autopilot.domain.model.DeadlineType
-import com.lifeadmin.autopilot.domain.model.EventType
 import com.lifeadmin.autopilot.domain.model.ReminderPolicy
-import com.lifeadmin.autopilot.domain.scheduling.PolicyDescriber
 import com.lifeadmin.autopilot.domain.scheduling.ReminderPresets
 import kotlinx.coroutines.flow.first
-import java.time.Duration
 import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneId
@@ -224,24 +220,13 @@ class AiPlanningService(
         )
     }
 
-    private fun snapshot(d: TaskDetails): TaskSnapshot {
-        val now = clock.now()
-        val zone = zoneProvider.current()
-        val since = now.minus(Duration.ofDays(14))
-        return TaskSnapshot(
-            title = d.task.title,
-            notes = d.task.notes,
-            status = d.task.status.label(),
-            steps = d.steps.map { it.title to it.isDone },
-            deadline = when (d.task.deadlineType) {
-                DeadlineType.NONE -> null
-                DeadlineType.DATE_ONLY -> d.task.deadlineLocalDate?.toString()
-                DeadlineType.EXACT -> d.task.deadlineInstant?.atZone(zone)?.toLocalDateTime()?.toString()
-            },
-            reminders = PolicyDescriber.describe(d.policy, zone),
-            ageDays = Duration.between(d.task.createdAt, now).toDays(),
-            snoozesLast14Days = d.events.count { it.type == EventType.SNOOZED && it.at.isAfter(since) },
-            waitingFor = d.task.waitingReason,
-        )
+    /** Built from the allow-list in [com.lifeadmin.autopilot.ai.context.PlanningContextBuilder]; the prompt never sees more than the preview shows. */
+    private fun snapshot(d: TaskDetails): TaskSnapshot =
+        com.lifeadmin.autopilot.ai.context.PlanningContextBuilder.snapshot(d, clock.now(), zoneProvider.current(), includeSignals = true)
+
+    /** Exactly what a follow-through request would transmit, for the disclosure surface (PLAN-082). No call is made. */
+    suspend fun previewFollowThrough(taskId: String, text: String, includeSignals: Boolean, findings: List<com.lifeadmin.autopilot.ai.context.SelectedFinding>): com.lifeadmin.autopilot.ai.context.FrozenPayload? {
+        val details = repository.observeDetails(taskId).first() ?: return null
+        return com.lifeadmin.autopilot.ai.context.PlanningContextBuilder.task(details, text.trim(), context(settings.current()), clock.now(), zoneProvider.current(), includeSignals, findings)
     }
 }

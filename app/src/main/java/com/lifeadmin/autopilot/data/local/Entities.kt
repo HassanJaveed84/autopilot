@@ -41,6 +41,13 @@ data class TaskEntity(
     @ColumnInfo(defaultValue = "1") val snoozeRemindAtEnd: Boolean = true,
     val waitingReason: String?,
     val waitingCheckInAt: Instant?,
+    /** Added in schema v6 (production kickoff M1). */
+    @ColumnInfo(defaultValue = "0") val rev: Int = 0,
+    val eventLocalDate: LocalDate? = null,
+    val eventLabel: String? = null,
+    val intendedLocalDate: LocalDate? = null,
+    val targetLocalDate: LocalDate? = null,
+    val targetBasis: String? = null,
 )
 
 @Entity(
@@ -55,6 +62,9 @@ data class TaskStepEntity(
     val title: String,
     val isDone: Boolean,
     val completedAt: Instant?,
+    /** Added in schema v6: [com.lifeadmin.autopilot.domain.model.ContentOrigin] name. */
+    @ColumnInfo(defaultValue = "USER") val origin: String = "USER",
+    val provenanceId: String? = null,
 )
 
 @Entity(
@@ -242,4 +252,61 @@ data class UsageRecordEntity(
     val estimatedMicros: Long?,
     val priceVersion: String,
     val providerMessageId: String?,
+)
+
+/**
+ * An unsaved draft (PLAN-010/013/014): the user's input, their edits and any paid planning result,
+ * kept locally until the user saves or discards it. Never a task, never reminds. No foreign key:
+ * a draft outlives nothing and depends on nothing.
+ */
+@Entity(tableName = "drafts", indices = [Index("status"), Index("updatedAt")])
+data class DraftEntity(
+    @PrimaryKey val id: String,
+    val createdAt: Instant,
+    val updatedAt: Instant,
+    /** DRAFT, SAVED or DISCARDED. */
+    val status: String,
+    /** The raw input, verbatim, for lists and recovery. */
+    val text: String,
+    /** The task this draft became, once saved. */
+    val savedTaskId: String?,
+    /** JSON [com.lifeadmin.autopilot.domain.draft.DraftContent]. */
+    val payload: String,
+)
+
+/**
+ * A set of AI-proposed changes against one target (draft or task), with the snapshot it was made
+ * against (handoff §4.4). Items apply only through an explicit accept. No foreign key so an
+ * obsolete set can still be shown struck through after its target is gone.
+ */
+@Entity(tableName = "proposal_sets", indices = [Index("targetId"), Index("status"), Index("madeAt")])
+data class ProposalSetEntity(
+    @PrimaryKey val id: String,
+    val source: String,
+    val targetKind: String,
+    val targetId: String,
+    val investigationId: String?,
+    val madeAt: Instant,
+    val status: String,
+    /** JSON [com.lifeadmin.autopilot.domain.proposal.ProposalSet]. */
+    val payload: String,
+)
+
+/**
+ * Provenance of applied content (INT-030–033): kept with the task, survives user edits and the
+ * deletion of the investigation it came from. No foreign keys by design.
+ */
+@Entity(tableName = "provenance_records", indices = [Index("taskId"), Index("draftId"), Index("elementId")])
+data class ProvenanceRecordEntity(
+    @PrimaryKey val id: String,
+    val taskId: String?,
+    val draftId: String?,
+    val elementKind: String,
+    val elementId: String?,
+    val proposalSetId: String,
+    val itemId: String,
+    val appliedAt: Instant,
+    @ColumnInfo(defaultValue = "0") val editedByUser: Boolean = false,
+    /** JSON [com.lifeadmin.autopilot.domain.proposal.ProvenanceRecord]. */
+    val payload: String,
 )

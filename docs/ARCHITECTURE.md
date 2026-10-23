@@ -140,6 +140,34 @@ ReconcileWorker (WorkManager, 1 h) ── engine.reconcileAll + ledger prune
   Undo; AI usage dashboard with run breakdown and spending preferences). `task/{id}/research/new` now
   opens the M3A.2 preflight; M3A brief routes remain for saved briefs.
 
+## Production kickoff M1: durable drafts, proposal sets, provenance, allow-listed payloads (2026-10-23)
+
+Foundations for the approved UX (`docs/PRODUCTION_KICKOFF_AUDIT_AND_PLAN.md`). No screen changed in this milestone; the
+data model and the write path did.
+
+- **Room v6** (`Migrations.MIGRATION_5_6`, additive): `tasks.rev` (every user change and every applied proposal increments
+  it), the three timing roles beside the deadline — `eventLocalDate`/`eventLabel`, `intendedLocalDate`,
+  `targetLocalDate`/`targetBasis` (PLAN-040/041) — and `task_steps.origin`/`provenanceId` (INT-030). New tables, all
+  without foreign keys so they outlive their origins: `drafts`, `proposal_sets`, `provenance_records`.
+- **`domain/draft`** — `Draft`/`DraftContent` (verbatim input, steps with origin, decisions, retained details, timing
+  roles, the encoded planning result). `DraftRepository` writes on every change: PLAN-010/013/014 storage.
+- **`domain/proposal`** — one proposal model for planning and research, drafts and tasks (handoff §4.4): `ProposalSet`
+  with `baseOriginal` (never changes) and `base` (rebased after a partial apply, OD-2), `ProposalItem` with
+  `material`/`recommended`/`status` and research `src` (premises → findings → evidence keys), `ProvenanceRecord`
+  (handoff §4.5). `ProposalReconciler` is pure: OK / NOTE / CONFLICT / BLOCKED per item (PLAN-073), done steps
+  protected (PLAN-074), user-stated deadlines blocked (OD-6), finishing never proposed, "Select recommended" excludes
+  material and conflicting items (OD-5).
+- **`ProposalApplier`** — the only write path from a proposal to a task: one transaction, re-reconciled at apply time
+  (an undecided conflict writes nothing), per-item provenance, `rev` + history event with the set id and both revisions
+  (INT-054), reminders through the policy path with generation bump, undo only while `rev` is unchanged. Existing
+  `applyTaskEdit` stays for M3A/M3A.2 until M2 moves them onto the applier.
+- **`ai/context`** — `PlanningContextBuilder` and `InvestigationTurnBuilder` build `FrozenPayload`s (JSON + SHA-256 +
+  plain lines) from explicit allow-lists; excluded context, excluded findings and anything about other tasks are not
+  inputs, so they cannot appear. `AiPlanningService.snapshot` now goes through the same builder. The research builder
+  is wired in M4.
+- Backup format unchanged (schemaVersion 1) with optional `drafts`, `proposals`, `provenance` arrays and the new task
+  and step fields; pre-v6 files import unchanged.
+
 ## Extension points for later milestones (not implemented)
 
 - M3 agents (research, email/calendar) would reuse the proposal → review → command pattern with

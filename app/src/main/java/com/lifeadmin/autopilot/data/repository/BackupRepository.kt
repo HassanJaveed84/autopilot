@@ -45,6 +45,10 @@ data class BackupFile(
     val sessions: List<ResearchSessionDto> = emptyList(),
     /** Local AI usage ledger (M3A.2): counts and estimates only, never prompts or keys. */
     val usage: List<UsageRecordDto> = emptyList(),
+    /** Production kickoff M1: drafts, proposal sets and provenance records (schema v6). Optional for older files. */
+    val drafts: List<DraftDto> = emptyList(),
+    val proposals: List<ProposalSetDto> = emptyList(),
+    val provenance: List<ProvenanceDto> = emptyList(),
 ) {
     companion object {
         const val FORMAT = "life-admin-autopilot-backup"
@@ -59,10 +63,28 @@ data class TaskDto(
     val deadlineType: String = "NONE", val deadlineLocalDate: String? = null, val deadlineInstant: String? = null,
     val deadlineZoneId: String? = null, val snoozedUntil: String? = null, val snoozeRemindAtEnd: Boolean = true,
     val waitingReason: String? = null, val waitingCheckInAt: String? = null,
+    val rev: Int = 0, val eventLocalDate: String? = null, val eventLabel: String? = null, val intendedLocalDate: String? = null,
+    val targetLocalDate: String? = null, val targetBasis: String? = null,
 )
 
 @Serializable
-data class StepDto(val id: String, val taskId: String, val sortOrder: Int, val title: String, val isDone: Boolean, val completedAt: String? = null)
+data class StepDto(
+    val id: String, val taskId: String, val sortOrder: Int, val title: String, val isDone: Boolean, val completedAt: String? = null,
+    val origin: String = "USER", val provenanceId: String? = null,
+)
+
+/** Opaque payloads are encoded by their own codecs (ProposalJson / DraftJson) and validated by decoding on import. */
+@Serializable
+data class DraftDto(val id: String, val createdAt: String, val updatedAt: String, val status: String, val text: String, val savedTaskId: String? = null, val payload: String)
+
+@Serializable
+data class ProposalSetDto(val id: String, val source: String, val targetKind: String, val targetId: String, val investigationId: String? = null, val madeAt: String, val status: String, val payload: String)
+
+@Serializable
+data class ProvenanceDto(
+    val id: String, val taskId: String? = null, val draftId: String? = null, val elementKind: String, val elementId: String? = null,
+    val proposalSetId: String, val itemId: String, val appliedAt: String, val editedByUser: Boolean = false, val payload: String,
+)
 
 @Serializable
 data class PolicyDto(
@@ -122,11 +144,14 @@ class BackupRepository(
     suspend fun exportJson(): String {
         val file = db.withTransaction {
             val slots = db.policyDao().getAllSlots().groupBy { it.policyId }
+            val drafts = db.draftDao().getAll().map { DraftDto(it.id, it.createdAt.toString(), it.updatedAt.toString(), it.status, it.text, it.savedTaskId, it.payload) }
+            val proposals = db.proposalSetDao().getAll().map { ProposalSetDto(it.id, it.source, it.targetKind, it.targetId, it.investigationId, it.madeAt.toString(), it.status, it.payload) }
+            val provenance = db.provenanceDao().getAll().map { ProvenanceDto(it.id, it.taskId, it.draftId, it.elementKind, it.elementId, it.proposalSetId, it.itemId, it.appliedAt.toString(), it.editedByUser, it.payload) }
             BackupFile(
                 exportedAt = clock.now().toString(),
                 appVersion = appVersion,
                 tasks = db.taskDao().getAll().map { it.toDto() },
-                steps = db.stepDao().getAll().map { StepDto(it.id, it.taskId, it.sortOrder, it.title, it.isDone, it.completedAt?.toString()) },
+                steps = db.stepDao().getAll().map { StepDto(it.id, it.taskId, it.sortOrder, it.title, it.isDone, it.completedAt?.toString(), it.origin, it.provenanceId) },
                 policies = db.policyDao().getAll().map { p -> p.toDto(slots[p.id].orEmpty()) },
                 events = db.eventDao().getAll().map {
                     EventDto(it.id, it.taskId, it.at.toString(), it.eventType.name, it.summary, com.lifeadmin.autopilot.data.local.decodeMetadata(it.structuredMetadata))
@@ -134,6 +159,9 @@ class BackupRepository(
                 research = db.researchDao().getAll().mapNotNull { it.toDto() },
                 sessions = db.researchSessionDao().getAll().mapNotNull { it.toDto() },
                 usage = db.usageDao().getAll().map { it.toDto() },
+                drafts = drafts,
+                proposals = proposals,
+                provenance = provenance,
             )
         }
         return json.encodeToString(BackupFile.serializer(), file)
@@ -176,12 +204,17 @@ class BackupRepository(
         val research: List<ResearchBriefEntity>,
         val sessions: List<com.lifeadmin.autopilot.data.local.ResearchSessionEntity> = emptyList(),
         val usage: List<com.lifeadmin.autopilot.data.local.UsageRecordEntity> = emptyList(),
+        val drafts: List<com.lifeadmin.autopilot.data.local.DraftEntity> = emptyList(),
+        val proposals: List<com.lifeadmin.autopilot.data.local.ProposalSetEntity> = emptyList(),
+        val provenance: List<com.lifeadmin.autopilot.data.local.ProvenanceRecordEntity> = emptyList(),
     )
 
     private fun validate(f: BackupFile): Validated {
         if (f.format != BackupFile.FORMAT) throw ImportException("Unrecognized file format")
         if (f.schemaVersion !in 1..BackupFile.SCHEMA_VERSION) throw ImportException("Backup was made by a newer app version (schema ${f.schemaVersion})")
-        if (f.tasks.size > MAX_TASKS || f.steps.size > MAX_STEPS || f.events.size > MAX_EVENTS || f.policies.size > MAX_TASKS || f.research.size > MAX_BRIEFS || f.sessions.size > MAX_BRIEFS || f.usage.size > MAX_USAGE) {
+        if (f.tasks.size > MAX_TASKS || f.steps.size > MAX_STEPS || f.events.size > MAX_EVENTS || f.policies.size > MAX_TASKS || f.research.size > MAX_BRIEFS || f.sessions.size > MAX_BRIEFS || f.usage.size > MAX_USAGE ||
+            f.drafts.size > MAX_TASKS || f.proposals.size > MAX_BRIEFS || f.provenance.size > MAX_STEPS
+        ) {
             throw ImportException("Backup has too many records")
         }
         fun id(v: String, what: String): String {
@@ -195,6 +228,7 @@ class BackupRepository(
 
         unique(f.tasks.map { it.id }, "task"); unique(f.steps.map { it.id }, "step"); unique(f.policies.map { it.id }, "policy"); unique(f.events.map { it.id }, "event")
         unique(f.research.map { it.id }, "research brief"); unique(f.sessions.map { it.id }, "research session"); unique(f.usage.map { it.id }, "usage record")
+        unique(f.drafts.map { it.id }, "draft"); unique(f.proposals.map { it.id }, "proposal set"); unique(f.provenance.map { it.id }, "provenance record")
         val taskIds = f.tasks.map { id(it.id, "task") }.toSet()
         if (f.policies.map { it.taskId }.toSet().size != f.policies.size) throw ImportException("More than one reminder policy for a task")
 
@@ -216,13 +250,20 @@ class BackupRepository(
                 snoozeRemindAtEnd = t.snoozeRemindAtEnd,
                 waitingReason = t.waitingReason?.take(TaskRepository.MAX_STEP),
                 waitingCheckInAt = instant(t.waitingCheckInAt, "check-in"),
+                rev = t.rev.coerceAtLeast(0),
+                eventLocalDate = t.eventLocalDate?.let { runCatching { LocalDate.parse(it) }.getOrElse { throw ImportException("Invalid event date") } },
+                eventLabel = t.eventLabel?.take(TaskRepository.MAX_STEP),
+                intendedLocalDate = t.intendedLocalDate?.let { runCatching { LocalDate.parse(it) }.getOrElse { throw ImportException("Invalid intended date") } },
+                targetLocalDate = t.targetLocalDate?.let { runCatching { LocalDate.parse(it) }.getOrElse { throw ImportException("Invalid target date") } },
+                targetBasis = t.targetBasis?.take(TaskRepository.MAX_STEP),
             )
         }
         val steps = f.steps.map { s ->
             id(s.id, "step")
             if (s.taskId !in taskIds) throw ImportException("Step refers to a missing task")
             val title = try { TaskRepository.validateStep(s.title) } catch (e: ValidationException) { throw ImportException("Invalid step title") }
-            TaskStepEntity(s.id, s.taskId, s.sortOrder, title, s.isDone, instant(s.completedAt, "step completed"))
+            val origin = com.lifeadmin.autopilot.domain.model.ContentOrigin.entries.firstOrNull { it.name == s.origin } ?: throw ImportException("Invalid step origin")
+            TaskStepEntity(s.id, s.taskId, s.sortOrder, title, s.isDone, instant(s.completedAt, "step completed"), origin.name, s.provenanceId?.let { id(it, "provenance") })
         }
         val policies = f.policies.map { p ->
             id(p.id, "policy")
@@ -291,7 +332,42 @@ class BackupRepository(
                 u.usageStatus, u.estimatedMicros, u.priceVersion.take(32), u.providerMessageId?.take(64),
             )
         }
-        return Validated(tasks, steps, policies, events, research, sessions, usage)
+        val drafts = f.drafts.map { d ->
+            id(d.id, "draft")
+            val status = com.lifeadmin.autopilot.domain.draft.DraftStatus.entries.firstOrNull { it.name == d.status } ?: throw ImportException("Invalid draft status")
+            if (d.payload.length > MAX_PAYLOAD_CHARS) throw ImportException("Draft too large")
+            val content = com.lifeadmin.autopilot.domain.draft.DraftJson.decode(d.payload) ?: throw ImportException("Invalid draft")
+            com.lifeadmin.autopilot.data.local.DraftEntity(
+                d.id, reqInstant(d.createdAt, "draft"), reqInstant(d.updatedAt, "draft"), status.name, content.text.take(DraftRepository.MAX_TEXT),
+                d.savedTaskId?.let { id(it, "task") }, com.lifeadmin.autopilot.domain.draft.DraftJson.encode(content),
+            )
+        }
+        val draftIds = drafts.map { it.id }.toSet()
+        val proposals = f.proposals.map { p ->
+            id(p.id, "proposal set")
+            if (p.payload.length > MAX_PAYLOAD_CHARS) throw ImportException("Proposal set too large")
+            val set = com.lifeadmin.autopilot.domain.proposal.ProposalJson.decodeSet(p.payload) ?: throw ImportException("Invalid proposal set")
+            if (set.id != p.id) throw ImportException("Proposal set id mismatch")
+            if (set.targetKind == com.lifeadmin.autopilot.domain.proposal.TargetKind.TASK && set.targetId !in taskIds) throw ImportException("Proposal set refers to a missing task")
+            if (set.targetKind == com.lifeadmin.autopilot.domain.proposal.TargetKind.DRAFT && set.targetId !in draftIds) throw ImportException("Proposal set refers to a missing draft")
+            com.lifeadmin.autopilot.data.local.ProposalSetEntity(
+                set.id, set.source.name, set.targetKind.name, set.targetId, set.investigationId, reqInstant(p.madeAt, "proposal set"), set.status.name,
+                com.lifeadmin.autopilot.domain.proposal.ProposalJson.encodeSet(set),
+            )
+        }
+        val provenance = f.provenance.map { r ->
+            id(r.id, "provenance record")
+            if (r.payload.length > MAX_PAYLOAD_CHARS) throw ImportException("Provenance record too large")
+            val record = com.lifeadmin.autopilot.domain.proposal.ProposalJson.decodeRecord(r.payload) ?: throw ImportException("Invalid provenance record")
+            if (record.id != r.id) throw ImportException("Provenance record id mismatch")
+            if (record.taskId != null && record.taskId !in taskIds) throw ImportException("Provenance record refers to a missing task")
+            if (record.draftId != null && record.draftId !in draftIds) throw ImportException("Provenance record refers to a missing draft")
+            com.lifeadmin.autopilot.data.local.ProvenanceRecordEntity(
+                record.id, record.taskId, record.draftId, record.elementKind.name, record.elementId, record.proposalSetId, record.itemId,
+                reqInstant(r.appliedAt, "provenance record"), record.editedByUser, com.lifeadmin.autopilot.domain.proposal.ProposalJson.encodeRecord(record),
+            )
+        }
+        return Validated(tasks, steps, policies, events, research, sessions, usage, drafts, proposals, provenance)
     }
 
     private suspend fun write(v: Validated): ImportResult {
@@ -333,6 +409,20 @@ class BackupRepository(
         // The ledger is append-only: rows already present are never overwritten by a backup.
         // Append-only, and never the same provider response twice under two local ids.
         for (u in v.usage) if (db.usageDao().get(u.id) == null && (u.providerMessageId == null || db.usageDao().byProviderMessage(u.providerMessageId).isEmpty())) db.usageDao().upsert(u)
+        // Drafts: newer wins, like tasks. Proposal sets and provenance: the local copy is authoritative once present (its target may have moved on).
+        for (d in v.drafts) {
+            val local = db.draftDao().get(d.id)
+            if (local == null || local.updatedAt < d.updatedAt) db.draftDao().upsert(d)
+        }
+        val draftsPresent = db.draftDao().getAll().map { it.id }.toSet()
+        for (p in v.proposals) {
+            val targetPresent = if (p.targetKind == "TASK") p.targetId in present else p.targetId in draftsPresent
+            if (targetPresent && db.proposalSetDao().get(p.id) == null) db.proposalSetDao().upsert(p)
+        }
+        for (r in v.provenance) {
+            val targetPresent = (r.taskId == null || r.taskId in present) && (r.draftId == null || r.draftId in draftsPresent)
+            if (targetPresent && db.provenanceDao().get(r.id) == null) db.provenanceDao().upsert(r)
+        }
         return ImportResult(created, updated, skipped)
     }
 
@@ -340,6 +430,7 @@ class BackupRepository(
         id, title, notes, status.name, priority.name, createdAt.toString(), updatedAt.toString(), completedAt?.toString(), archivedAt?.toString(),
         deadlineType.name, deadlineLocalDate?.toString(), deadlineInstant?.toString(), deadlineZoneId, snoozedUntil?.toString(), snoozeRemindAtEnd,
         waitingReason, waitingCheckInAt?.toString(),
+        rev, eventLocalDate?.toString(), eventLabel, intendedLocalDate?.toString(), targetLocalDate?.toString(), targetBasis,
     )
 
     private fun com.lifeadmin.autopilot.data.local.ResearchSessionEntity.toDto(): ResearchSessionDto? {
@@ -373,6 +464,7 @@ class BackupRepository(
         const val MAX_EVENTS = 200_000
         const val MAX_BRIEFS = 20_000
         const val MAX_USAGE = 200_000
+        const val MAX_PAYLOAD_CHARS = 512 * 1024
         private val BRIEF_STATUSES = setOf("VERIFIED", "UNVERIFIED", "TRUNCATED")
         private val ID_PATTERN = Regex("^[A-Za-z0-9_-]{1,64}$")
     }
