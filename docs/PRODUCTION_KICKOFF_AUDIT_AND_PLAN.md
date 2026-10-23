@@ -586,3 +586,52 @@ Android CI on the pushed head is recorded in PR #8.
 - Legacy decoder code (see the components table) is retained for reading stored reports; removing it requires a decision to stop displaying them in their original form.
 - `AnthropicResearchProvider.research()`, `BriefParser` and `ResearchPrompt` are unused by any screen and should be removed in a clean-up PR.
 - Draft-origin research and the Living Draft hand-offs are **M3** (not started). The combined planning + research period budget with warning and hard-stop thresholds is **M5**; M4 keeps the monthly soft note and the per-turn spending limit, and objective-preparation calls are ledgered but not yet counted against a combined threshold.
+
+---
+
+# M4 evidence-correctness review (RES-042–046, 070–072, 107), 2026-10-23
+
+A narrow pass on PR #8, requested before M3. It traced the evidence path from the reply to the answer: the parser reads EVIDENCE and AGAINST lines, the turn work merges them, the claim assessor sets each status, the result deriver sets the state, then the composer and the proposal gate run. Each finding was reproduced as a failing test on `d01894a` before any change (8 of 15 new cases failed).
+
+## Findings
+
+| Concern | Verdict | Evidence on `d01894a` |
+|---|---|---|
+| Any one non-pointer citation without opposing evidence establishes a claim (RES-043) | **Confirmed.** Nothing scaled the evidence needed with the claim or its consequences. A health-benefit claim resting on one blog post and one small study was established. | `aConsequentialBenefitClaimOnLowQualityEvidence…`, `aConsequentialClaimWithNoDeclaredStandard…` failed |
+| Evidence about another variant, place, population or date establishes a claim (RES-044) | **Confirmed.** The prompt told the model not to cite such evidence, but code never checked. `EvidenceRef.scopeNote` existed and was never set. | `aSourceAboutAnotherVariant…` failed |
+| Freshness from a fixed seven-day window on fetch time (RES-046) | **Confirmed.** Every evidence item was stamped with the current call's time, so the window never fired within a turn. The claim's own `asof` was parsed and never used. An eleven-month-old price fetched today was established. | `anOldPrice…`, `aFastChangingClaimWithNoDate…`, `aRuleTheEvidenceSaysChangesYearly…` failed |
+| Opposing evidence from an earlier period or another seller (RES-071) | **Confirmed.** It made the claim contested. | `opposingEvidenceAboutAnotherScopeOrAnEarlierPeriod…` failed |
+| Replaced findings as current support (RES-107) | **Confirmed, in three places.** The answer kept citation markers to a replaced claim. A judgment resting on it kept its status. A proposal resting on it passed the gate. | `aSupersededFindingIsNeverCurrentSupport` failed |
+| Already protected | Pointer-only citations never verify. Repeats of one origin count once. Judgments and recommendations take their premises' status and are never cited. In-scope opposing evidence makes one contested claim. The result deriver and the outgoing payload ignore replaced claims. Volatile claims are never reused on a continuation. An old stable rule was already treated as current. One authoritative source already established a narrow fact. | Existing tests plus the 7 new cases that passed before the change |
+
+## What changed (smallest changes, no domain templates)
+
+- **Contract.** A CLAIM header may state `needs=direct|corroborated|review` (the evidence this claim needs, from its consequences) and `fresh=<7d|3m|1y>` (how long the fact stays true). An EVIDENCE or AGAINST line may begin with `(kind=primary|review|study|secondary · asof=… · about=…)`. The prompt explains these in general terms, with no category list. Prompt version 2.
+- **Parser.** Reads those attributes into the evidence and the claim and strips them from the excerpt. An `about` that restates the claim's own scope is no mismatch. A government host is only a fallback for `kind` when the reply gives none.
+- **Assessor.**
+  - Evidence counts only when it is in scope and fresh for this claim.
+  - Freshness uses the fact's own date: the evidence's, else the claim's, never the fetch time alone.
+  - The window is the claim's own. The seven-day default applies only to a volatile claim that states none. A stable fact with no window never goes stale.
+  - The standard is the claim's own. When a consequential objective's load-bearing claim states none, it needs the issuing source, a review, or independent agreement. Independent agreement is one route among three, never a minimum count.
+  - Opposing evidence about another scope or an earlier period no longer makes a claim contested.
+  - A judgment resting on a replaced finding is not established.
+  - Reasons say what fell short in plain words.
+- **Composer and proposal gate.** No citation marker to a replaced claim. Proposals resting on one are held back. The change itself is still shown, as history.
+- **UI.** Evidence rows show "About …" or "As of …" when the reply states it.
+- **Fixtures.** The supplement-comparison replies now state `kind=` the way the new contract asks. The old seven-day unit test now uses dated evidence. It had treated fetch time as the fact's date, the confirmed flaw.
+
+## Still dependent on live evaluation
+
+The code now enforces these signals, but a live model must supply them correctly: what a source is about, the date the page gives, the kind of source, the claim's standard and its freshness window. A model that labels a maker's marketing claim as `kind=primary`, or omits `about=`, can still overstate a claim. Signals the code can only use to lower a status cannot catch that. Confirming this needs live runs on Document F's live scenarios: R-A benefit claims, R-C prices, R-D the Chanel variants, R-E an official rule, and R-K price history. Those runs are paid and were not performed here.
+
+## Gates actually run
+
+Local, `./gradlew --continue lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest`: **exit 0**.
+
+| Gate | Result |
+|---|---|
+| Unit and Robolectric tests | 612 in 84 classes, 0 failures. That is 16 more than M4's 596: the new `EvidenceCorrectnessTest` class. |
+| Lint | "No issues found." |
+| APKs | debug, release and androidTest all built |
+
+Android CI on the pushed head is recorded in PR #8. No live provider call was made and no physical device was used.

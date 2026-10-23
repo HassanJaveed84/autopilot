@@ -218,6 +218,12 @@ behind the new model; the M3A and M3A.2 run, preflight and apply paths were remo
   citations verify, model-typed `src=` tokens only point; status is derived from evidence
   (established / indicative / contested / not established / depends on you); judgments inherit their
   weakest premise and are never cited; the turn's result state is derived from load-bearing claims.
+  Evidence counts only when it is about the claim's own scope (`about=` marks it otherwise) and fresh
+  for that claim. Freshness is judged by the fact's own date and the claim's own window (`fresh=`, or
+  seven days for a volatile claim that states none), never by fetch time. The claim's standard
+  (`needs=direct|corroborated|review`, or "corroborated" for a consequential objective's load-bearing
+  claim) decides whether the evidence suffices. The reply supplies these signals and can only lower a
+  status. A replaced finding is never current support (RES-042–046, 071, 107).
 - **Composition** (`AnswerComposer`, `LeakageScan`): the answer leads; sections appear only when the
   ask calls for them (steps, comparison rows, conditions, changes); every load-bearing gap is a caveat
   in the main answer; absence of evidence is never worded as "false"; no internal ids, markers or
