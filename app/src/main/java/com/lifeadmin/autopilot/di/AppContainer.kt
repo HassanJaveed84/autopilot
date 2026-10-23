@@ -114,6 +114,16 @@ class AppContainer(
     /** Applies user-edited research proposals through the same transactional path. */
     val research2Actions: com.lifeadmin.autopilot.ai.research2.Research2Actions = com.lifeadmin.autopilot.ai.research2.Research2Actions(taskRepository, sessionRepository, clock)
 
+    /** Durable drafts (production kickoff M1): never tasks, never reminders. */
+    val draftRepository: com.lifeadmin.autopilot.data.repository.DraftRepository = com.lifeadmin.autopilot.data.repository.DraftRepository(database, clock, ids)
+
+    /** Proposal sets and provenance records (M1). Saving a set never touches a task. */
+    val proposalSets: com.lifeadmin.autopilot.data.repository.ProposalSetRepository = com.lifeadmin.autopilot.data.repository.ProposalSetRepository(database)
+
+    /** The one write path from a proposal to a task: transactional, conflict-aware, undoable (M1). */
+    val proposalApplier: com.lifeadmin.autopilot.data.repository.ProposalApplier =
+        com.lifeadmin.autopilot.data.repository.ProposalApplier(database, taskRepository, proposalSets, clock, ids)
+
     val backupRepository: BackupRepository = BackupRepository(
         database, clock, ids, BuildConfig.VERSION_NAME,
         afterImport = { reconcileAll("import") },

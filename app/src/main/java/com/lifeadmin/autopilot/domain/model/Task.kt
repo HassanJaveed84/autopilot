@@ -22,7 +22,20 @@ data class Task(
     val snoozeRemindAtEnd: Boolean = true,
     val waitingReason: String? = null,
     val waitingCheckInAt: Instant? = null,
-)
+    /** Revision counter: every user change and every applied proposal increments it (handoff §4.2). */
+    val rev: Int = 0,
+    /** A date the task relates to ("the trip is Nov 12"); never a deadline by itself (PLAN-041). */
+    val eventLocalDate: LocalDate? = null,
+    val eventLabel: String? = null,
+    /** The day the user intends to work on it ("Friday"); not a deadline (PLAN-040). */
+    val intendedLocalDate: LocalDate? = null,
+    /** A separately approved planning target with its stated basis; never shown as a deadline (PLAN-041, OD-6). */
+    val targetLocalDate: LocalDate? = null,
+    val targetBasis: String? = null,
+) {
+    /** True when the user stated (or approved) a latest acceptable completion. */
+    val hasDeadline: Boolean get() = deadlineType != DeadlineType.NONE
+}
 
 data class TaskStep(
     val id: String,
@@ -31,6 +44,9 @@ data class TaskStep(
     val title: String,
     val isDone: Boolean = false,
     val completedAt: Instant? = null,
+    val origin: ContentOrigin = ContentOrigin.USER,
+    /** Provenance record id when the step came from an applied proposal (INT-031). */
+    val provenanceId: String? = null,
 )
 
 data class ReminderPolicy(

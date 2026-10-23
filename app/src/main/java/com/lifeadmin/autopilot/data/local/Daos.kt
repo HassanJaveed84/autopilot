@@ -322,3 +322,87 @@ interface UsageRecordDao {
     @Query("DELETE FROM usage_records")
     suspend fun deleteAll()
 }
+
+@Dao
+interface DraftDao {
+    @Query("SELECT * FROM drafts WHERE status = 'DRAFT' ORDER BY updatedAt DESC")
+    fun observeOpen(): Flow<List<DraftEntity>>
+
+    @Query("SELECT * FROM drafts WHERE id = :id")
+    fun observe(id: String): Flow<DraftEntity?>
+
+    @Query("SELECT * FROM drafts WHERE id = :id")
+    suspend fun get(id: String): DraftEntity?
+
+    @Query("SELECT * FROM drafts ORDER BY updatedAt DESC")
+    suspend fun getAll(): List<DraftEntity>
+
+    @Query("SELECT COUNT(*) FROM drafts WHERE status = 'DRAFT'")
+    fun observeOpenCount(): Flow<Int>
+
+    @Upsert
+    suspend fun upsert(draft: DraftEntity)
+
+    @Query("DELETE FROM drafts WHERE id = :id")
+    suspend fun delete(id: String)
+
+    @Query("DELETE FROM drafts")
+    suspend fun deleteAll()
+}
+
+@Dao
+interface ProposalSetDao {
+    @Query("SELECT * FROM proposal_sets WHERE targetId = :targetId ORDER BY madeAt DESC")
+    fun observeForTarget(targetId: String): Flow<List<ProposalSetEntity>>
+
+    @Query("SELECT * FROM proposal_sets WHERE targetId = :targetId ORDER BY madeAt DESC")
+    suspend fun getForTarget(targetId: String): List<ProposalSetEntity>
+
+    @Query("SELECT * FROM proposal_sets WHERE id = :id")
+    fun observe(id: String): Flow<ProposalSetEntity?>
+
+    @Query("SELECT * FROM proposal_sets WHERE id = :id")
+    suspend fun get(id: String): ProposalSetEntity?
+
+    @Query("SELECT * FROM proposal_sets ORDER BY madeAt")
+    suspend fun getAll(): List<ProposalSetEntity>
+
+    @Upsert
+    suspend fun upsert(set: ProposalSetEntity)
+
+    @Query("DELETE FROM proposal_sets WHERE id = :id")
+    suspend fun delete(id: String)
+
+    @Query("DELETE FROM proposal_sets")
+    suspend fun deleteAll()
+}
+
+@Dao
+interface ProvenanceDao {
+    @Query("SELECT * FROM provenance_records WHERE taskId = :taskId ORDER BY appliedAt")
+    fun observeForTask(taskId: String): Flow<List<ProvenanceRecordEntity>>
+
+    @Query("SELECT * FROM provenance_records WHERE taskId = :taskId ORDER BY appliedAt")
+    suspend fun getForTask(taskId: String): List<ProvenanceRecordEntity>
+
+    @Query("SELECT * FROM provenance_records WHERE draftId = :draftId ORDER BY appliedAt")
+    suspend fun getForDraft(draftId: String): List<ProvenanceRecordEntity>
+
+    @Query("SELECT * FROM provenance_records WHERE id = :id")
+    suspend fun get(id: String): ProvenanceRecordEntity?
+
+    @Query("SELECT * FROM provenance_records ORDER BY appliedAt")
+    suspend fun getAll(): List<ProvenanceRecordEntity>
+
+    @Upsert
+    suspend fun upsert(record: ProvenanceRecordEntity)
+
+    @Upsert
+    suspend fun upsertAll(records: List<ProvenanceRecordEntity>)
+
+    @Query("DELETE FROM provenance_records WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<String>)
+
+    @Query("DELETE FROM provenance_records")
+    suspend fun deleteAll()
+}

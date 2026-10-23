@@ -19,12 +19,13 @@ Autopilot is an Android-native, local-first follow-through assistant. Tasks and 
 | Flight Plan UI | Native redesign and stabilization | Merged | Field usability/upgrade checks |
 | **M3A** | **Action Brief: selected-task web research, real source attribution, saved research briefs, reviewed task updates** | **Merged into `main`** | [PR #4](../pull/4) (squash `4477ee6`); final automated CI green; user reports installing/testing latest APK; exact upgrade and paid live-API validation evidence tracked separately |
 | **M3A.2** | **Deep Research & Actionable Results: flexible investigation depth, model selection, evidence coverage, exact requested deliverables, cost intelligence** | **Implemented on branch `m3a2-deep-research` — draft PR open, not merged** | Code, Robolectric and MockWebServer tests, CI and screenshots on the branch (`docs/M3A2_IMPLEMENTATION_REPORT.md`); live paid-API runs and phone install not performed by the agent |
-| **M3B** | **Autopilot Review: automatically review open tasks and detect overlooked obligations** | **Proposed — next major milestone after M3A.2** | Focused design, privacy specification, phased implementation |
+| **Production UX (approved)** | **Plan with AI Living Draft, Research Online Investigation Thread, one Proposal Review, integration — per the frozen specs A–D/J and `UX-implementation-handoff.md` v1.1** | **Kickoff 2026-10-23: audit + plan in `docs/PRODUCTION_KICKOFF_AUDIT_AND_PLAN.md`; M1 foundations implemented on `prod-ux-m1-foundations` (stacked on `m3a2-deep-research`, draft PR, not merged)** | M2 canonical Proposal Review → M3 Living Draft → M4 Investigation thread → M5 integration/spending → M6 hardening (see the plan) |
+| **M3B** | **Autopilot Review: automatically review open tasks and detect overlooked obligations** | **Proposed — after the production UX milestones** | Focused design, privacy specification, phased implementation |
 | M3C | Scoped calendar/email/service integrations and user-approved external actions | Proposed | Design permissions, OAuth, provider integrations and auditability |
 | M3D | Multi-step agent workflows with per-action approval and verified outcomes | Proposed | Reliable execution, scope, idempotency and recovery |
 | M4 | Optional household collaboration and sync | Deferred | Explicit approval and identity/sharing architecture |
 
-**Coordination:** M3A landed in `main` as PR #4. M3A.2 was implemented at the user's explicit request on `m3a2-deep-research` (draft PR against `main`, not merged). M3B remains proposed; no implementation is authorized by this document.
+**Coordination:** M3A landed in `main` as PR #4. M3A.2 was implemented at the user's explicit request on `m3a2-deep-research` (draft PR against `main`, not merged). The production UX implementation was kicked off at the user's explicit request on 2026-10-23 (frozen specs A–D/J + handoff v1.1 are the authority; design exploration is closed); M1 lives on `prod-ux-m1-foundations`. M3B remains proposed; no implementation is authorized by this document.
 
 ## M3A — Action Brief: consented task research (merged)
 
@@ -114,7 +115,8 @@ Optional sharing, identity, task ownership, member permissions, cross-device con
 | Topic | Status |
 | --- | --- |
 | Deep research with actionable outputs and usage/cost ledger | **Implemented 2026-10-20 as M3A.2 (draft PR); hardened the same day after an independent code review (completion policy in code, provenance pointers vs citations, failed-call cost floors); awaiting review, live-API and device verification** |
-| Automatic pending-task review | **Captured 2026-10-20; prioritized as M3B after M3A.2** |
+| Production UX implementation (Living Draft, Investigation Thread, Proposal Review) | **Approved and started 2026-10-23.** M1 (Room v6: drafts, proposal sets, provenance, task `rev` + timing roles; conflict-aware atomic applier; allow-listed payload builders) implemented with unit, Room and backup tests on `prod-ux-m1-foundations`. Documents E/F/G/H (received 2026-10-23) reconciled in the kickoff document §9: M4 must retire the M3A.2 keyword/template layer as the objective source (RES-010/011 are P0 Invariants); Stage 0 mapping in `docs/TEST_MATRIX.md`; two owner decisions surfaced (milestone order per Document G §3; research preset names, OQ-C1). M1 reconciliation pass fixed a real concurrent double-apply race and the draft text truncation. Prototype suites pass (reference only). Phone and live-API verification not performed by the agent |
+| Automatic pending-task review | **Captured 2026-10-20; prioritized as M3B after the production UX milestones** |
 | Focused M3B design | Planned after M3A UX exists |
 | Real-device installation and reminder/keyboard checks | Verification outstanding |
 | Live Anthropic planning/research tests (incl. M3A.2 multi-stage runs, cache usage, real price reconciliation against the Console) | Verification outstanding |
@@ -135,4 +137,4 @@ Optional sharing, identity, task ownership, member permissions, cross-device con
 
 ## Next checkpoint
 
-Review the M3A.2 draft PR: install the CI APK, run the supplement and fragrance benchmarks against the real API with a personal key, compare the local usage estimates with the Anthropic Console, and record findings in `docs/M3A2_IMPLEMENTATION_REPORT.md`. Then prepare M3B's focused design/engineering brief; start no new feature without explicit approval.
+Review the M1 draft PR (`prod-ux-m1-foundations`) and the kickoff plan, and decide the two open points from the E/F/G/H reconciliation: (a) whether M3 (Living Draft) and M4 (Investigation thread) swap to follow Document G §3's research-first order; (b) research preset names and count (OQ-C1; Document F runs at a "Standard" level). Then M2 (canonical Proposal Review wired to the applier, planning on saved tasks, M3A.2 proposals moved onto the same path). The M3A.2 draft PR #5 remains the base: install its CI APK, run the benchmarks against the real API with a personal key, compare the ledger with the Console, and record findings in `docs/M3A2_IMPLEMENTATION_REPORT.md`. M3B stays proposed.

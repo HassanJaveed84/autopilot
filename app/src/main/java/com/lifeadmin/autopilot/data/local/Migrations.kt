@@ -64,5 +64,43 @@ object Migrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+    /**
+     * v5 → v6 (production kickoff M1): task revision + timing roles (event date, intended date,
+     * planning target), step origin/provenance, and three new tables — drafts, proposal sets and
+     * provenance records. Additive only; every existing row keeps every value.
+     */
+    val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE tasks ADD COLUMN rev INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE tasks ADD COLUMN eventLocalDate TEXT")
+            db.execSQL("ALTER TABLE tasks ADD COLUMN eventLabel TEXT")
+            db.execSQL("ALTER TABLE tasks ADD COLUMN intendedLocalDate TEXT")
+            db.execSQL("ALTER TABLE tasks ADD COLUMN targetLocalDate TEXT")
+            db.execSQL("ALTER TABLE tasks ADD COLUMN targetBasis TEXT")
+            db.execSQL("ALTER TABLE task_steps ADD COLUMN origin TEXT NOT NULL DEFAULT 'USER'")
+            db.execSQL("ALTER TABLE task_steps ADD COLUMN provenanceId TEXT")
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `drafts` (`id` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `status` TEXT NOT NULL, " +
+                    "`text` TEXT NOT NULL, `savedTaskId` TEXT, `payload` TEXT NOT NULL, PRIMARY KEY(`id`))",
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_drafts_status` ON `drafts` (`status`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_drafts_updatedAt` ON `drafts` (`updatedAt`)")
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `proposal_sets` (`id` TEXT NOT NULL, `source` TEXT NOT NULL, `targetKind` TEXT NOT NULL, `targetId` TEXT NOT NULL, " +
+                    "`investigationId` TEXT, `madeAt` INTEGER NOT NULL, `status` TEXT NOT NULL, `payload` TEXT NOT NULL, PRIMARY KEY(`id`))",
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_proposal_sets_targetId` ON `proposal_sets` (`targetId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_proposal_sets_status` ON `proposal_sets` (`status`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_proposal_sets_madeAt` ON `proposal_sets` (`madeAt`)")
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `provenance_records` (`id` TEXT NOT NULL, `taskId` TEXT, `draftId` TEXT, `elementKind` TEXT NOT NULL, `elementId` TEXT, " +
+                    "`proposalSetId` TEXT NOT NULL, `itemId` TEXT NOT NULL, `appliedAt` INTEGER NOT NULL, `editedByUser` INTEGER NOT NULL DEFAULT 0, `payload` TEXT NOT NULL, PRIMARY KEY(`id`))",
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_provenance_records_taskId` ON `provenance_records` (`taskId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_provenance_records_draftId` ON `provenance_records` (`draftId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_provenance_records_elementId` ON `provenance_records` (`elementId`)")
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
 }

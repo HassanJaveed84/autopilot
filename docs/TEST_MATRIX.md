@@ -177,3 +177,48 @@ All provider tests use fakes or a local MockWebServer. **No test calls the live 
 | Failure screen for a cut-off continuation: honest headline, "unchanged" message, technical record (`stop=max_tokens`, block counts) without the question, Copy, back to the unchanged result with the attempt on the log | `Research2FlowUiTest.aContinuationCutOffBeforeAnyText…` | ✅ |
 | Paused turn with no searches left is never continued past the budget; with budget left it is continued once with the remainder | `ContinuationRegressionTest.toolOnlyPauseTurn…` (2) | ✅ |
 | Live BYOK research against the real API | — | ⏳ pending (not run by the agent) |
+
+## Production kickoff M1 — durable state, proposals, provenance, privacy allow-lists (2026-10-23)
+
+| Requirement | Tests | Status |
+|---|---|---|
+| Room v6 migration keeps tasks, steps, deadlines, sessions and ledger; `rev` starts at 0; steps are USER-origin; new tables empty and FK-free | `MigrationTest.migrateV5ToV6…` | ✅ |
+| PLAN-073: ticking an unrelated step flags only the item touching it; a snooze invalidates nothing; renamed/deleted steps conflict | `ProposalReconcilerTest.tickingAnUnrelatedStep…`, `snoozingNeverInvalidatesAnything`, `deletedOrRenamedSteps…`; `ProposalApplierTest.anUndecidedConflictAtApplyTimeWritesNothing` | ✅ |
+| PLAN-074: a done step changes only through an explicit per-change choice and is never reopened | `ProposalReconcilerTest.deletedOrRenamedStepsConflictAndDoneStepsAreProtected`, `ProposalApplierTest.doneStepsChangeOnlyThroughAnExplicitChoice` | ✅ |
+| OD-6 / PLAN-041 / INT-053: a user-stated deadline is never altered even when chosen; a target lives in its own field with its basis; a proposed deadline applies only when none exists and is labeled | `ProposalReconcilerTest.userStatedDeadlinesAreNeverChanged`, `ProposalApplierTest.userStatedDeadlineIsNeverChangedEvenWhenChosen`, `deadlineProposalAppliesOnlyWhenTheTaskHasNoneAndIsLabeled` | ✅ |
+| OD-5: nothing pre-selected; "Select recommended" picks only recommended, non-material, non-conflicting items; PLAN-072 materiality | `ProposalReconcilerTest.selectRecommendedSkipsMaterialAndConflictingItems`, `materialityFollowsPlan072` | ✅ |
+| INT-050 / PLAN-071: saving a set writes nothing; apply changes only chosen items; edited values apply without rewriting the proposal | `ProposalApplierTest.savingASetWritesNothingToTheTask`, `appliesOnlyChosenItems…`, `editedValueIsApplied…` | ✅ |
+| INT-030–033: every applied element carries provenance with `src`, as-of and investigation; a user rename keeps the origin and marks the user as latest editor | `ProposalApplierTest.appliesOnlyChosenItems…`, `userRenameKeepsTheOriginAndMarksTheUserAsLatestEditor` | ✅ |
+| INT-054 / OD-2: history names the set and both revisions; `baseOriginal` unchanged, `base` rebased; `rev` increments on every change | `ProposalApplierTest.appliesOnlyChosenItems…`, `everyUserChangeBumpsRev` | ✅ |
+| OD-1: research sets stay open while items are pending; planning sets close on apply | `ProposalApplierTest.planningSetsCloseOnApply`, `appliesOnlyChosenItems…` | ✅ |
+| Reminder and status items go through the policy path and state machine; finishing is never a proposal | `ProposalApplierTest.reminderAndStatusItemsGoThroughThePolicyAndStateMachine`, `ProposalReconcilerTest.completedTasksBlockEverything…` | ✅ |
+| Undo restores title, notes, steps (ids, order, origin), reminders and targets while `rev` is unchanged; refuses after any later change | `ProposalApplierTest.undoRestoresEverything…`, `undoRefusesAfterAnyLaterChange` | ✅ |
+| PLAN-010/013/014: drafts persist on every change, never create a task or policy, keep the paid result across a database restart, discard is user-initiated; text stored verbatim; exactly 20,000 characters accepted, 20,001 rejected on create and update with nothing written | `DraftRepositoryTest` (5) | ✅ |
+| Concurrent Apply of the same set applies each item once (one note line, one provenance record, one history event, one `lastApply`); the loser is refused, never merged | `ProposalApplierConcurrencyTest` (deterministic gating coordinator; failed on the unfixed code) | ✅ |
+| Partial apply then the rest: remaining items reconcile against the rebased base, `baseOriginal` unchanged, two history entries, undo reverts only the last apply; re-applying a settled item is refused; a mixed request applies only pending items | `ProposalApplierTest.partialApplyThenTheRest…`, `reapplyingASettledItemIsRefused…` | ✅ |
+| PLAN-045 absence (Document F Stage 0; H §1): no reminder policy is written unless a reminder item is explicitly chosen; no recurrence exists to enable *(recurrence proposals conditional on PLAN-047, P1 — not graded)* | `ProposalApplierTest.nothingButAChosenReminderItemEverTouchesReminders`, `ReminderEngineTest`/`TaskRepositoryTest` no-silent-reminder rows | ✅ |
+| OD-6 edge: a deadline the user removed after the snapshot makes a proposed deadline a conflict, not silently compatible | `ProposalReconcilerTest.userStatedDeadlinesAreNeverChanged` | ✅ |
+| Handoff §14 items 1 and 4 (payload inspection): new-draft payload = text + timing; task payload = allow-list only, signals switchable, findings only when passed for this request, no internal ids; turn payload = included context + sent findings, counts for excluded/not-sent, fresh checks named; excluded item named in a hand-edited objective warns; stable fingerprint | `ContextAllowListTest` (7) | ✅ |
+| Backup: drafts, proposal sets and provenance round trip; pre-v6 files import unchanged; a set for a missing target rejects the import | `BackupRepositoryTest.draftsProposalSetsAndProvenanceRoundTrip…`, `aProposalSetForAMissingTargetRejectsTheImport` | ✅ |
+| Prototype acceptance suites (behavioural reference only, not production acceptance) | `tests/*.js` from the handoff package, Playwright 1.56 | ✅ 76/76, 31/31, 41/41 at 360 and 412 px |
+
+## Document F Stage 0 acceptance mapping (baseline v1.0; reconciled 2026-10-23)
+
+Legend: ✅ covered by deterministic tests now · 🟡 partially covered by existing M2/M3A.2 tests (semantics to be re-derived) · ⏳ planned (milestone). *(conditional on ID)* marks expectations the release gate does not require until that requirement ships (Document E G4).
+
+| Document F §2.3 bullet | Requirement IDs | Tests now | Status / milestone |
+|---|---|---|---|
+| Draft persistence and recovery; no task, notification or recurrence without explicit confirmation | PLAN-010, 013, 014, 045 | `DraftRepositoryTest`, `ProposalApplierTest.nothingButAChosenReminderItem…`; recurrence proposals *(conditional on PLAN-047)* | ✅ storage/absence · ⏳ M3 recovery surface and kill-mid-planning |
+| Consent and authorization events vs. provider calls | PLAN-012, 054, 100; RES-021, 023, 025; INT-014 | `PlanningUsageLedgerTest`, M3A.2 gating tests | 🟡 · ⏳ M4/M5 per-turn authorization record, RES-025 boundary |
+| Outbound payload inspection: other tasks, other investigations, unselected findings never present | PLAN-080–081; RES-093, 160; INT-012, 020–022, 064 | `ContextAllowListTest` (7) | ✅ builders · ⏳ M4/M5 wiring |
+| Ledger completeness: one entry per call; model, effort, usage, estimate; partial/unknown markers | PLAN-102; RES-123, 143, 154 | `CostCalculatorTest`, ledger tests, `PlanningUsageLedgerTest` | 🟡 (no `effort` field yet) · ⏳ M5 |
+| Ceiling precedence: search budget vs. spending limit vs. sufficiency | RES-030, 141 | `DeepResearchServiceTest` spend-limit cases | 🟡 · ⏳ M4/M5 named stopping reason, combined budget |
+| Status derivation from fixed claim sets; same evidence → same status; caveat guard; no negative claims; claim-level contradiction; independence | RES-060, 062, 063, 064, 070, 045 | `SessionAssemblerTest`, `ContractParserTest` (M3A.2 semantics) | 🟡 · ⏳ M4 after the template layer is retired |
+| Citation-to-claim linkage: scope match; claim type ≠ judgment | RES-044, 085, 101 | provenance-pointer tests in `ContractParserTest` | 🟡 · ⏳ M4 |
+| Reconciliation: ticked step flagged, snooze ignored; completed-step protection | PLAN-073, 074 | `ProposalReconcilerTest`, `ProposalApplierTest`, `ProposalApplierConcurrencyTest` | ✅ · ⏳ M2 choice surface |
+| Provenance and as-of on incorporated findings; report immutability | INT-030, 033; RES-092; INT-054 | `ProposalApplierTest` provenance/history/snapshot tests; `ContinuationRegressionTest` (original answer never overwritten) | ✅ · ⏳ M4 research `src` population |
+| Leakage scan of result text for internal identifiers and status labels | RES-087 | — | ⏳ M4 |
+| Timing-field mapping of deadline / event / target / intended date / reminder | PLAN-040–041 | `ProposalApplierTest` (target apart from deadline; labeled deadline only when none exists), `ProposalReconcilerTest` | ✅ fields and apply rules · ⏳ M3 language → role mapping |
+
+**Gates (Document F §2.1) served by M1 code:** Task safety and Preservation — `ProposalApplier` (one explicit choice per item, re-reconciled and re-read inside the lock, undo only while `rev` is unchanged), `DraftRepository` (verbatim, no truncation). Leakage — payload builders. Authorization — unchanged in M1 (M4/M5). Stage 1–3 live benchmarks: not run; require the owner's authorisation and key.
+
