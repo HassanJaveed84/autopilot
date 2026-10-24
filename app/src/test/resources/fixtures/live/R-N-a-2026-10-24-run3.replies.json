@@ -1,0 +1,148 @@
+{
+ "derivedFrom": "docs/live-eval/R-N-a-2026-10-24-run3.sanitized.json",
+ "scenario": "R-N-a",
+ "question": "What is the address of Union Station in Washington, DC?",
+ "ranAtUtc": "2026-10-24T05:07:13.423Z",
+ "requested": {
+  "depth": "STANDARD",
+  "model": "claude-sonnet-5-5",
+  "searchBudget": 3,
+  "spendLimitCents": 300,
+  "outputTokens": 8000
+ },
+ "exchanges": [
+  {
+   "stage": "GATHER",
+   "user": "Objective: Find out: What is the address of Union Station in Washington, DC\nThe person's question, verbatim: What is the address of Union Station in Washington, DC?\nAsk: a fact or figure; one authoritative source may be enough\nWhat would satisfy it: The fact itself, from an authoritative source, with its date\nConstraints that apply: in Washington, DC\nToday's date and language: Sat 24 Oct 2026 · English (United States)\nNew claims start at c1.\nThis investigation is not linked to a task: write no PROPOSE blocks.\nSearches allowed on this call: 1 of the 3 authorized for this investigation; if a load-bearing claim is still open afterwards, the investigation continues with what is left, otherwise it stops. Never describe this call's allowance as the investigation's limit, and put no search mechanics under UNRESOLVED. Answer first, then CLAIM blocks for everything the answer rests on.",
+   "stop": "END",
+   "elapsedMs": 10426,
+   "usage": {
+    "inputTokens": 380,
+    "outputTokens": 938,
+    "cacheReadTokens": 4681,
+    "cacheWriteTokens": 13088,
+    "webSearches": 1
+   },
+   "segments": [
+    {
+     "text": "## TITLE\nStreet address of Union Station, Washington, DC\n\n## ANSWER\nUnion Station in Washington, DC is at 50 Massachusetts Avenue NE, Washington, DC 20002. [c1] Amtrak's station page gives the longer ZIP code 20002-4214. [c1] The station's own contact page says the same thing. [c1] The pages I found do not state an effective date for the address. Street addresses rarely change, so I treat it as current. [c1]\n\n## CLAIM c1 · type=fact · load=yes · scope=Washington Union Station building, Washington DC, current street address · asof=- · volatile=no · fresh=1y · needs=direct · needs_input=no\nUnion Station's street address is 50 Massachusetts Avenue NE, Washington, DC 20002.\nEVIDENCE: (kind=primary · origin=Union Station Redevelopment Corporation, the station's management · asof=- ) The station's own contact page lists Union Station D.C., 50 Massachusetts Ave., NE, Washington, D.C. 20002. ",
+     "citations": []
+    },
+    {
+     "text": "Union Station D.C. Union Station 50 Massachusetts Ave., NE Washington, D.C. 20002",
+     "citations": [
+      {
+       "url": "https://www.unionstationdc.com/contact-us/",
+       "title": "Contact Us",
+       "citedText": "Union Station D.C. Union Station 50 Massachusetts Ave., NE Washington, D.C. 20002 P: [phone removed] E: [email removed].\n\n"
+      }
+     ]
+    },
+    {
+     "text": "\nEVIDENCE: (kind=primary · origin=Amtrak, which operates the station · asof=- ) Amtrak's station page lists ",
+     "citations": []
+    },
+    {
+     "text": "50 Massachusetts Avenue NE Washington, DC 20002-4214.",
+     "citations": [
+      {
+       "url": "https://www.amtrak.com/stations/was",
+       "title": "Washington, DC - Union Station (WAS)",
+       "citedText": "50 Massachusetts Avenue NE Washington, DC 20002-4214. "
+      }
+     ]
+    },
+    {
+     "text": "\nEVIDENCE: (kind=secondary · origin=Wikipedia editors · asof=- ) Wikipedia's infobox gives the location as ",
+     "citations": []
+    },
+    {
+     "text": "50 Massachusetts Avenue NE Washington, D.C.",
+     "citations": [
+      {
+       "url": "https://en.wikipedia.org/wiki/Washington_Union_Station",
+       "title": "Washington Union Station",
+       "citedText": "- Union Station in May 2015\n\nGeneral information\n- Location: 50 Massachusetts Avenue NE Washington, D.C., U.S.\n- Coordinates: 38°53′50″N 77°00′23″W﻿ /..."
+      }
+     ]
+    },
+    {
+     "text": "\n\n## WORTH_KNOWING\nThe building sits at Columbus Circle, also called Union Station Plaza, where Massachusetts Avenue NE meets First Street NE. [c2]\n\n## CLAIM c2 · type=fact · load=no · scope=location of Union Station relative to Columbus Circle · asof=- · volatile=no · fresh=1y · needs=direct · needs_input=no\nUnion Station is in front of Columbus Circle, also called Union Station Plaza, in Northeast DC.\nEVIDENCE: (kind=secondary · origin=Wikipedia editors · asof=- ) ",
+     "citations": []
+    },
+    {
+     "text": "Columbus Circle, also known as Union Station Plaza or Columbus Plaza, is a traffic circle... located in front of Union Station",
+     "citations": [
+      {
+       "url": "https://en.wikipedia.org/wiki/Columbus_Circle_(Washington,_D.C.)",
+       "title": "Columbus Circle (Washington, D.C.)",
+       "citedText": ": 80004523\n- Added to NRHP: April 9, 1980\n\nColumbus Circle, also known as Union Station Plaza or Columbus Plaza, is a\n\n\n[traffic circle](https://en.wi..."
+      },
+      {
+       "url": "https://en.wikipedia.org/wiki/Columbus_Circle_(Washington,_D.C.)",
+       "title": "Columbus Circle (Washington, D.C.)",
+       "citedText": "It is located in front of [Union Station](https://en.wikipedia.org/wiki/Union_Station_(Washington,_D.C.)) "
+      }
+     ]
+    }
+   ],
+   "searches": [
+    {
+     "query": "Union Station Washington DC address 50 Massachusetts Ave NE",
+     "results": [
+      {
+       "url": "https://www.taketours.com/busstation/160413.html",
+       "title": "Bus Stop - Union Station - Washington, DC - 160413",
+       "pageAge": null
+      },
+      {
+       "url": "https://en.wikipedia.org/wiki/Washington_Union_Station",
+       "title": "Washington Union Station",
+       "pageAge": null
+      },
+      {
+       "url": "https://washington.org/find-dc-listings/union-station",
+       "title": "Union Station",
+       "pageAge": null
+      },
+      {
+       "url": "https://www.unionstationdc.com/contact-us/",
+       "title": "Contact Us",
+       "pageAge": "168 days ago"
+      },
+      {
+       "url": "https://www.amtrak.com/stations/was",
+       "title": "Washington, DC - Union Station (WAS)",
+       "pageAge": "285 days ago"
+      },
+      {
+       "url": "https://www.unionstationdc.com/visit/",
+       "title": "Visit",
+       "pageAge": "333 days ago"
+      },
+      {
+       "url": "https://en.wikipedia.org/wiki/Union_Station_(Washington_Metro)",
+       "title": "Union Station (Washington Metro)",
+       "pageAge": null
+      },
+      {
+       "url": "https://en.wikipedia.org/wiki/Columbus_Circle_(Washington,_D.C.)",
+       "title": "Columbus Circle (Washington, D.C.)",
+       "pageAge": null
+      },
+      {
+       "url": "https://www.yelp.com/biz/union-station-washington?start=320",
+       "title": "UNION STATION - Updated May 2026 - 2079 Photos & 849 Reviews - 50 Massachusetts Ave NE, Washington, District of Columbia - Shopping Centers - Phone Number - Yelp",
+       "pageAge": null
+      },
+      {
+       "url": "https://www.yelp.com/biz/union-station-washington",
+       "title": "UNION STATION - Updated October 2026 - 856 Reviews - 2238 Photos - 50 Massachusetts Ave NE, Washington, District of Columbia - Shopping Centers - Phone Number - Yelp",
+       "pageAge": "913 days ago"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

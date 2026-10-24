@@ -10,6 +10,7 @@ The harness is a JUnit test in `app/src/test/java/com/lifeadmin/autopilot/liveev
 |---|---|---|---|---|---|---|---|---|---|
 | R-N(a), Stage 1 run 1/2 | 2026-10-23 (00:34Z 10-24) | `6d3a70b` | `claude-sonnet-5-5` | Standard (3 searches, 300¢) | 2 of 3, in 2 billed calls | $0.09611 / $0.13–0.24 | 2 · 1 · 1 | **Fail**: Leakage gate; Efficiency 0; serious failures (misleading completeness, misattributed quotation) | [R-N-a-2026-10-23.md](R-N-a-2026-10-23.md) · [sanitized JSON](R-N-a-2026-10-23.sanitized.json) |
 | R-N(a) rerun on the fixed build (Stage 3 targeted follow-up) | 2026-10-24 (03:39Z) | `9cc17fe` (engine = `41dc471`), prompt v4 | `claude-sonnet-5-5` | Standard (3 searches, 300¢) | 1 of 3, in 1 billed call; FILL_GAPS skipped on sufficiency | $0.051416 / $0.13–0.24 | 2 · 2 · 2 | **Fail**: Leakage gate and Presentation 0 (unparsed attribute block on evidence rows, N1); no serious failure | [R-N-a-2026-10-24-rerun.md](R-N-a-2026-10-24-rerun.md) · [sanitized JSON](R-N-a-2026-10-24-rerun.sanitized.json) |
+| R-N(a) third run, after the N1/N2/source-date fixes | 2026-10-24 (05:07Z) | `afb9cad`, prompt v5 | `claude-sonnet-5-5` | Standard (3 searches, 300¢) | 1 of 3, in 1 billed call; FILL_GAPS skipped on sufficiency | $0.053328 / $0.13–0.24 | 2 · 1 · 2 | **Fail**: evidence grounding 1 from an unrequested Worth-knowing side statement (c2) that goes beyond its cited text (N3/N4); all gates pass; no serious failure | [R-N-a-2026-10-24-run3.md](R-N-a-2026-10-24-run3.md) · [sanitized JSON](R-N-a-2026-10-24-run3.sanitized.json) |
 
 OF = objective fidelity, EG = evidence grounding, SH = status honesty. Essential dimensions must all score 2.
 
@@ -59,9 +60,14 @@ The output goes to a new directory for every run, `app/build/live-eval/<scenario
 
 These need the owner's authorization. None is scheduled.
 
-1. **Fix N1** (balanced-parenthesis attribute parsing, plus cleaning displayed summaries) and N2 (per-call search allowance described as the investigation's limit), with replay tests from the 2026-10-24 rerun. See `R-N-a-2026-10-24-rerun.md` §6.
-2. **Rerun R-N(a)** on the candidate build once those fixes land: one call, about $0.05.
+1. **Fix N3** (a Worth-knowing item is shown without any materiality check) and consider **N4** (a sentence can state more than its claim and cited text), with replay tests from the third run. See `R-N-a-2026-10-24-run3.md` §5.
+2. **Rerun R-N(a)** on the candidate build once those fixes land: one call, about $0.05. No rerun is made without approval.
 3. **R-N(b).** The app asks which place locally, with no call. The harness needs a clarification-scenario mode before this run can be recorded.
 4. Then the rest of the Stage 1 subset (R-A, R-D, R-J, …): two runs each on the candidate, as Document F §2.3 requires.
 
-Both R-N(a) reports are historical records and are not edited after a fix. The 2026-10-23 report covers the prompt-v2 run and the fixes that followed it. The 2026-10-24 report covers the prompt-v4 rerun. Engine changes are recorded in `docs/PRODUCTION_KICKOFF_AUDIT_AND_PLAN.md`.
+All three R-N(a) reports are historical records and are not edited after a fix:
+- the 2026-10-23 report covers the prompt-v2 run and the fixes that followed it;
+- the 2026-10-24 rerun report covers the prompt-v4 run (N1, N2);
+- the 2026-10-24 run-3 report covers the prompt-v5 run (N3, N4).
+
+Engine changes are recorded in `docs/PRODUCTION_KICKOFF_AUDIT_AND_PLAN.md`.

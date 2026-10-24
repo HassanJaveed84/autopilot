@@ -727,3 +727,25 @@ Prompt contract **version 5**: `asof=` must be a date the page states, attribute
 **Fixture changes:** four fixtures with volatile prices whose cited text gave no date (fragrance seller pages, an X9 retailer and museum tickets) now carry the date in the cited text. Their tests are about conflict and continuation, not dating. `ClaimAssessorTest` constructs dates the page shows.
 
 **Consequence for live price scenarios (R-C, R-K):** a seller page that shows no date can no longer have its price called current on the strength of a date the model supplies. Such prices will be "only indicated" unless the page dates them. This is intended: the search index can serve old page content.
+
+---
+
+# Live R-N(a) third run on `afb9cad` (prompt v5), 2026-10-24
+
+The full scorecard is `docs/live-eval/R-N-a-2026-10-24-run3.md`. **Verdict: FAIL.** Every gate passes and there is no serious failure, but evidence grounding scores 1, and that dimension is essential.
+
+**What the fix pass achieved live:**
+- one billed call, one search of 3, $0.053328, FILL_GAPS skipped on sufficiency;
+- every label block was parsed;
+- no contract syntax or allowance remark was shown;
+- no date was claimed beyond what the pages show;
+- the log states the searches used and the stop reason.
+
+**New findings** (diagnosed, not fixed, no rerun):
+
+| Finding | Cause | Effect |
+|---|---|---|
+| **N3** | `AnswerComposer` shows WORTH_KNOWING for any ask whose claims are current. It has no materiality check. | An unrequested Columbus Circle item was shown. |
+| **N4** | The status qualifier checks each sentence's claim **statuses**, not its content against the claims' cited text. | "where Massachusetts Avenue NE meets First Street NE" was shown unqualified, although no cited text supports it. |
+
+The proposed fixes are in the report (§5).
