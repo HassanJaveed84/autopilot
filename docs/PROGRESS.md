@@ -290,3 +290,16 @@ searches as a cost floor, rejected requests are "$0 assumed" and counted as such
 reconcile with the ledger. Also: atomic launch claim, non-cancellable save, proposal evidence only for
 the product named, backup/restore dedupe by provider message id, brand-label sentence overrun fixed.
 Details, reproduction and tests in `docs/M3A2_IMPLEMENTATION_REPORT.md` ("Hardening pass").
+
+## 2026-10-24 — Research Online: AI-first engine replaces the M4 core (branch `ccr-e03bf7f8-hvk42n`, not merged)
+
+After the A/B experiment (`docs/experiments/ai-first-research/REPORT.md`) the owner chose the AI-first
+engine. Integrated into the app on the session branch (fast-forwarded from the experiment branch):
+clarification check (Haiku, no search) before authorization; approval = exact payload + hash +
+named history, re-checked before sending; one web-search call with budget-bounded `pause_turn`;
+high-estimate spend check before every call; ledger row per call; checkpoints; stop/interruption keep
+partial answers; provider-only citations; explicit task suggestions through the Proposal Review.
+Same Room v7 tables (no schema change); M4 and M3A.2 research stays readable read-only. M4's
+interpretation layer and its tests retired. Local: lint clean, 557 unit/Robolectric tests 0 failures,
+debug/release/androidTest APKs built. Details, risks, live-validation plan and device checklist in
+`docs/AI_FIRST_RESEARCH_INTEGRATION_REPORT.md`. Not done: live paid runs, phone testing.

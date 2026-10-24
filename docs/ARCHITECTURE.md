@@ -198,6 +198,8 @@ Both AI features now propose through one path (handoff §1, §7; INT-042): a `Pr
 
 ## Production M4: the Research Online Investigation Thread (2026-10-23)
 
+> **Superseded 2026-10-24** by the AI-first engine (next section). The M4 interpretation layer described here was removed; its data model is kept only as a read-only legacy format.
+
 Objective-led research replaces the M3A.2 requirement/template engine as the source of the question
 and the shape of the answer (RES-010/011, RES-080–089). Code: `ai/investigation`, `ui/investigation`,
 Room v7. The M3A.2 call loop, provider adapter, usage ledger and checkpointing were kept and moved
@@ -267,6 +269,33 @@ behind the new model; the M3A and M3A.2 run, preflight and apply paths were remo
   (answer, caveats, sections, judgment, evidence list and sheet, sources, how it was researched,
   requested vs used configuration, review hand-off, recovery surface) → follow-up. Legacy M3A briefs
   and M3A.2 sessions stay readable, read-only.
+
+## Research Online, AI-first (2026-10-24; replaces the M4 core)
+
+Claude does the research and writes the answer; the app enforces the boundaries. Code: `ai/aifirst`,
+`data/repository/AfThreadRepository.kt`, `ui/investigation`. Report: `docs/AI_FIRST_RESEARCH_INTEGRATION_REPORT.md`.
+
+- **Clarify, then authorize.** `ResearchOnlineService.ask` saves the question as a turn and runs
+  `AfClarifier` (Haiku, no web search, ledgered as `OBJECTIVE_PREP`, fail-open). An ambiguous
+  question waits in `CLARIFYING`; there is no card until it is answered or skipped.
+- **The approval is the payload.** `AiFirstResearch.authorize` (pure) builds `AfAuthorization`: the
+  exact user message, its SHA-256, the prompt version, the switched-on context lines and the ids of
+  this thread's earlier turns it carries. `start` and `run` refuse an approval that no longer matches
+  the stored turn, the context on offer or the named history. Nothing is sent before `start`.
+- **One call, bounded.** One Messages call with `web_search` (`max_uses` = the budget); `pause_turn`
+  is continued only within the remaining budget (≤ 4 calls). Before every call the spend so far plus a
+  high estimate of that call must fit the spending limit. Every call has a ledger row priced from
+  measured usage (failures, stops and interruptions as floors or unknown).
+- **Provenance.** Answers are stored as the provider's text segments with the numbers of the sources
+  their `web_search_result_location` citations name; sources keep the provider's cited text and page
+  age; URLs the model wrote that no search supplied are listed as unverified. No claim grammar,
+  parsing, status derivation or rewriting.
+- **Persistence.** Same Room v7 tables as M4 (no schema change): thread meta carries
+  `engine = "ai-first"`, turns are kind `AI_FIRST` with `AfTurn` JSON. Saved before sending and
+  after every call; app start turns running turns (either format) into Interrupted. Legacy M4/M3A.2
+  threads are read through `InvestigationRepository` and shown read-only (`LegacyThread`).
+- **Task changes.** `AfTaskSuggester` (explicit, confirmed, Haiku, no search) turns one answer into a
+  canonical `ProposalSet`; tasks change only through the Proposal Review and `ProposalApplier`.
 
 ## Extension points for later milestones (not implemented)
 
