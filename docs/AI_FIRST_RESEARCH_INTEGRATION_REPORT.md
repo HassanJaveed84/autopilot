@@ -101,7 +101,7 @@ BUILD SUCCESSFUL in 10m 18s
 - APKs built: `app-debug.apk` (30 MB) and `app-release.apk` (4.5 MB).
 - Emulator instrumentation could not run locally (no KVM). It runs in CI: the `instrumented` job runs every androidTest class except the two on-demand screenshot tours, which includes the rewritten `ScreenshotTourInvestigation` (t1 task-linked flow to the review, t2 follow-up, t3 clarification before any search, t4 stop keeping the partial answer).
 
-**CI:** see §8 (filled in from the run on the pushed head).
+**CI:** green on the pushed code head `7c0f74e` — see §8.
 
 ## 5. Live validation plan (not run; needs your authorization)
 
@@ -157,4 +157,10 @@ Install the debug APK from the CI run's `apks` artifact (signed with your person
 
 ## 8. CI on the pushed head
 
-To be completed from the GitHub Actions run of the pushed head (lint, unit, APKs, instrumented on the API 34 emulator).
+[Android CI run #166](https://github.com/HassanJaveed84/autopilot/actions/runs/40124729574) on `7c0f74e` (the code commit; the later commit is documentation only, which CI skips by its `paths-ignore`):
+
+- **Lint, unit/Robolectric tests, APKs:** success (`lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest`, 9 m 30 s). Signed with the personal key.
+- **Instrumented tests (emulator API 34):** success, **16 tests, 0 failures, 0 skipped**: `ScreenshotTourInvestigation` 4/4 (t1 task-linked research to the review 18.3 s, t2 follow-up 11.4 s, t3 clarification before any search 4.8 s, t4 stop keeps the partial answer 5.2 s), `ScreenshotTourResearch` 4, `InstrumentedReliabilityTest` 3, `KeystoreApiKeyStoreTest` 2, `InstrumentedDatabaseTest` 1, `InstrumentedReminderTest` 1, `InstrumentedUiTest` 1. The on-demand screenshot workflows were not run.
+- **Installable APKs:** artifact [`apks`](https://github.com/HassanJaveed84/autopilot/actions/runs/40124729574/artifacts/12573021162) (debug and release). Reports: artifacts `reports` and `instrumented-reports`.
+
+No flaky or unrelated failures were seen in CI. Locally, the only failure seen was the baseline's environmental Robolectric download (§4).
