@@ -85,11 +85,8 @@ android {
                     test.systemProperty("liveEval.enabled", "true")
                     test.systemProperty("liveEval.outDir", layout.buildDirectory.dir("live-eval").get().asFile.absolutePath)
                     providers.gradleProperty("liveEvalRerun").orNull?.let { test.systemProperty("liveEval.rerun", it) }
-                    // Which scenario: R-N-a (the default), R-A, or R-N-b (clarification only, no paid call).
+                    // Which validation scenario LiveResearchEval runs (V1-fact … V5-follow-up); none = nothing runs.
                     providers.gradleProperty("liveEvalScenario").orNull?.let { test.systemProperty("liveEval.scenario", it) }
-                    // Experiment: A/B scenario and engine for LiveAbEval (m4, aifirst, or both when absent).
-                    providers.gradleProperty("liveEvalAb").orNull?.let { test.systemProperty("liveEval.ab", it) }
-                    providers.gradleProperty("liveEvalEngine").orNull?.let { test.systemProperty("liveEval.engine", it) }
                     test.outputs.upToDateWhen { false }
                 } else {
                     test.exclude("**/liveeval/**")

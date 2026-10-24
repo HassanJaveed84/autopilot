@@ -49,9 +49,9 @@ data class AppSettings(
     val researchQuickModel: String = "",
     val researchThoroughModel: String = "",
     val researchDeepModel: String = "",
-    /** M4 (R48): model override for the new Standard depth; blank = the preset's model. Existing overrides above keep their meaning. */
+    /** M4 (R48): model override for the Standard depth; since the AI-first engine, the default research model (blank = Sonnet). */
     val researchStandardModel: String = "",
-    /** M4: saved default depth (a [com.lifeadmin.autopilot.ai.investigation.ResearchDepth] name); blank = the recommended depth for each objective. */
+    /** M4: saved default depth (a [com.lifeadmin.autopilot.ai.investigation.ResearchDepth] name). Unused since the AI-first engine; kept so stored settings still read. */
     val researchDefaultDepth: String = "",
     /** M4: saved default search budget; 0 = follows the depth's suggestion (OD-3). */
     val researchDefaultSearches: Int = 0,

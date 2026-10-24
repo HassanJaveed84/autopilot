@@ -639,7 +639,7 @@ private fun ResearchCard(state: TaskDetailUiState, now: Instant, zone: ZoneId, n
     val c = AutopilotTheme.colors
     val latestBrief = state.briefs.firstOrNull()
     val latestThread = state.investigations.firstOrNull()
-    // Show whichever is newer: an Investigation Thread or a legacy M3A brief.
+    // Show whichever is newer: a research thread or a legacy M3A brief.
     val latest = if (latestThread != null && (latestBrief == null || latestThread.updatedAtMs >= latestBrief.createdAt.toEpochMilli())) null else latestBrief
     val total = state.briefs.size + state.investigations.size
     SurfaceCard(radius = 20.dp, contentPadding = PaddingValues(0.dp), modifier = Modifier.padding(top = 12.dp).testTag("detail_research_card")) {
@@ -663,17 +663,16 @@ private fun ResearchCard(state: TaskDetailUiState, now: Instant, zone: ZoneId, n
         }
         if (latestThread != null && latest == null) {
             GroupDivider()
-            val result = latestThread.latestResult
-            val searches = latestThread.turns.sumOf { it.usage.webSearches }
-            val sources = result?.sources?.count { it.citedCount > 0 } ?: 0
+            val searches = latestThread.searches
+            val sources = latestThread.sources
             Column(Modifier.fillMaxWidth().clickable(role = Role.Button) { nav.onOpenInvestigation(latestThread.id) }.padding(16.dp).testTag("detail_research_latest"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    ("Researched " + Format.relative(Instant.ofEpochMilli(latestThread.updatedAtMs), now, zone) + " · ${latestThread.turns.size} ${if (latestThread.turns.size == 1) "turn" else "turns"}" +
+                    ("Researched " + Format.relative(Instant.ofEpochMilli(latestThread.updatedAtMs), now, zone) + " · ${latestThread.turnCount} ${if (latestThread.turnCount == 1) "turn" else "turns"}" +
                         (if (searches > 0) " · $searches ${if (searches == 1) "search" else "searches"}" else "") + (if (sources > 0) " · $sources ${if (sources == 1) "source" else "sources"}" else "")).uppercase(),
                     style = com.lifeadmin.autopilot.ui.theme.TimeTextStyle.copy(fontSize = 12.sp, lineHeight = 16.sp), color = c.ink2,
                 )
                 Text(latestThread.title, style = MaterialTheme.typography.bodyLarge, color = c.ink, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                result?.answer?.stateLine?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = c.ink2, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
+                latestThread.preview?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = c.ink2, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
             }
         }
         if (latest != null) {

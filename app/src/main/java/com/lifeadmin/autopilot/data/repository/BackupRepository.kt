@@ -332,8 +332,32 @@ class BackupRepository(
         }
         val sessionRepo = ResearchSessionRepository(db)
         val investigationRepo = InvestigationRepository(db)
+        /** An AI-first research thread from a backup: every turn must decode; a turn still running can never finish and becomes interrupted. */
+        fun importAiFirst(i: InvestigationDto, afMeta: com.lifeadmin.autopilot.ai.aifirst.AfThreadMeta, repo: AfThreadRepository): Pair<com.lifeadmin.autopilot.data.local.InvestigationEntity, List<com.lifeadmin.autopilot.data.local.InvestigationTurnEntity>> {
+            var meta = afMeta
+            val taskId = i.taskId?.let { id(it, "task") }?.takeIf { it in taskIds }
+            if (i.taskId != null && taskId == null) meta = meta.copy(associations = meta.associations + com.lifeadmin.autopilot.ai.aifirst.AfAssociation(clock.now().toEpochMilli(), null, "Task not in the backup; kept as standalone"))
+            if (i.turns.map { it.index }.toSet().size != i.turns.size) throw ImportException("Duplicate investigation turn index")
+            val turns = i.turns.map { t ->
+                id(t.id, "investigation turn")
+                if (t.payload.length > MAX_PAYLOAD_CHARS) throw ImportException("Investigation turn too large")
+                if (t.kind != com.lifeadmin.autopilot.ai.aifirst.AfJson.TURN_KIND) throw ImportException("Invalid investigation turn")
+                val turn = com.lifeadmin.autopilot.ai.aifirst.AfJson.decodeTurn(t.payload) ?: throw ImportException("Invalid investigation turn")
+                if (turn.id != t.id || turn.index != t.index) throw ImportException("Investigation turn mismatch")
+                val settled = if (turn.status == com.lifeadmin.autopilot.ai.aifirst.AfStatus.RUNNING) turn.copy(status = com.lifeadmin.autopilot.ai.aifirst.AfStatus.INTERRUPTED, costIsFloor = true, note = "Interrupted before the backup was made") else turn
+                repo.turnEntity(i.id, settled)
+            }
+            val latest = turns.maxByOrNull { it.turnIndex }
+            return com.lifeadmin.autopilot.data.local.InvestigationEntity(
+                i.id, if (taskId != null) "TASK" else "STANDALONE", taskId, null, reqInstant(i.createdAt, "investigation"), reqInstant(i.updatedAt, "investigation"),
+                i.title.take(InvestigationRepository.MAX_TITLE), latest?.state ?: com.lifeadmin.autopilot.ai.aifirst.AfStatus.DECLINED.name, turns.size, com.lifeadmin.autopilot.ai.aifirst.AfJson.encodeMeta(meta),
+            ) to turns
+        }
+        val threadRepo = AfThreadRepository(db)
         val fromDtos = f.investigations.map { i ->
             id(i.id, "investigation")
+            if (i.meta.length > MAX_PAYLOAD_CHARS) throw ImportException("Investigation too large")
+            com.lifeadmin.autopilot.ai.aifirst.AfJson.decodeMeta(i.meta)?.let { afMeta -> return@map importAiFirst(i, afMeta, threadRepo) }
             val origin = enumOf(com.lifeadmin.autopilot.ai.investigation.InvestigationOrigin.entries.toTypedArray(), i.origin, "investigation origin")
             val state = enumOf(com.lifeadmin.autopilot.ai.investigation.TurnState.entries.toTypedArray(), i.state, "investigation state")
             if (i.meta.length > MAX_PAYLOAD_CHARS) throw ImportException("Investigation too large")

@@ -240,7 +240,7 @@ fun AiSettingsScreen(viewModel: AiSettingsViewModel, onBack: () -> Unit, onOpenU
             item {
                 SurfaceCard(radius = 22.dp, modifier = Modifier.testTag("ai_research")) {
                     Text(
-                        "From a task, “Research online” searches the web with Anthropic’s web search tool and cites sources. You choose the depth (Quick, Thorough or Deep), the model and the search budget (1–${com.lifeadmin.autopilot.ai.research2.Research2Config.MAX_SEARCHES}) before each run; every run is started by you and billed by Anthropic on top of tokens. Nothing runs in the background.",
+                        "“Research online” searches the web with Anthropic’s web search tool and shows the sources Anthropic attaches. Before each run you see exactly what is sent and choose the model, effort, search budget (1–${com.lifeadmin.autopilot.ai.research2.Research2Config.MAX_SEARCHES}) and a spending limit; every run is started by you and billed by Anthropic on top of tokens. A small no-search check of your question may run first. Nothing runs in the background.",
                         style = MaterialTheme.typography.bodyMedium, color = c.ink2,
                     )
                     Text(

@@ -107,32 +107,22 @@ class AppContainer(
     val researchProposalSets: com.lifeadmin.autopilot.ai.research2.ResearchProposalSets =
         com.lifeadmin.autopilot.ai.research2.ResearchProposalSets(sessionRepository, proposalSets, proposalApplier, clock)
 
-    /** Investigation Threads (M4): Room v7, standalone or task-linked; readable offline. */
+    /** Legacy read path: research saved by the retired M4 engine (and migrated M3A.2 sessions). */
     val investigations: com.lifeadmin.autopilot.data.repository.InvestigationRepository = com.lifeadmin.autopilot.data.repository.InvestigationRepository(database)
 
-    /** The Investigation Thread orchestrator (M4). One turn at a time, in app scope so it survives navigation. */
-    val investigationService: com.lifeadmin.autopilot.ai.investigation.InvestigationService = com.lifeadmin.autopilot.ai.investigation.InvestigationService(
+    /** Research Online threads (AI-first), in the same Room tables; readable offline. */
+    val researchThreads: com.lifeadmin.autopilot.data.repository.AfThreadRepository = com.lifeadmin.autopilot.data.repository.AfThreadRepository(database)
+
+    /** Research Online: clarification, authorization and one research turn at a time, in app scope so it survives navigation. */
+    val researchOnline: com.lifeadmin.autopilot.ai.aifirst.ResearchOnlineService = com.lifeadmin.autopilot.ai.aifirst.ResearchOnlineService(
         settingsRepository, apiKeyStore, aiPlanning,
         researchCalls ?: com.lifeadmin.autopilot.ai.anthropic.AnthropicResearchCalls(researchProvider as? AnthropicResearchProvider ?: AnthropicResearchProvider()),
-        taskRepository, investigations, usageLedger, clock, zoneProvider, ids, appScope, networkStatus,
+        taskRepository, researchThreads, investigations, usageLedger, proposalSets, proposalApplier, clock, zoneProvider, ids, appScope, networkStatus,
     )
 
-    /** Research proposals as canonical proposal sets (M4): one per turn, reviewed and applied by the one path. */
+    /** Proposals of legacy M4 turns, still reviewed and applied through the one Proposal Review. */
     val investigationProposals: com.lifeadmin.autopilot.ai.investigation.InvestigationProposalSets =
         com.lifeadmin.autopilot.ai.investigation.InvestigationProposalSets(investigations, proposalSets, proposalApplier, clock)
-
-    init {
-        // When a turn ends, earlier open proposal sets that rested on a finding it replaced become obsolete (RES-107).
-        appScope.launch {
-            investigationService.state.collect { s ->
-                if (s is com.lifeadmin.autopilot.ai.investigation.TurnRunState.Finished) runCatching {
-                    val inv = investigations.get(s.investigationId) ?: return@runCatching
-                    val turn = inv.turns.firstOrNull { it.id == s.turnId } ?: return@runCatching
-                    investigationProposals.obsoleteSuperseded(inv, turn)
-                }
-            }
-        }
-    }
 
     val backupRepository: BackupRepository = BackupRepository(
         database, clock, ids, BuildConfig.VERSION_NAME,
@@ -162,7 +152,7 @@ class AppContainer(
         runCatching { ReconcileWorker.schedule(context) }.onFailure { Log.w("LifeAdmin", "WorkManager unavailable: ${it.javaClass.simpleName}") }
         lastForegroundReconcile = System.currentTimeMillis()
         appScope.launch { runCatching { reconcileAll("app_start") } }
-        // Calls left "in flight" by a previous process are interrupted (usage unknown, nothing re-sent), and a turn still marked running belongs to a process that died: it becomes Interrupted with its last checkpoint (RES-150).
-        appScope.launch { runCatching { investigationService.recoverInterrupted() } }
+        // Calls left "in flight" by a previous process are interrupted (usage unknown, nothing re-sent), and a turn still marked running belongs to a process that died: it becomes Interrupted with its last checkpoint.
+        appScope.launch { runCatching { researchOnline.recoverInterrupted() } }
     }
 }

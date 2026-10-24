@@ -19,8 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.lifeadmin.autopilot.ai.investigation.TurnRunState
-import com.lifeadmin.autopilot.ai.investigation.TurnState
+import com.lifeadmin.autopilot.ai.aifirst.AfRunState
 import com.lifeadmin.autopilot.ui.components.AutopilotIcons
 import com.lifeadmin.autopilot.ui.components.BackHeader
 import com.lifeadmin.autopilot.ui.components.Format
@@ -40,27 +39,17 @@ fun InvestigationHomeScreen(viewModel: InvestigationHomeViewModel, zone: ZoneId,
         LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("home_list"), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 32.dp)) {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 8.dp)) {
-                    PrimaryButton("New research", onClick = onNew, icon = AutopilotIcons.Research, enabled = s.run !is TurnRunState.Running, modifier = Modifier.fillMaxWidth().testTag("home_new"))
-                    Text("Each research keeps its turns, sources and costs. Nothing here runs on its own.", style = MaterialTheme.typography.bodySmall, color = c.ink2)
+                    PrimaryButton("New research", onClick = onNew, icon = AutopilotIcons.Research, enabled = s.run !is AfRunState.Running, modifier = Modifier.fillMaxWidth().testTag("home_new"))
+                    Text("Each research keeps its questions, answers, sources and costs. Nothing here runs on its own.", style = MaterialTheme.typography.bodySmall, color = c.ink2)
                 }
             }
-            if (!s.loading && s.investigations.isEmpty()) item { Text("No research yet.", style = MaterialTheme.typography.bodyLarge, color = c.ink2, modifier = Modifier.padding(top = 16.dp).testTag("home_empty")) }
-            itemsIndexed(s.investigations, key = { _, i -> i.id }) { i, inv ->
-                val latest = inv.latestTurn
-                val state = when (latest?.state) {
-                    TurnState.RUNNING -> "Running now"
-                    TurnState.STOPPED -> "Stopped"
-                    TurnState.FAILED -> "Didn't finish"
-                    TurnState.INTERRUPTED -> "Interrupted"
-                    TurnState.CLARIFYING, TurnState.AUTHORIZING -> "Not started"
-                    TurnState.DECLINED -> "Not started"
-                    else -> inv.latestResult?.state?.label ?: "Saved"
-                }
+            if (!s.loading && s.threads.isEmpty()) item { Text("No research yet.", style = MaterialTheme.typography.bodyLarge, color = c.ink2, modifier = Modifier.padding(top = 16.dp).testTag("home_empty")) }
+            itemsIndexed(s.threads, key = { _, t -> t.id }) { i, inv ->
                 val task = inv.taskId?.let { s.taskTitles[it] }
                 SurfaceCard(radius = 18.dp, contentPadding = PaddingValues(0.dp), modifier = Modifier.padding(top = 8.dp)) {
                     GroupRow(
                         inv.title, onClick = { onOpen(inv.id) }, modifier = Modifier.testTag("home_item_$i"),
-                        subtitle = listOfNotNull(task?.let { "For: $it" } ?: "Not linked to a task", state, "${inv.turns.size} ${if (inv.turns.size == 1) "turn" else "turns"}", Format.relative(Instant.ofEpochMilli(inv.updatedAtMs), s.now, zone)).joinToString(" · "),
+                        subtitle = listOfNotNull(task?.let { "For: $it" } ?: "Not linked to a task", inv.status, "${inv.turnCount} ${if (inv.turnCount == 1) "turn" else "turns"}", Format.relative(Instant.ofEpochMilli(inv.updatedAtMs), s.now, zone)).joinToString(" · "),
                         icon = AutopilotIcons.Research,
                     )
                 }

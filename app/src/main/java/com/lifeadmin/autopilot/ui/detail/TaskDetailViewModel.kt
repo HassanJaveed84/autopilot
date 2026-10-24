@@ -48,9 +48,9 @@ data class TaskDetailUiState(
     val briefs: List<ResearchBrief> = emptyList(),
     /** True while a research run for this task is in flight. */
     val researching: Boolean = false,
-    /** Investigation Threads linked to this task, newest first (M4; legacy M3A.2 sessions included). */
-    val investigations: List<com.lifeadmin.autopilot.ai.investigation.Investigation> = emptyList(),
-    /** Investigation turn in flight for this task (the running row opens its thread). */
+    /** Research threads linked to this task, newest first (either engine; legacy M3A.2 sessions included). */
+    val investigations: List<com.lifeadmin.autopilot.data.repository.ResearchThreadSummary> = emptyList(),
+    /** Research turn in flight for this task (the running row opens its thread). */
     val threadRunId: String? = null,
     val threadInvestigationId: String? = null,
     val threadTitle: String? = null,
@@ -78,8 +78,8 @@ class TaskDetailViewModel(
     private val zoneProvider: ZoneProvider,
     private val hintDismissals: HintDismissals = InMemoryHintDismissals(),
     researchBriefs: Flow<List<ResearchBrief>> = flowOf(emptyList()),
-    investigations: Flow<List<com.lifeadmin.autopilot.ai.investigation.Investigation>> = flowOf(emptyList()),
-    threadRun: Flow<com.lifeadmin.autopilot.ai.investigation.TurnRunState> = flowOf(com.lifeadmin.autopilot.ai.investigation.TurnRunState.Idle),
+    investigations: Flow<List<com.lifeadmin.autopilot.data.repository.ResearchThreadSummary>> = flowOf(emptyList()),
+    threadRun: Flow<com.lifeadmin.autopilot.ai.aifirst.AfRunState> = flowOf(com.lifeadmin.autopilot.ai.aifirst.AfRunState.Idle),
     proposalSets: Flow<List<com.lifeadmin.autopilot.domain.proposal.ProposalSet>> = flowOf(emptyList()),
     provenance: Flow<List<com.lifeadmin.autopilot.domain.proposal.ProvenanceRecord>> = flowOf(emptyList()),
 ) : ViewModel() {
@@ -89,7 +89,7 @@ class TaskDetailViewModel(
     val eventFlow: Flow<DetailEvent> = events.receiveAsFlow()
 
     private data class ResearchBits(
-        val briefs: List<ResearchBrief>, val investigations: List<com.lifeadmin.autopilot.ai.investigation.Investigation>, val thread: com.lifeadmin.autopilot.ai.investigation.TurnRunState,
+        val briefs: List<ResearchBrief>, val investigations: List<com.lifeadmin.autopilot.data.repository.ResearchThreadSummary>, val thread: com.lifeadmin.autopilot.ai.aifirst.AfRunState,
         val sets: List<com.lifeadmin.autopilot.domain.proposal.ProposalSet> = emptyList(), val provenance: List<com.lifeadmin.autopilot.domain.proposal.ProvenanceRecord> = emptyList(),
     )
     private val proposals = combine(proposalSets.catch { emit(emptyList()) }, provenance.catch { emit(emptyList()) }) { a, b -> a to b }
@@ -101,11 +101,11 @@ class TaskDetailViewModel(
         val (briefs, threads, thread) = bits
         val zone = zoneProvider.current()
         val hint = d?.let { StallDetector.detect(it, now, zone) }?.takeUnless { hintDismissals.isDismissed(taskId, it.signature) }
-        val threadRunning = (thread as? com.lifeadmin.autopilot.ai.investigation.TurnRunState.Running)?.takeIf { it.taskId == taskId }
+        val threadRunning = (thread as? com.lifeadmin.autopilot.ai.aifirst.AfRunState.Running)?.takeIf { it.taskId == taskId }
         TaskDetailUiState(
             loading = false, missing = d == null, details = d, settings = s, now = now, zone = zone, stallHint = hint,
             briefs = briefs, researching = threadRunning != null,
-            investigations = threads, threadRunId = threadRunning?.turnId, threadInvestigationId = threadRunning?.investigationId, threadTitle = threadRunning?.title,
+            investigations = threads, threadRunId = threadRunning?.turnId, threadInvestigationId = threadRunning?.threadId, threadTitle = threadRunning?.title,
             proposalSets = bits.sets, provenance = bits.provenance.associateBy { it.id },
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TaskDetailUiState())

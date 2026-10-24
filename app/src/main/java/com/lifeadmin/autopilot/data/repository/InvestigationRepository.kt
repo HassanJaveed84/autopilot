@@ -20,6 +20,10 @@ import kotlinx.coroutines.flow.map
 import java.time.Instant
 
 /**
+ * LEGACY read path. Room-backed store for Investigation Threads written by the retired M4 engine
+ * (and M3A.2 sessions migrated into them). New research is stored by [AfThreadRepository] in the
+ * same tables; [decode] returns null for those rows, so the two never misread each other.
+ *
  * Room-backed store for Investigation Threads (M4). Turns are written whole at every state change
  * (checkpoints included) so a process death loses at most the in-flight call. Final turns are
  * never rewritten except for their applied-proposal history (RES-092). Unreadable rows are hidden
@@ -82,6 +86,19 @@ open class InvestigationRepository(private val db: AppDatabase) {
         dao.associate(investigationId, taskId, InvestigationJson.encodeMeta(updated), at)
     }
 
+    /**
+     * App start: a legacy (M4) turn still marked running belongs to a process that died before the
+     * engine was replaced; it becomes Interrupted with what its last checkpoint held. Returns the count.
+     */
+    suspend fun settleRunning(at: Instant): Int {
+        var n = 0
+        for (inv in running()) for (t in inv.turns.filter { it.state == TurnState.RUNNING }) {
+            saveTurn(inv.id, t.copy(state = TurnState.INTERRUPTED, result = t.result?.copy(ending = com.lifeadmin.autopilot.ai.investigation.TurnEnding.INTERRUPTED), usage = t.usage.copy(floor = true, inFlightUnknown = true), endingNote = t.endingNote ?: "Interrupted; what was saved before is kept"), at)
+            n++
+        }
+        return n
+    }
+
     suspend fun delete(id: String) = dao.delete(id)
     suspend fun deleteForTask(taskId: String) = dao.deleteForTask(taskId)
     suspend fun deleteAll() = dao.deleteAll()
@@ -97,6 +114,7 @@ open class InvestigationRepository(private val db: AppDatabase) {
     fun turnEntity(investigationId: String, t: Turn) = InvestigationTurnEntity(t.id, investigationId, t.index, t.kind.name, t.state.name, Instant.ofEpochMilli(t.createdAtMs), InvestigationJson.encodeTurn(t))
 
     fun decode(e: InvestigationEntity, rows: List<InvestigationTurnEntity>): Investigation? {
+        if (com.lifeadmin.autopilot.ai.aifirst.AfJson.decodeMeta(e.meta) != null) return null
         val meta = InvestigationJson.decodeMeta(e.meta) ?: return null
         val origin = InvestigationOrigin.entries.firstOrNull { it.name == e.origin } ?: return null
         val turns = rows.mapNotNull { InvestigationJson.decodeTurn(it.payload) }.sortedBy { it.index }

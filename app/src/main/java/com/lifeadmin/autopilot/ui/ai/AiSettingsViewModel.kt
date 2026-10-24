@@ -40,9 +40,9 @@ class AiSettingsViewModel(
     private val keyStore: ApiKeyStore,
     private val service: AiPlanningService,
     private val clock: AppClock,
-    private val research: com.lifeadmin.autopilot.ai.investigation.InvestigationService? = null,
+    private val research: com.lifeadmin.autopilot.ai.aifirst.ResearchOnlineService? = null,
     private val briefs: com.lifeadmin.autopilot.data.repository.ResearchRepository? = null,
-    private val investigations: com.lifeadmin.autopilot.data.repository.InvestigationRepository? = null,
+    private val investigations: com.lifeadmin.autopilot.data.repository.AfThreadRepository? = null,
     /** Drops the cached research HTTP client that still holds an old key. */
     private val forgetResearchClient: () -> Unit = {},
 ) : ViewModel() {
@@ -59,7 +59,7 @@ class AiSettingsViewModel(
                 loading = false, enabled = s.aiEnabled, consentAt = s.aiConsentAt, hasKey = has, keyHint = hint,
                 model = AiConfig.modelOrDefault(s.aiModel), requestsToday = service.requestsToday(),
                 researchToday = research?.requestsToday(s) ?: 0,
-                briefCount = (briefs?.getAll()?.size ?: 0) + (investigations?.getAll()?.size ?: 0),
+                briefCount = (briefs?.getAll()?.size ?: 0) + (investigations?.summaries()?.size ?: 0),
                 researchExplainerAccepted = s.researchExplainerVersion >= com.lifeadmin.autopilot.ai.research.ResearchConfig.EXPLAINER_VERSION,
             )
         }

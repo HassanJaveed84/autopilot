@@ -143,35 +143,41 @@ use a server-side proxy instead. Default model: Claude Haiku 5.5 (cheapest). Son
 Opus 5.5 are selectable. Limits: 2,000 characters per request, 6,000 output tokens, 60 requests
 per day, no automatic retries. **Delete AI settings** removes the key and all AI settings.
 
-### Optional web research (M3 / M3A.2, bring your own key)
+### Optional web research (Research Online, bring your own key)
 
-On a task, **Move this forward → Research online** asks Claude to search the web (Anthropic's
-`web_search` server tool) and returns a structured result shaped by what you asked for: a quick
-answer, a shortlist with a comparison table, one pick per requested item, how-to steps or a
-checklist. Every requirement you listed is reported with a status (answered, your call, needs a
-check, partly, not found), facts are tagged by where they come from (Fact / Reviews / Community /
-Judgment / Calc / Unknown), and prices show the retailer, size and when they were checked.
+From a task (**Research online**) or the Research screen, ask a question. Claude researches it with
+Anthropic's `web_search` server tool in one call and writes the answer in its own words; the app
+shows it with the citations Anthropic attached, and lists the sources, searches and measured cost.
 
-- **Preflight first.** The app extracts your requirements on the phone (editable, nothing sent),
-  proposes a deliverable template, and lets you pick a depth: Quick (Haiku, 3 searches), Thorough
-  (Sonnet, 10 searches, two passes) or Deep (Opus, 25 searches, cross-check and write-up). Model,
-  search budget (1–30) and an optional soft spending limit are adjustable; the estimate is shown as
-  a range before you tap Start. No limit is the default — quality first, with an honest estimate.
-- **Honest progress and outcomes.** Stages come from the app's own plan and real responses; counts
-  are only what Anthropic reported. A result is *Complete* only when every requested item is
-  covered — running out of searches or money is reported as *Incomplete*, with a one-tap
-  **Continue researching** that picks up from the saved result (sources keep their numbers, nothing
-  is searched twice). Stop offers keep-what's-found or discard.
-- **Proposals are separate and editable.** One reviewable proposal per requested item; edit the
-  wording and the note, untick, "Add anyway" past a duplicate, then Apply once (Undo while the task
-  is unchanged). Research never changes reminders, status, priority or deadlines.
-- **Cost ledger.** Settings → Plan with AI → **AI usage** shows today, this month, by feature and
-  per run, estimated from Anthropic's reported tokens and searches × a versioned price table.
-  Unknown usage (a stopped or failed call) is never shown as $0. An optional monthly budget gives a
-  note at 80% and a confirmation at 100%; nothing is ever blocked. Anthropic's Console is the bill.
-- Results are saved with the task, open offline and with AI off, and are included in backups
-  (never transcripts, prompts or the key). Only structured citations from the API become sources;
-  links open in your browser, never inside the app.
+- **A quick check first, no searching.** *Continue* sends only your question (and, for a follow-up,
+  this thread's earlier questions) to Claude Haiku without web search to check for a genuinely
+  material ambiguity — "Union Station" in which city? If so you answer first; nothing paid is
+  searched on a guess. The check is recorded in AI usage (typically well under $0.01).
+- **You approve exactly what is sent.** The card shows the question, the context switches (task
+  title, notes, steps, date — each optional), whether earlier answers of this thread travel, the
+  model, effort, search budget (1–30), a spending limit (default $1) and an estimate labelled as
+  what it is: the cost if every search is used and the answer runs long, not a guaranteed maximum.
+  *See exactly what's sent* shows the message byte-for-byte; research starts only from *Start*.
+- **Limits that hold.** The server enforces the search budget; before every call (including a
+  `pause_turn` continuation) the app checks the spend so far plus a high estimate of that call
+  against your limit and stops instead of sending one that could pass it. A call already running
+  can't be cut short, so it can still cost more than estimated.
+- **Nothing is lost.** The turn is saved before anything is sent and after every call. Stop keeps
+  what arrived; a closed app leaves an *Interrupted* turn with its partial answer; nothing is
+  re-sent on its own.
+- **Honest answers.** Citations come only from Anthropic's structured citation metadata; text
+  without one is shown in a quieter tone; links Claude wrote itself are flagged as unverified;
+  search-index page ages are shown as such, never as a live check.
+- **Follow-ups and task changes.** Ask follow-ups in the same thread; nothing from other research
+  is sent. On a task-linked answer, *Suggest changes to the task* (one confirmed no-search Haiku
+  call) produces suggestions that open in the one Proposal Review — your task changes only when you
+  apply items there.
+- **Cost ledger.** Settings → Plan with AI → **AI usage** lists every call (checks, research,
+  continuations, suggestions), estimated from Anthropic's reported tokens and searches × a
+  versioned price table; unknown usage is never shown as $0. Anthropic's Console is the bill.
+- Research is saved on the phone, opens offline and with AI off, and is included in backups (never
+  the key). Research saved by earlier versions (M4 investigations, M3A.2 sessions, M3A briefs) stays
+  readable, read-only. Links open in your browser, never inside the app.
 
 Live verification against the real API with a personal key is pending (see
 `docs/M3A2_IMPLEMENTATION_REPORT.md`); everything is tested against fakes and a local MockWebServer.

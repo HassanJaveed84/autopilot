@@ -21,6 +21,9 @@ import java.time.Instant
 import java.time.ZoneOffset
 
 /**
+ * LEGACY: proposals of turns saved by the retired M4 engine stay reviewable through the canonical
+ * Proposal Review. New research proposes through [com.lifeadmin.autopilot.ai.aifirst.AfTaskSuggester].
+ *
  * Turns one turn's proposed changes into the canonical [ProposalSet] (RES-110–113, INT-042): one set
  * per turn, reviewed and applied by the one Proposal Review and the one write path. Pure mapping;
  * nothing here writes a task. Every item carries claim-level provenance: the claims it rests on, their
@@ -38,7 +41,7 @@ object InvestigationProposalBridge {
             val basis = p.claimIds.mapNotNull { claims[it] }
             val weakest = basis.minByOrNull { rank(it.status) }
             val established = weakest?.status == ClaimStatus.ESTABLISHED
-            val statusLabel = weakest?.let { ClaimAssessor.label(it.status) } ?: "not established"
+            val statusLabel = weakest?.let { statusLabel(it.status) } ?: "not established"
             val anchor = p.targetStepText?.let { t -> snapshot.steps.firstOrNull { it.title.equals(t, ignoreCase = true) } }
             val (kind, value, recommended, material) = when (p.kind) {
                 ProposedKind.NOTE -> Quad(ItemKind.APPEND_NOTE, ItemValue.Text(listOfNotNull(p.text, p.note).joinToString(" — ").take(600)), established, false)
@@ -55,7 +58,7 @@ object InvestigationProposalBridge {
                     premises = basis.map { c -> Premise(c.text.take(300), c.support.filter { !it.pointerOnly }.map { "s${it.sourceN}" }.distinct()) },
                     findings = basis.map { c ->
                         FindingRef(
-                            ref = c.id, turnId = c.inheritedFromTurnId ?: c.turnId, findingId = c.id, text = c.text.take(300), status = ClaimAssessor.label(c.status), asOf = c.asOf ?: asOf,
+                            ref = c.id, turnId = c.inheritedFromTurnId ?: c.turnId, findingId = c.id, text = c.text.take(300), status = statusLabel(c.status), asOf = c.asOf ?: asOf,
                             keys = c.support.filter { !it.pointerOnly }.mapNotNull { sources[it.sourceN]?.url }.distinct(), reused = c.reused,
                         )
                     },
@@ -71,6 +74,15 @@ object InvestigationProposalBridge {
             title = "From research: ${result.answer.title}".take(120),
             advice = result.answer.stateLine,
         )
+    }
+
+    /** The wording the M4 engine used for a claim status; frozen with the legacy format. */
+    fun statusLabel(s: ClaimStatus): String = when (s) {
+        ClaimStatus.ESTABLISHED -> "well supported"
+        ClaimStatus.INDICATIVE -> "only indicated"
+        ClaimStatus.CONTESTED -> "disputed between sources"
+        ClaimStatus.NOT_ESTABLISHED -> "not established"
+        ClaimStatus.DEPENDS_ON_INPUT -> "up to you"
     }
 
     private data class Quad(val kind: ItemKind, val value: ItemValue, val recommended: Boolean, val material: Boolean)

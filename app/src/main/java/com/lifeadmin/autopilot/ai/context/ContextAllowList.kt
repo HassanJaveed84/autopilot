@@ -147,6 +147,7 @@ object PlanningContextBuilder {
 /** One context item on the authorization card; only included items reach the payload (RES-161, OD-4). */
 data class ContextItem(val id: String, val label: String, val value: String, val included: Boolean = true, val requestOnly: Boolean = false)
 
+/** Legacy (M4): how an earlier finding was carried into a turn; kept for decoding stored turns. */
 enum class FindingDisposition {
     /** Needed by the new objective; reused as found, not re-checked. */
     SENT,
@@ -164,85 +165,6 @@ enum class FindingDisposition {
     FRESH,
 }
 
-data class InheritedFinding(val id: String, val text: String, val status: String, val asOf: String? = null, val disposition: FindingDisposition, val reason: String = "")
-
+/** Legacy (M4): a turn's configuration as recorded on its authorization; kept for decoding stored turns. */
 @Serializable
 data class TurnConfig(val model: String, val effort: String? = null, val depth: String, val searchBudget: Int, val spendLimitCents: Int? = null, val auto: Boolean = false)
-
-@Serializable
-data class TurnContextPayload(val label: String, val value: String, val requestOnly: Boolean = false)
-
-@Serializable
-data class SentFinding(val id: String, val text: String, val status: String, val asOf: String? = null, val reused: Boolean = true)
-
-@Serializable
-data class TurnPayload(
-    val objective: String,
-    val constraints: List<String> = emptyList(),
-    val context: List<TurnContextPayload> = emptyList(),
-    /** Sent findings only. */
-    val inherited_findings: List<SentFinding> = emptyList(),
-    val fresh_checks: List<String> = emptyList(),
-    /** Counts only: no content for anything that is not sent (handoff §8). */
-    val earlier_findings_not_sent: Int = 0,
-    val excluded_by_you: Int = 0,
-    val config: TurnConfig,
-)
-
-data class TurnInput(
-    val objective: String,
-    val constraints: List<String> = emptyList(),
-    val context: List<ContextItem> = emptyList(),
-    val inherited: List<InheritedFinding> = emptyList(),
-    val freshChecks: List<String> = emptyList(),
-    val config: TurnConfig,
-)
-
-object InvestigationTurnBuilder {
-    private val json = Json { encodeDefaults = true; prettyPrint = true }
-
-    fun build(input: TurnInput): FrozenPayload {
-        val body = TurnPayload(
-            objective = input.objective.trim(),
-            constraints = input.constraints.map { it.trim() }.filter { it.isNotEmpty() },
-            context = input.context.filter { it.included }.map { TurnContextPayload(it.label, it.value, it.requestOnly) },
-            inherited_findings = input.inherited.filter { it.disposition == FindingDisposition.SENT }.map { SentFinding(it.id, it.text, it.status, it.asOf) },
-            fresh_checks = input.freshChecks + input.inherited.filter { it.disposition == FindingDisposition.FRESH }.map { it.text },
-            earlier_findings_not_sent = input.inherited.count { it.disposition == FindingDisposition.NOT_SENT || it.disposition == FindingDisposition.REPLACED },
-            excluded_by_you = input.inherited.count { it.disposition == FindingDisposition.EXCLUDED },
-            config = input.config,
-        )
-        val lines = buildList {
-            add("Your objective" + if (body.constraints.isNotEmpty()) " and ${body.constraints.size} constraint(s)" else "")
-            body.context.forEach { add(it.label + if (it.requestOnly) " (this request only)" else "") }
-            input.context.filter { !it.included }.forEach { add("Not sent: ${it.label}") }
-            if (body.inherited_findings.isNotEmpty()) add("${body.inherited_findings.size} earlier finding(s), reused as found")
-            if (body.excluded_by_you > 0) add("${body.excluded_by_you} earlier finding(s) excluded by you")
-            if (body.earlier_findings_not_sent > 0) add("${body.earlier_findings_not_sent} earlier finding(s) not needed")
-            if (body.fresh_checks.isNotEmpty()) add("${body.fresh_checks.size} item(s) checked fresh")
-            add("Configuration: ${body.config.model}, ${body.config.depth}, up to ${body.config.searchBudget} searches")
-        }
-        return FrozenPayload.of(json.encodeToString(TurnPayload.serializer(), body), lines)
-    }
-
-    /** A hand-edited objective that names an excluded item or finding is a disclosure problem the card must show (handoff §6). */
-    fun warnings(input: TurnInput): List<String> {
-        val text = input.objective.lowercase()
-        val out = mutableListOf<String>()
-        input.context.filter { !it.included }.forEach { c ->
-            if (mentions(text, c.value)) out += "Your objective mentions \"${c.value}\", which you excluded. It will not be sent as context, but the wording itself goes out."
-        }
-        input.inherited.filter { it.disposition == FindingDisposition.EXCLUDED }.forEach { f ->
-            if (mentions(text, f.text)) out += "Your objective refers to an earlier finding you excluded. The finding stays excluded; only your wording goes out."
-        }
-        return out
-    }
-
-    /** A paraphrase counts: most of the item's significant words (at least two) appear in the objective. */
-    private fun mentions(objective: String, value: String): Boolean {
-        val words = value.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length >= 4 }.distinct()
-        if (words.isEmpty()) return objective.contains(value.lowercase().trim()) && value.isNotBlank()
-        val matched = words.count { objective.contains(it) }
-        return matched == words.size || matched >= maxOf(2, (words.size * 0.6 + 0.5).toInt())
-    }
-}

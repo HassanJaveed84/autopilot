@@ -194,7 +194,7 @@ fun LifeAdminRoot(
                 composable(Routes.LICENSES) { LicensesScreen(onBack = { navController.popBackStack() }) }
                 composable(Routes.AI_SETTINGS) {
                     val vm: AiSettingsViewModel = viewModel(factory = factoryOf {
-                        AiSettingsViewModel(container.settingsRepository, container.apiKeyStore, container.aiPlanning, container.clock, container.investigationService, container.researchRepository, container.investigations, forgetResearchClient = { (container.researchProvider as? com.lifeadmin.autopilot.ai.anthropic.AnthropicResearchProvider)?.reset() })
+                        AiSettingsViewModel(container.settingsRepository, container.apiKeyStore, container.aiPlanning, container.clock, container.researchOnline, container.researchRepository, container.researchThreads, forgetResearchClient = { (container.researchProvider as? com.lifeadmin.autopilot.ai.anthropic.AnthropicResearchProvider)?.reset() })
                     })
                     AiSettingsScreen(vm, onBack = { navController.popBackStack() }, onOpenUsage = { navController.navigate(Routes.aiUsage()) { launchSingleTop = true } })
                 }
@@ -233,7 +233,7 @@ fun LifeAdminRoot(
                         TaskDetailViewModel(
                             taskId, container.taskRepository, container.taskActions, container.settingsRepository, container.clock, container.zoneProvider, container.hintDismissals,
                             researchBriefs = container.researchRepository.observeForTask(taskId),
-                            investigations = container.investigations.observeForTask(taskId), threadRun = container.investigationService.state,
+                            investigations = container.researchThreads.observeSummaries(taskId), threadRun = container.researchOnline.state,
                             proposalSets = container.proposalSets.observeForTarget(taskId), provenance = container.proposalSets.observeProvenance(taskId),
                         )
                     })
@@ -253,7 +253,7 @@ fun LifeAdminRoot(
                 composable(Routes.INVESTIGATIONS, arguments = listOf(navArgument("task") { type = NavType.StringType; defaultValue = "" })) { entry ->
                     val task = entry.arguments?.getString("task").orEmpty().ifBlank { null }
                     val vm: com.lifeadmin.autopilot.ui.investigation.InvestigationHomeViewModel = viewModel(key = "investigations-$task", factory = factoryOf {
-                        com.lifeadmin.autopilot.ui.investigation.InvestigationHomeViewModel(container.investigations, container.taskRepository, container.investigationService, container.clock, task)
+                        com.lifeadmin.autopilot.ui.investigation.InvestigationHomeViewModel(container.researchThreads, container.taskRepository, container.researchOnline, container.clock, task)
                     })
                     com.lifeadmin.autopilot.ui.investigation.InvestigationHomeScreen(
                         vm, zone = container.zoneProvider.current(), title = if (task != null) "Research for this task" else "Research",
@@ -398,7 +398,7 @@ private fun InvestigationThreadDestination(container: AppContainer, navControlle
         factory = viewModelFactory {
             initializer {
                 com.lifeadmin.autopilot.ui.investigation.InvestigationThreadViewModel(
-                    createSavedStateHandle(), investigationId, taskId, question, container.investigationService, container.investigations, container.taskRepository,
+                    createSavedStateHandle(), investigationId, taskId, question, container.researchOnline, container.researchThreads, container.investigations, container.taskRepository,
                     container.settingsRepository, container.usageLedger, container.investigationProposals, container.networkStatus, container.clock, container.zoneProvider,
                 )
             }

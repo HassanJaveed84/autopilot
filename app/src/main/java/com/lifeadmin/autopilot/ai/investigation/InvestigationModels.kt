@@ -9,11 +9,22 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /*
- * Research Online domain (M4): the objective a person actually has, the claims an answer rests on,
- * the evidence attached to each claim, the state derived from those claims, and the thread of turns
- * that holds all of it. Pure Kotlin, serializable, provider-neutral. Nothing here is keyed by topic
- * or template (RES-010/011): the objective decides what is investigated and what is shown.
+ * LEGACY READ FORMAT. The data model of the retired M4 research engine (objective, claims, evidence,
+ * derived state), kept only so investigations saved by it — and M3A.2 sessions migrated into it —
+ * stay readable, exportable and importable. Nothing writes new turns in this format: new research
+ * uses [com.lifeadmin.autopilot.ai.aifirst.AfTurn]. Do not change field names or defaults; stored
+ * JSON depends on them.
  */
+
+/** Research depth as the M4 engine recorded it (R48). Kept for decoding stored objectives. */
+@Serializable
+enum class ResearchDepth(val label: String) {
+    QUICK("Quick"),
+    STANDARD("Standard"),
+    THOROUGH("Thorough"),
+    DEEP("Deep"),
+    CUSTOM("Custom"),
+}
 
 // ------------------------------------------------------------------ objective
 
@@ -226,8 +237,6 @@ data class Claim(
     /** False when the run stopped or failed before this claim was investigated (OD-11, RES-151). */
     val checked: Boolean = true,
 ) {
-    /** Distinct origins among the verified support, after merging one site, one declared publisher and repeated text (RES-045). */
-    val independentOrigins: Int get() = ClaimAssessor.origins(support.filter { !it.pointerOnly && !it.labelsUnreadable }).size
 }
 
 // ------------------------------------------------------------------ derived state
@@ -514,15 +523,6 @@ data class Investigation(
     val running: Boolean get() = turns.any { it.state == TurnState.RUNNING }
     val linkedToTask: Boolean get() = taskId != null
 
-    /** The claims a continuation can inherit: the latest non-superseded version of every claim. */
-    fun currentClaims(): List<Claim> {
-        val all = turns.sortedBy { it.index }.flatMap { t -> t.result?.claims.orEmpty() }
-        // The latest version of each id wins; an id superseded in any turn stays superseded.
-        val latest = LinkedHashMap<String, Claim>()
-        for (c in all) latest[c.id] = c
-        val superseded = all.filter { it.superseded }.map { it.id }.toSet()
-        return latest.values.filter { it.id !in superseded && !it.superseded }
-    }
 }
 
 object InvestigationJson {
@@ -531,6 +531,4 @@ object InvestigationJson {
     fun decodeTurn(raw: String): Turn? = runCatching { json.decodeFromString(Turn.serializer(), raw) }.getOrNull()
     fun encodeMeta(m: InvestigationMeta): String = json.encodeToString(InvestigationMeta.serializer(), m)
     fun decodeMeta(raw: String): InvestigationMeta? = runCatching { json.decodeFromString(InvestigationMeta.serializer(), raw) }.getOrNull()
-    fun encodeObjective(o: Objective): String = json.encodeToString(Objective.serializer(), o)
-    fun decodeObjective(raw: String): Objective? = runCatching { json.decodeFromString(Objective.serializer(), raw) }.getOrNull()
 }

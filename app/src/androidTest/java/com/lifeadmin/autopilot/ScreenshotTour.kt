@@ -1067,10 +1067,10 @@ class ScreenshotTourResearch {
 }
 
 /**
- * M4 Investigation Thread tour: question → objective → authorization card (depth, context switches,
- * exact payload) → progress → objective-led result → evidence sheet → canonical review; follow-up
- * with inherited findings; clarification; stop and the recovery surface. Scripted responses from the
- * shared debug fixtures — no network, no key.
+ * Research Online tour (AI-first): question → clarification check → authorization card (exact
+ * payload, estimate) → progress → answer with provider citations → source sheet → task suggestions in
+ * the canonical review; a follow-up in the same thread; a clarification before any search; stop
+ * keeping the partial answer. Scripted provider replies from the shared debug fixtures — no network, no key.
  */
 @RunWith(AndroidJUnit4::class)
 @FixMethodOrder(MethodSorters.NAME_ASCENDING)
@@ -1131,108 +1131,105 @@ class ScreenshotTourInvestigation {
         compose.waitForTag("detail_title")
     }
 
-    private fun ask(question: String) {
-        compose.waitForTag("thread_question")
-        compose.onNodeWithTag("thread_question").performTextInput(question)
+    private fun ask(question: String, field: String = "thread_question", button: String = "thread_prepare", expect: String = "auth_card") {
+        compose.waitForTag(field)
+        compose.onNodeWithTag(field).performTextInput(question)
         androidx.test.espresso.Espresso.closeSoftKeyboard()
         compose.waitForIdle()
-        compose.onNodeWithTag("thread_prepare").tap()
-        compose.waitForTag("objective_card")
+        compose.onNodeWithTag(button).performScrollTo().tap()
+        compose.waitForTag(expect)
     }
 
-    @Test fun t1_taskLinkedThreadFromObjectiveToReview() {
-        val calls = ScriptedCalls().also { it.hold = CompletableDeferred() }
-        calls.queue.addLast(com.lifeadmin.autopilot.testing.InvestigationFixtures.passportProcedure())
+    private val F = com.lifeadmin.autopilot.testing.ResearchFixtures
+
+    @Test fun t1_taskLinkedResearchFromQuestionToReview() {
+        val calls = ScriptedCalls().also { it.hold = CompletableDeferred(); it.holdCall = 2 }
+        calls.queue.addLast(F.clear()); calls.queue.addLast(F.passportAnswer()); calls.queue.addLast(F.suggestions())
         launch(container(calls))
         compose.scrollTo("detail_list", "action_research")
         compose.onNodeWithTag("action_research").tap()
         screenshot("i01-thread-question")
-        ask(com.lifeadmin.autopilot.testing.InvestigationFixtures.PASSPORT)
-        screenshot("i02-objective")
-        compose.scrollTo("thread_list", "thread_pending")
-        compose.onNodeWithTag("auth_payload").performScrollTo()
-        screenshot("i03-authorization")
-        compose.onNodeWithTag("auth_payload").tap()
-        compose.waitForTag("payload_json")
-        screenshot("i04-exact-payload")
+        ask(F.PASSPORT)
+        screenshot("i02-authorization")
+        compose.onNodeWithTag("auth_payload").performScrollTo().tap()
+        compose.waitForTag("payload_text")
+        screenshot("i03-exact-payload")
         compose.back()
         compose.waitForTag("auth_start")
         compose.onNodeWithTag("auth_start").tap()
         compose.waitForTag("research_progress")
-        screenshot("i05-progress")
+        screenshot("i04-progress")
         calls.hold!!.complete(Unit)
-        compose.waitForTag("turn_title_0")
-        screenshot("i06-result")
-        compose.scrollTo("thread_list", "turn_0")
-        compose.onNodeWithTag("turn_evidence_toggle_0").performScrollTo().tap()
-        compose.waitForTag("claim_c1")
-        compose.onNodeWithTag("claim_c1").performScrollTo()
-        screenshot("i07-evidence-list")
-        compose.onNodeWithTag("claim_c1").tap()
-        compose.waitForTag("evidence_sheet")
-        screenshot("i08-evidence-sheet")
+        compose.waitForTag("turn_answer_0")
+        screenshot("i05-answer")
+        compose.onNodeWithTag("thread_list").performScrollToNode(hasTestTag("source_1"))
+        compose.onNodeWithTag("source_1").tap()
+        compose.waitForTag("source_sheet")
+        screenshot("i06-source-sheet")
         compose.back()
-        compose.waitForTag("turn_review_0")
-        compose.onNodeWithTag("turn_review_0").performScrollTo().tap()
+        compose.onNodeWithTag("thread_list").performScrollToNode(hasTestTag("turn_suggest_0"))
+        compose.onNodeWithTag("turn_suggest_0").tap()
+        compose.waitForTag("suggest_payload")
+        screenshot("i07-suggest-confirm")
+        compose.onNodeWithTag("suggest_confirm").tap()
         compose.waitForTag("review_apply")
-        screenshot("i09-review-from-research")
+        screenshot("i08-review-from-research")
+        check(calls.calls == 3) { "expected the check, one research call and one suggestion call, saw ${calls.calls}" }
     }
 
-    @Test fun t2_followUpWithInheritedFindings() {
+    @Test fun t2_followUpInTheSameThread() {
         val calls = ScriptedCalls()
-        calls.queue.addLast(com.lifeadmin.autopilot.testing.InvestigationFixtures.multisCompare())
+        calls.queue.addLast(F.clear()); calls.queue.addLast(F.multisAnswer()); calls.queue.addLast(F.clear()); calls.queue.addLast(F.ironFollowUp())
         launch(container(calls), title = "Multivitamins")
         compose.scrollTo("detail_list", "action_research")
         compose.onNodeWithTag("action_research").tap()
-        ask(com.lifeadmin.autopilot.testing.InvestigationFixtures.MULTIS)
-        compose.onNodeWithTag("depth_quick").performScrollTo().tap()
+        ask(F.MULTIS)
         compose.onNodeWithTag("auth_start").tap()
-        compose.waitForTag("turn_title_0")
-        compose.onNodeWithTag("thread_list").performScrollToNode(hasTestTag("turn_section_comparison_0"))
-        screenshot("i10-comparison")
+        compose.waitForTag("turn_answer_0")
+        screenshot("i09-comparison")
         compose.onNodeWithTag("thread_list").performScrollToNode(hasTestTag("thread_followup"))
-        compose.onNodeWithTag("thread_followup").performTextInput("Is Thorne's NSF certification still current?")
-        androidx.test.espresso.Espresso.closeSoftKeyboard()
-        compose.waitForIdle()
-        compose.onNodeWithTag("thread_followup_prepare").performScrollTo().tap()
-        compose.waitForTag("auth_inherited")
-        compose.onNodeWithTag("auth_inherited").performScrollTo()
-        screenshot("i11-follow-up-inherited")
+        ask("Which one for someone who doesn't want iron?", field = "thread_followup", button = "thread_followup_prepare")
+        compose.onNodeWithTag("thread_list").performScrollToNode(hasTestTag("auth_context"))
+        screenshot("i10-follow-up-card")
+        compose.onNodeWithTag("auth_start").tap()
+        compose.waitForTag("turn_answer_1")
+        screenshot("i11-follow-up-answer")
     }
 
-    @Test fun t3_clarificationBeforeAnything() {
-        launch(container(ScriptedCalls()), title = null)
+    @Test fun t3_clarificationBeforeAnySearch() {
+        val calls = ScriptedCalls()
+        calls.queue.addLast(F.askWhichCity())
+        launch(container(calls), title = null)
         compose.onNodeWithTag("nav_research").tap()
         compose.waitForTag("home_new")
         screenshot("i12-research-home")
         compose.onNodeWithTag("home_new").tap()
-        compose.waitForTag("thread_question")
-        compose.onNodeWithTag("thread_question").performTextInput("is it worth it?")
-        androidx.test.espresso.Espresso.closeSoftKeyboard()
-        compose.waitForIdle()
-        compose.onNodeWithTag("thread_prepare").tap()
-        compose.waitForTag("clarify_question")
+        ask(F.UNION_STATION, expect = "clarify_question")
         screenshot("i13-clarify")
+        compose.onNodeWithTag("clarify_option_0").tap()
+        compose.waitForTag("clarified")
+        compose.waitForTag("auth_card")
+        screenshot("i14-clarified-card")
+        check(calls.calls == 1) { "only the no-search check may run before approval, saw ${calls.calls} calls" }
     }
 
-    @Test fun t4_stopKeepsFindingsAndOffersResume() {
-        val calls = ScriptedCalls().also { it.hold = CompletableDeferred(); it.holdCall = 2 }
-        calls.queue.addLast(com.lifeadmin.autopilot.testing.InvestigationFixtures.unverifiableNothingFound())
+    @Test fun t4_stopKeepsThePartialAnswer() {
+        val calls = ScriptedCalls().also { it.hold = CompletableDeferred(); it.holdCall = 3 }
+        calls.queue.addLast(F.clear()); calls.queue.addLast(F.pausedPartial())
         launch(container(calls), title = "Water filter")
         compose.scrollTo("detail_list", "action_research")
         compose.onNodeWithTag("action_research").tap()
         ask("Does the AquaPure X9 remove 99.99% of microplastics?")
-        compose.onNodeWithTag("depth_standard").performScrollTo().tap()
         compose.onNodeWithTag("auth_start").tap()
-        compose.waitUntil(15_000) { calls.calls >= 2 }
+        compose.waitUntil(15_000) { calls.calls >= 3 }
         compose.waitForTag("research_stop")
         compose.onNodeWithTag("research_stop").tap()
-        compose.waitForTag("stop_keep")
-        screenshot("i14-stop-sheet")
-        compose.onNodeWithTag("stop_keep").tap()
-        calls.hold!!.complete(Unit)
+        compose.waitForTag("stop_confirm")
+        screenshot("i15-stop-confirm")
+        compose.onNodeWithTag("stop_confirm").tap()
         compose.waitForTag("turn_ending_0")
-        compose.onNodeWithTag("thread_list").performScrollToNode(hasTestTag("turn_recovery_0"))
-        screenshot("i15-stopped-recovery")
+        compose.waitForTag("turn_answer_0")
+        screenshot("i16-stopped-partial")
+        calls.hold!!.complete(Unit)
     }
 }
