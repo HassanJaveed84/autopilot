@@ -58,6 +58,8 @@ The output goes to `app/build/live-eval/<scenario>/result.json`, which stays unt
 
 These need the owner's authorization. None is scheduled.
 
-1. **Rerun R-N(a)** on the fixed build (prompt contract v3), once, with the same configuration. This is a Document F §2.3 Stage 3 targeted follow-up. It confirms live that the turn stops after GATHER, that `about=` is used correctly and that answers no longer narrate one call. Expected cost: one call, about $0.05–0.06.
-2. **R-N(b)** after the harness gains the provider objective pass. Expected: a clarification and no paid investigation.
+1. **Rerun R-N(a)** on the current PR #8 head, once, with the same configuration. This is a Document F §2.3 Stage 3 targeted follow-up. The prompt contract is now **version 4**: version 3 plus `origin=` on each evidence line, from the final M4 correctness pass. It confirms live that the turn stops after GATHER, that `about=` and `origin=` are used correctly, that answers no longer narrate one call, and that unestablished side claims are qualified. Expected cost: one call, about $0.05–0.06.
+2. **R-N(b).** The app now asks which place locally, with no call, so a live run spends nothing. The harness needs a clarification-scenario mode first: today it treats any turn that is not authorizable as a refusal to start.
 3. Then the rest of the Stage 1 subset (R-A, R-D, R-J, …): two runs each, as Document F §2.3 requires.
+
+The R-N(a) report of 2026-10-23 is a historical record. It describes prompt v3 and the R-N(b) gap as they stood then and is not edited. The changes since are in `docs/PRODUCTION_KICKOFF_AUDIT_AND_PLAN.md`, under "M4 final correctness pass".

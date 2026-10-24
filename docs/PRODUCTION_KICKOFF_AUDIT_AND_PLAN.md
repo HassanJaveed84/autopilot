@@ -667,3 +667,23 @@ The `official` flag (government host only) was harmless and has been documented.
 **Stored data:** `EvidenceRef.quote` is a new nullable field with a default. Stored turns and backups without it decode unchanged, and the Room schema is unchanged.
 
 **Still dependent on live evaluation:** prompt v3 behaviour, the labels models supply (`kind`, `volatile`, `fresh`, `asof`), origin independence by publisher, an unestablished side claim stated in the lead, and R-N(b)'s reliance on the provider objective pass. The replays are not a pass. Document F §2.2 requires the scenario to be rerun live on the candidate build.
+
+---
+
+# M4 final correctness pass, 2026-10-24
+
+A narrow pass requested before the next paid call. It covered three issues raised in review. Each was reproduced first: 12 new test cases failed on `dd9de39`. No paid call was made. The historical R-N(a) record and scorecard are unchanged.
+
+| Issue | Confirmed? | Root cause | Fix |
+|---|---|---|---|
+| 1. A weak claim stated as plain fact in the answer | **Yes.** In the R-N(a) replay, "The station fronts Columbus Circle…" read as fact although c2 was not established. | Answer segments were whole paragraphs carrying every marker in them, so the composer could not tell which sentence stated which claim. It only guarded negative wording. | The parser records each sentence with its own markers (`AnswerSegment.sentences`). `StatusQualifier` keeps each sentence and labels the ones whose claims are weak. A mixed sentence names its weak part. Already-hedged and "nothing was found" sentences are left alone, and the absence guard (RES-063) runs per sentence. Paragraphs, chips and caveats are unchanged. |
+| 2. Different sites counted as independent agreement | **Yes.** Two sites of one publisher, three pages repeating one announcement, two subdomains, and two sites of unknown independence all established a `needs=corroborated` claim. | `meets()` counted distinct hosts. | Evidence is grouped into origins (registrable site, stated publisher `origin=`, a stated publisher naming the other page's site, a shared passage of 12+ words). Agreement corroborates only between origins whose independence is known. The issuer and review routes are unchanged. Prompt contract version 4 asks for `origin=` on each evidence line. |
+| 3. R-N(b): "address of Union Station" established with no city | **Yes.** The local preparer saw ambiguity only in a question with no subject. The app's default flow (preparation call off) offered authorization. | No local rule for a place-dependent ask that names no place. | A place-dependent ask (address, hours, directions, phone, nearest) that names no place is not established and asks which place, locally, with no call. A named place goes straight to authorization. With the optional preparation call on, the provider may settle a unique place, ledgered as `OBJECTIVE_PREP` under general consent. If that call fails, the place is still asked for. |
+
+**Stored data:** `AnswerSegment.sentences` and `EvidenceRef.origin` are new fields with defaults. Stored turns and backups decode unchanged. Composed answers keep no sentence list, and the Room schema is unchanged.
+
+**Known limits:**
+- Sentence splitting is English-oriented, with an abbreviation list.
+- Registrable sites use a short list of second-level suffixes, not the full public-suffix list.
+- Origin independence still depends on the reply stating publishers. Without that, agreement never corroborates, which can leave a claim only indicated where a careful reader would accept it.
+- The local place rule cannot tell a unique landmark from a common name, so it asks; the optional preparation call can settle it instead.
