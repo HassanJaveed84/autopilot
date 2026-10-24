@@ -204,6 +204,8 @@ All provider tests use fakes or a local MockWebServer. **No test calls the live 
 
 ## Document F Stage 0 acceptance mapping (baseline v1.0; reconciled 2026-10-23)
 
+Canonical text: `docs/product-baseline/Document_F_Evaluation_Framework_v1.0_FROZEN.md`. Live runs are recorded in `docs/live-eval/README.md`.
+
 Legend: ✅ covered by deterministic tests now · 🟡 partially covered by existing M2/M3A.2 tests (semantics to be re-derived) · ⏳ planned (milestone). *(conditional on ID)* marks expectations the release gate does not require until that requirement ships (Document E G4).
 
 | Document F §2.3 bullet | Requirement IDs | Tests now | Status / milestone |
@@ -265,3 +267,5 @@ All deterministic: scripted call provider, in-memory or file Room, no network, n
 | R48 presets: Quick / Standard / Thorough / Deep + Custom; saved overrides keep their depth; dimensions independent; effort only where supported; requested vs used shown | `ResearchPresetsTest` (6), `InvestigationContinuationTest.deepReconciliation…`, thread "How this was researched" | ✅ |
 | Room v7 migration and preservation; standalone and task-linked; task delete keeps history; backups incl. pre-M4 files; running turns in a backup become interrupted | `MigrationTest.migrateV6ToV7…`, `InvestigationRepositoryTest` (6), `BackupRepositoryTest` (sessions/investigations cases), `ResearchSessionRepositoryTest` | ✅ |
 | Native UI and accessibility: question → objective → authorization → run → result → evidence → review; clarification; stop/resume; follow-up with exclusion; legacy session opens as a thread; 320 dp at 200 % text | `InvestigationThreadUiTest` (5), `InvestigationThreadLargeTextUiTest` (1); screenshot tour `ScreenshotTourInvestigation` (CI emulator) | ✅ Robolectric · emulator per CI |
+| Live R-N(a) regressions (replayed from the run's own replies, `fixtures/live/R-N-a-2026-10-23.replies.json`): an undated stable fact on the issuer's page settles GATHER and FILL_GAPS is skipped (1 call, not 2); same-turn evidence is kept when a later call restates the claim; a later call's narration about its own search stays out of the answer; no source number or workflow residue in user-facing text; a reason reports an `about=` label as a label and upgrades nothing; only the page's verbatim cited words are shown as a quote; `official` is a government-host flag and `kind=` decides sufficiency | `LiveRunRegressionTest` (9), `LiveRunServiceReplayTest` (1) | ✅ deterministic · live rerun pending |
+| The same rules in other domains: undated stable facts and their window; a changed value is a new statement; RES-106 for inherited findings; held-source notes from a later call; the v3 gap-filling prompt names held evidence and why each claim is open | `CrossCallEvidenceTest` (6), `AnswerComposerTest.leakageScanFindsEveryKindOfResidue`, `ClaimAssessorTest.twoPagesFromOneOriginCountAsOneSource` | ✅ |

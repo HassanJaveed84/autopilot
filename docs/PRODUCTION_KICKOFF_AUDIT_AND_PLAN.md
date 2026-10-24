@@ -635,3 +635,35 @@ Local, `./gradlew --continue lintDebug testDebugUnitTest assembleDebug assembleR
 | APKs | debug, release and androidTest all built |
 
 Android CI on the pushed head is recorded in PR #8. No live provider call was made and no physical device was used.
+
+---
+
+# M4 live evaluation R-N(a) and its fixes, 2026-10-23
+
+This was the first paid live run, scored against the canonical frozen Document F at `docs/product-baseline/Document_F_Evaluation_Framework_v1.0_FROZEN.md`. The scorecard and the defect investigation are in `docs/live-eval/R-N-a-2026-10-23.md`, and the index is `docs/live-eval/README.md`.
+
+**Verdict: fail.** The address was correct and the state ANSWERED was justified. However:
+
+- **Gates:** the Leakage gate failed.
+- **Essential dimensions:** objective fidelity 2, evidence grounding 1, status honesty 1.
+- **Other dimensions:** efficiency 0.
+- **Serious failures (§6):** two, a misleading claim about completeness and a misattributed quotation.
+
+The run cost $0.09611 and used 2 of 3 searches.
+
+**Confirmed defects, each fixed generally and reproduced first from the run's own replies:**
+
+| Defect | Root cause | Fix |
+|---|---|---|
+| E: second stage run on a settled fact | An undated stable fact with a freshness window was judged stale | Undated stable evidence is current while it was read within the window |
+| A: false missing-source limitation | The merge replaced same-turn evidence. The composer passed a later call's narration about its own search. The prompt named no held evidence | Same-turn evidence is kept. A later call's search narration is left out. Prompt v3 lists held evidence and why each claim is open |
+| C: paraphrase shown as a quote | Only the model's line was stored on the evidence row | `EvidenceRef.quote` holds the verbatim cited text; the model's line is labelled a summary |
+| D: wrong scope reason | The model used `about=` to describe the page, and the reason stated the label as fact | The prompt defines `about=`; the reason reports a label |
+| Leakage: "held as s1" | Unresolved items were not scanned | Scanned; bare source numbers removed |
+| Independence overstated | Origins are hosts | The reason says "sources on different sites" |
+
+The `official` flag (government host only) was harmless and has been documented. Prompt contract version 3.
+
+**Stored data:** `EvidenceRef.quote` is a new nullable field with a default. Stored turns and backups without it decode unchanged, and the Room schema is unchanged.
+
+**Still dependent on live evaluation:** prompt v3 behaviour, the labels models supply (`kind`, `volatile`, `fresh`, `asof`), origin independence by publisher, an unestablished side claim stated in the lead, and R-N(b)'s reliance on the provider objective pass. The replays are not a pass. Document F §2.2 requires the scenario to be rerun live on the candidate build.
