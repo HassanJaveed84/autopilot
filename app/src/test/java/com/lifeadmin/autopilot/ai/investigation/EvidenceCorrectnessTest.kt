@@ -211,7 +211,7 @@ class EvidenceCorrectnessTest {
             "How much is the X9 cartridge at retailer A?",
             s("## ANSWER\nIt costs $149 at retailer A [c1].\n"),
             s("## CLAIM c1 · type=fact · load=yes · scope=X9 cartridge, retailer A · asof=2026-10-22 · volatile=yes · needs_input=no\nThe X9 cartridge costs $149 at retailer A.\nEVIDENCE: (asof=2026-10-22 · kind=primary) "),
-            s("X9 cartridge $149.", cite("https://www.retailer-a.example/x9", "X9 cartridge $149.")),
+            s("X9 cartridge $149.", cite("https://www.retailer-a.example/x9", "X9 cartridge $149 (price on 22 October 2026).")),
             s("\nAGAINST: (asof=2026-03 · kind=secondary) "),
             s("March deal: X9 cartridge $129 at retailer A.", cite("https://www.deals.example/x9-march", "March deal: X9 cartridge $129 at retailer A.")),
             s("\nAGAINST: (about=X9 cartridge, retailer B · kind=primary) "),

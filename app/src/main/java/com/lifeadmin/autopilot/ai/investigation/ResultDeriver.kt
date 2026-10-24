@@ -62,3 +62,24 @@ object ResultDeriver {
     /** RES-062 test: can the person tell whether the condition holds without the investigation establishing it? */
     fun isCondition(c: Claim): Boolean = c.dependsOnUser
 }
+
+/**
+ * What the engine itself knows about how a turn used its searches and why it stopped, from the stage records and the
+ * ending; never from what a reply said about its own allowance (N2).
+ */
+object ResearchSummary {
+    const val SUFFICIENT = "every load-bearing claim is established"
+
+    fun line(result: TurnResult, authorizedSearches: Int): String {
+        val used = result.stages.sumOf { it.searchesRun }
+        val why = when (result.ending) {
+            TurnEnding.COMPLETE -> if (result.stages.any { it.result == com.lifeadmin.autopilot.ai.research2.StageResult.SKIPPED && it.note == SUFFICIENT }) "stopped once every load-bearing claim was established" else "every planned stage ran"
+            TurnEnding.BUDGET_SEARCHES -> "stopped because the authorized searches were used up while a load-bearing question was still open"
+            TurnEnding.BUDGET_SPEND -> "stopped at the spending limit"
+            TurnEnding.STOPPED -> "stopped by you"
+            TurnEnding.FAILED -> "stopped by a provider error"
+            TurnEnding.INTERRUPTED -> "interrupted before it finished"
+        }
+        return "Used $used of $authorizedSearches authorized ${if (authorizedSearches == 1) "search" else "searches"}; $why."
+    }
+}

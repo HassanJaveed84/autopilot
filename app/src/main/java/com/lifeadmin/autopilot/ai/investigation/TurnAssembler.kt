@@ -85,16 +85,19 @@ class TurnWork(
         }
         if (out.title != null && out.title != title) { title = out.title; changed = true }
         // A later call sees only its own search results; what it says about "this search" is not a fact about the investigation.
-        val answerText = if (laterCall) CallNarration.strip(out.answer) else out.answer
+        val answerText = CallNarration.withoutBudgetTalk(if (laterCall) CallNarration.strip(out.answer) else out.answer)
         if (answerText.isNotEmpty()) { answer = answerText; changed = true }
         if (out.steps.isNotEmpty()) { steps = out.steps; changed = true }
         if (out.compareRows.isNotEmpty()) { compareRows = out.compareRows; compareOptions = out.compareOptions; changed = true }
         if (out.options.isNotEmpty()) { options = out.options; changed = true }
         if (out.recommendation != null) { recommendation = out.recommendation; changed = true }
         if (out.worthKnowing.isNotEmpty()) { worthKnowing = out.worthKnowing; changed = true }
-        for (u in out.unresolved) {
+        for (raw in out.unresolved) {
             // A later call's note that it could not re-cite a page the investigation already holds is about the call, not an open question.
-            if (laterCall && CallNarration.aboutHeldSource("${u.topic} ${u.why}")) continue
+            if (laterCall && CallNarration.aboutHeldSource("${raw.topic} ${raw.why}")) continue
+            // A reply's remark about its own search allowance is not the investigation's budget or why it stopped (ResearchSummary says that).
+            val why = CallNarration.withoutBudgetTalk(raw.why)
+            val u = if (why.isBlank()) { if (CallNarration.withoutBudgetTalk(raw.topic).isBlank()) continue else raw.copy(why = "Not settled by the sources found.") } else raw.copy(why = why)
             if (unresolved.none { it.topic.equals(u.topic, true) }) { unresolved += u; changed = true }
         }
         for (p in out.proposals) if (!proposals.containsKey(p.id)) { proposals[p.id] = p; changed = true }

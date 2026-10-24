@@ -438,7 +438,7 @@ class InvestigationService(
             val contested = ctx.work.contested()
             val skip: String? = when (stage) {
                 StageKind.GATHER -> null
-                StageKind.FILL_GAPS -> if (!ctx.work.merged) "nothing gathered" else if (open.isEmpty()) "every load-bearing claim is established" else if (ctx.remaining <= 0) "no searches left" else null
+                StageKind.FILL_GAPS -> if (!ctx.work.merged) "nothing gathered" else if (open.isEmpty()) ResearchSummary.SUFFICIENT else if (ctx.remaining <= 0) "no searches left" else null
                 StageKind.CROSS_CHECK -> if (contested.isEmpty()) "no sources disagree" else if (ctx.remaining <= 0) "no searches left" else null
                 StageKind.SYNTHESIZE -> if (!ctx.work.merged) "nothing gathered to write up" else null
             }
@@ -478,6 +478,8 @@ class InvestigationService(
             if (ctx.remaining <= 0 && index < stages.lastIndex && ctx.work.openClaims().isNotEmpty()) ctx.ending = TurnEnding.BUDGET_SEARCHES
         }
         if (stages.none { it == StageKind.FILL_GAPS }) ctx.work.verifyRan = true
+        // Every authorized search was used and a load-bearing claim is still open: that, not "finished", is why it stopped.
+        if (ctx.ending == TurnEnding.COMPLETE && ctx.remaining <= 0 && ctx.work.openClaims().isNotEmpty()) ctx.ending = TurnEnding.BUDGET_SEARCHES
     }
 
     private fun prompt(ctx: RunCtx, stage: StageKind, allowance: Int): String {

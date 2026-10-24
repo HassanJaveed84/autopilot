@@ -55,7 +55,7 @@ class ClaimAssessorTest {
     @Test fun volatileClaimsAreJudgedByTheFactsOwnDateNotTheFetchTime() {
         val day = 24L * 3600 * 1000
         val today = java.time.Instant.ofEpochMilli(now).atZone(java.time.ZoneOffset.UTC).toLocalDate()
-        fun e(n: Int, asOf: String?, at: Long = now) = ev(n, at = at).copy(asOf = asOf)
+        fun e(n: Int, asOf: String?, at: Long = now) = ev(n, at = at).copy(asOf = asOf, asOfBasis = asOf?.let { DateBasis.QUOTED }) // dates the page shows
         val fetchedLongAgo = ClaimAssessor.assessOne(claim("c1", volatile = true, support = listOf(e(1, today.minusDays(8).toString(), at = now - 8 * day))), now)
         val datedToday = ClaimAssessor.assessOne(claim("c2", volatile = true, support = listOf(e(1, today.toString()))), now)
         val oldFactFetchedNow = ClaimAssessor.assessOne(claim("c3", volatile = true, support = listOf(e(1, today.minusDays(40).toString()))), now)

@@ -32,12 +32,16 @@ object ClaimAssessor {
         if (c.dependsOnUser) return c.copy(status = ClaimStatus.DEPENDS_ON_INPUT, statusReason = "Depends on your situation or your choice")
         val verified = c.support.filter { !it.pointerOnly }
         val pointers = c.support.filter { it.pointerOnly }
+        // Evidence whose labels could not be read is kept for inspection but never counts: its scope is unknown.
+        val unreadable = verified.filter { it.labelsUnreadable }
+        val readable = verified - unreadable.toSet()
         // RES-044: a source about something else supports nothing; RES-046: neither does one too old for this claim.
-        val inScope = verified.filter { it.scopeNote.isBlank() }
-        val offScope = verified - inScope.toSet()
+        val inScope = readable.filter { it.scopeNote.isBlank() }
+        val offScope = readable - inScope.toSet()
         val usable = inScope.filter { fresh(c, it, nowMs) }
         // RES-071: opposing evidence about another scope or an earlier period is a different claim or a change over time, not a conflict.
-        val opposing = c.against.filter { !it.pointerOnly && it.scopeNote.isBlank() && fresh(c, it, nowMs) }
+        // Opposing evidence with unreadable labels still counts: treating it as in scope can only lower a status.
+        val opposing = c.against.filter { !it.pointerOnly && (it.labelsUnreadable || (it.scopeNote.isBlank() && fresh(c, it, nowMs))) }
         val standard = c.needs ?: if (consequential && c.loadBearing) EvidenceStandard.CORROBORATED else EvidenceStandard.DIRECT
         val groups = origins(usable)
         return when {
@@ -46,6 +50,7 @@ object ClaimAssessor {
             usable.isNotEmpty() -> c.copy(status = ClaimStatus.INDICATIVE, statusReason = "This needs ${standard.label}; what was found falls short (${describe(usable)}${independenceNote(standard, usable, groups)})")
             inScope.isNotEmpty() -> c.copy(status = ClaimStatus.INDICATIVE, statusReason = staleReason(c, inScope, nowMs))
             pointers.isNotEmpty() -> c.copy(status = ClaimStatus.INDICATIVE, statusReason = "Restated from earlier evidence, not checked here")
+            unreadable.isNotEmpty() && offScope.isEmpty() -> c.copy(status = ClaimStatus.NOT_ESTABLISHED, statusReason = "The evidence found carries labels that could not be read, so what it is about is unknown and it is not counted; the citation is kept")
             // The note is the reply's own label for what the page covers; the reason reports it as a label, never as a verified mismatch.
             offScope.isNotEmpty() -> c.copy(status = ClaimStatus.NOT_ESTABLISHED, statusReason = "Its only ${if (offScope.size == 1) "source was" else "sources were"} marked as being about something else (${offScope.first().scopeNote.removePrefix("About ").trimEnd('.')}), so ${if (offScope.size == 1) "it does" else "they do"} not count for ${c.scope.ifBlank { "this claim" }}")
             c.against.any { !it.pointerOnly } -> c.copy(status = ClaimStatus.NOT_ESTABLISHED, statusReason = "No support found; the sources found point the other way")
@@ -149,23 +154,47 @@ object ClaimAssessor {
      */
     fun fresh(c: Claim, e: EvidenceRef, nowMs: Long): Boolean {
         val window = window(c) ?: return true
-        val factEnd = endOfPeriodMs(e.asOf ?: c.asOf) ?: return !c.volatile && nowMs - e.retrievedAtMs <= window.toMillis()
-        return nowMs - factEnd <= window.toMillis() && nowMs - e.retrievedAtMs <= window.toMillis()
+        val factEnd = endOfPeriodMs(shownDate(c, e))
+        if (factEnd != null) return nowMs - factEnd <= window.toMillis() && nowMs - e.retrievedAtMs <= window.toMillis()
+        // A date only the reply gives (DateBasis.STATED) can make the evidence older, never newer.
+        endOfPeriodMs(e.asOf ?: c.asOf)?.let { stated -> if (nowMs - stated > window.toMillis()) return false }
+        return !c.volatile && nowMs - e.retrievedAtMs <= window.toMillis()
+    }
+
+    /**
+     * The fact's date as the page shows it: the line's own date when its cited text shows it, else the claim's date
+     * when any of its verified cited text shows it. A date from search-result page age, publication metadata or the
+     * time of reading is never shown by the page, so it never counts here.
+     */
+    fun shownDate(c: Claim, e: EvidenceRef): String? {
+        e.asOf?.let { d ->
+            if (e.asOfBasis == DateBasis.QUOTED) return d
+            // A qualified asof= ("2026 (page about 168 days old)") is the reply's reading, whatever the page shows.
+            // A line with a date of its own is never dated by the claim's date instead.
+            return if (e.asOfNote == null) DateSupport.shownPrecision(d, e.quote) else null
+        }
+        val claimDate = c.asOf ?: return null
+        return c.support.filter { !it.pointerOnly && !it.labelsUnreadable }.mapNotNull { DateSupport.shownPrecision(claimDate, it.quote) }.maxByOrNull { it.length }
     }
 
     private fun window(c: Claim): Duration? = c.freshForDays?.let { Duration.ofDays(it.toLong()) } ?: if (c.volatile) VOLATILE_FRESH_FOR else null
 
     private fun staleReason(c: Claim, inScope: List<EvidenceRef>, nowMs: Long): String {
-        val dated = inScope.mapNotNull { it.asOf ?: c.asOf }.maxByOrNull { endOfPeriodMs(it) ?: Long.MIN_VALUE }
         val days = window(c)?.toDays() ?: 0
+        val windowMs = window(c)?.toMillis() ?: 0L
         val readDaysAgo = Duration.ofMillis(nowMs - inScope.maxOf { it.retrievedAtMs }).toDays()
-        return if ((dated == null || endOfPeriodMs(dated) == null) && !c.volatile) "No source dates it, and it was last read $readDaysAgo days ago; it needs re-checking every $days days or so"
-        else if (dated == null || endOfPeriodMs(dated) == null) "This changes within about $days days, and no source dates it"
-        else {
-            val fetchedDaysAgo = readDaysAgo
-            if (fetchedDaysAgo > days) "Changes within about $days days; the evidence is $fetchedDaysAgo days old"
-            else "As of $dated; this changes within about $days days, so it may no longer be current"
+        fun latest(dates: List<String>) = dates.filter { endOfPeriodMs(it) != null }.maxByOrNull { endOfPeriodMs(it)!! }
+        val shown = latest(inScope.mapNotNull { shownDate(c, it) })
+        val stated = latest(inScope.mapNotNull { it.asOf ?: c.asOf })
+        if (shown == null) {
+            // Only the reply dates it, or nothing does. A stated date can still show the evidence is old.
+            if (stated != null && nowMs - endOfPeriodMs(stated)!! > windowMs) return "As of $stated (a date the reply gives; the page does not show it); this changes within about $days days, so it may no longer be current"
+            return if (c.volatile) "This changes within about $days days, and the page does not show when it applied"
+            else "No source dates it, and it was last read $readDaysAgo days ago; it needs re-checking every $days days or so"
         }
+        if (readDaysAgo > days) return "Changes within about $days days; the evidence is $readDaysAgo days old"
+        val label = if (stated != null && stated != shown && stated.startsWith(shown)) "$shown (the reply says $stated)" else shown
+        return "As of $label; this changes within about $days days, so it may no longer be current"
     }
 
     /** End of the stated period in UTC ms: "2026-10-22", "2026-10" (end of October), "2026" (end of year). Anything else is undated. */

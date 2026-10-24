@@ -70,6 +70,7 @@ import com.lifeadmin.autopilot.ai.investigation.EvidenceDisplay
 import com.lifeadmin.autopilot.ai.investigation.EvidenceRef
 import com.lifeadmin.autopilot.ai.investigation.ResearchDepth
 import com.lifeadmin.autopilot.ai.investigation.ResearchPresets
+import com.lifeadmin.autopilot.ai.investigation.ResearchSummary
 import com.lifeadmin.autopilot.ai.investigation.SectionKind
 import com.lifeadmin.autopilot.ai.investigation.Turn
 import com.lifeadmin.autopilot.ai.investigation.TurnKind
@@ -684,8 +685,10 @@ private fun RunLog(t: Turn, onPayload: () -> Unit) {
             Text("Approved " + java.time.Instant.ofEpochMilli(a.approvedAtMs).toString().take(16).replace('T', ' ') + " UTC · fingerprint ${a.payloadSha256.take(12)}", style = TimeTextStyle.copy(fontSize = 11.sp), color = c.ink3, modifier = Modifier.padding(top = 4.dp))
             LinkButton("What was sent", onClick = onPayload, modifier = Modifier.testTag("turn_payload_${t.index}"))
         }
+        // The engine's own account of the budget and the stop, never a reply's remark about its allowance.
+        t.result?.let { r -> if (a != null) Text(ResearchSummary.line(r, a.config.searchBudget), style = MaterialTheme.typography.bodySmall, color = c.ink, modifier = Modifier.padding(top = 4.dp).testTag("turn_stop_${t.index}")) }
         t.result?.stages?.forEach { st ->
-            Text("${st.kind.label}: ${st.result.name.lowercase()}" + (if (st.searchesAllowed > 0) " · ${st.searchesRun} of ${st.searchesAllowed} searches" else "") + (st.note?.let { " — $it" } ?: ""), style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(top = 4.dp))
+            Text("${st.kind.label}: ${st.result.name.lowercase()}" + (if (st.searchesAllowed > 0) " · ${st.searchesRun} ${if (st.searchesRun == 1) "search" else "searches"} (this stage's share: ${st.searchesAllowed})" else "") + (st.note?.let { " — $it" } ?: ""), style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(top = 4.dp))
             st.queries.forEach { q -> Text("   “$q”", style = MaterialTheme.typography.bodySmall, color = c.ink) }
             st.callLog.forEach { d -> Text("   " + d.line(), style = TimeTextStyle.copy(fontSize = 10.sp, lineHeight = 14.sp), color = c.ink3) }
         }
@@ -726,11 +729,11 @@ private fun EvidenceSheet(claim: Claim, r: TurnResult, onSource: (Int) -> Unit, 
             }
             if (claim.support.isNotEmpty()) {
                 Text("SUPPORTING", style = MaterialTheme.typography.labelSmall, color = c.ink2, modifier = Modifier.padding(top = 6.dp))
-                claim.support.forEach { e -> EvidenceRow(e, title(e.sourceN), if (e.pointerOnly) "Points to a source cited elsewhere; it doesn't verify this." else e.scopeNote.ifBlank { e.asOf?.let { d -> "As of $d" } }, onSource) }
+                claim.support.forEach { e -> EvidenceRow(e, title(e.sourceN), EvidenceDisplay.note(e), onSource) }
             }
             if (claim.against.isNotEmpty()) {
                 Text("POINTING THE OTHER WAY", style = MaterialTheme.typography.labelSmall, color = c.ink2, modifier = Modifier.padding(top = 6.dp))
-                claim.against.forEach { e -> EvidenceRow(e, title(e.sourceN), e.scopeNote.ifBlank { e.asOf?.let { d -> "As of $d" } }, onSource) }
+                claim.against.forEach { e -> EvidenceRow(e, title(e.sourceN), EvidenceDisplay.note(e), onSource) }
             }
             if (claim.support.isEmpty() && claim.against.isEmpty() && !claim.type.derived) Text(if (claim.dependsOnUser) "This depends on your situation or choice; no source can settle it." else "No source was found for this. That doesn't make it false.", style = MaterialTheme.typography.bodyMedium, color = c.ink2)
         }

@@ -37,9 +37,9 @@ class AnswerAttributionTest {
     private val parking = s("\n## CLAIM c2 · type=fact · load=no · scope=museum parking · asof=- · volatile=no · needs=direct · needs_input=no\nParking is free on Sundays.\n")
     private val ticket = arrayOf(
         s("## CLAIM c3 · type=fact · load=yes · scope=museum day ticket · asof=2026-10 · volatile=yes · needs=direct · needs_input=no\nA day ticket costs $12.\nEVIDENCE: (kind=primary · asof=2026-10) "),
-        s("Day ticket $12.", cite("https://www.museum.example/tickets", "Day ticket $12.")),
+        s("Day ticket $12.", cite("https://www.museum.example/tickets", "October 2026: day ticket $12.")),
         s("\nAGAINST: (kind=secondary · asof=2026-10) "),
-        s("Tickets are $15.", cite("https://www.cityguide.example/museum", "Tickets are $15.")),
+        s("Tickets are $15.", cite("https://www.cityguide.example/museum", "Tickets are $15 (October 2026).")),
     )
 
     @Test fun eachSentenceInAParagraphIsQualifiedByItsOwnClaims() {

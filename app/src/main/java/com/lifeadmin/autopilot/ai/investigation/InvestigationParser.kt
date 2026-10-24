@@ -61,6 +61,8 @@ object InvestigationParser {
                 n, excerpt.take(300), scopeNote = attrs.scopeNote, asOf = attrs.asOf,
                 kind = attrs.kind ?: EvidenceKind.PRIMARY.takeIf { registry.official(n) }, retrievedAtMs = nowMs, originKey = registry.originKey(n), pointerOnly = pointer,
                 quote = if (pointer) null else quotes[n], origin = attrs.origin,
+                asOfBasis = attrs.asOf?.let { if (!pointer && !attrs.asOfQualified && DateSupport.shown(it, quotes[n])) DateBasis.QUOTED else DateBasis.STATED },
+                asOfNote = attrs.asOfNote, labelsUnreadable = attrs.unreadable,
             )
             return r.verified.map { ref(it, false) } + r.reused.map { ref(it, true) }
         }
@@ -293,16 +295,53 @@ object InvestigationParser {
 /**
  * What a reply says about one EVIDENCE or AGAINST line, written as a leading `(kind=… · origin=… · asof=… · about=…)`.
  * These can only narrow what the evidence supports; the assessor still decides every status.
+ *
+ * @property unreadable a label block was present but could not be read safely; nothing in it is trusted and the
+ *   evidence is not counted as support (see [EvidenceRef.labelsUnreadable]).
+ * @property asOfQualified `asof=` held more than a bare date, so the date is the reply's own reading, never the page's.
  */
-data class EvidenceAttrs(val scopeNote: String = "", val asOf: String? = null, val kind: EvidenceKind? = null, val origin: String? = null) {
+data class EvidenceAttrs(
+    val scopeNote: String = "",
+    val asOf: String? = null,
+    val kind: EvidenceKind? = null,
+    val origin: String? = null,
+    val asOfNote: String? = null,
+    val asOfQualified: Boolean = false,
+    val unreadable: Boolean = false,
+) {
     companion object {
-        private val LEAD = Regex("""^\s*\(([^()]*)\)\s*""")
+        private val KNOWN = setOf("kind", "origin", "asof", "about")
+        /** A label anywhere in the text: the contract's keys, plus `scope=`, which a reply may write for `about=`. */
+        private val LABEL = Regex("""\b(?:kind|origin|asof|about|scope)\s*=""", RegexOption.IGNORE_CASE)
+        private val PART = Regex("""^([A-Za-z_]+)\s*=\s*(.*)$""", RegexOption.DOT_MATCHES_ALL)
+        private val BARE_DATE = Regex("""^(\d{4}(?:-\d{2}(?:-\d{2})?)?)(?![\d-])\s*(.*)$""", RegexOption.DOT_MATCHES_ALL)
 
-        /** Splits the attributes from the excerpt. An `about` that restates the claim's own scope is no mismatch. */
+        /**
+         * Splits the label block from the excerpt. The block is the leading parenthesised group, matched with
+         * balanced parentheses, so a value may itself contain "(…)" or commas. Fields are separated by `·` or `;`
+         * outside any parentheses. A block that is unclosed, holds a part that is not `key=value`, an unknown or
+         * conflicting key, or labels written outside the block is unreadable: none of its labels are trusted.
+         * A leading parenthesis with no labels in it ("(Updated 2025) …") is ordinary text. An `about` that
+         * restates the claim's own scope is no mismatch.
+         */
         fun split(raw: String, claimScope: String): Pair<EvidenceAttrs, String> {
-            val m = LEAD.find(raw) ?: return EvidenceAttrs() to raw.trim()
-            val kv = EvidenceText.kv(m.groupValues[1].replace(';', '·'))
-            if (kv.isEmpty()) return EvidenceAttrs() to raw.trim()
+            val text = raw.trim()
+            if (!text.startsWith("(")) return if (LABEL.containsMatchIn(text)) unreadable(text) else EvidenceAttrs() to text
+            val close = closingParen(text)
+            if (close < 0) return if (LABEL.containsMatchIn(text)) unreadable(text) else EvidenceAttrs() to text
+            val inner = text.substring(1, close)
+            val rest = text.substring(close + 1).trim()
+            if (!LABEL.containsMatchIn(inner)) return if (LABEL.containsMatchIn(rest)) unreadable(text) else EvidenceAttrs() to text
+            if (LABEL.containsMatchIn(rest)) return unreadable(text)
+            val kv = LinkedHashMap<String, String>()
+            for (part in topLevelParts(inner)) {
+                val m = PART.find(part) ?: return unreadable(text)
+                val key = m.groupValues[1].lowercase(Locale.ROOT).let { if (it == "scope") "about" else it }
+                val value = m.groupValues[2].trim()
+                if (key !in KNOWN) return unreadable(text)
+                if (kv[key] != null && kv[key] != value) return unreadable(text)
+                kv[key] = value
+            }
             val about = kv["about"]?.takeIf { it != "-" && it.isNotBlank() }?.take(120)
             val note = if (about == null || norm(about) == norm(claimScope)) "" else "About $about"
             val kind = when (kv["kind"]?.lowercase(Locale.ROOT)) {
@@ -313,7 +352,59 @@ data class EvidenceAttrs(val scopeNote: String = "", val asOf: String? = null, v
                 else -> null
             }
             val origin = kv["origin"]?.takeIf { it != "-" && it.isNotBlank() }?.take(80)
-            return EvidenceAttrs(note, kv["asof"]?.takeIf { it != "-" && it.isNotBlank() }?.take(20), kind, origin) to raw.substring(m.range.last + 1).trim()
+            val asofRaw = kv["asof"]?.takeIf { it != "-" && it.isNotBlank() }?.take(80)
+            val dated = asofRaw?.let { BARE_DATE.find(it) }
+            val qualified = dated != null && dated.groupValues[2].isNotBlank()
+            return EvidenceAttrs(
+                note, dated?.groupValues?.get(1), kind, origin,
+                asOfNote = asofRaw?.takeIf { dated == null || qualified }, asOfQualified = qualified,
+            ) to rest
+        }
+
+        /** Conservative result for a block that cannot be read: no label is trusted; the excerpt keeps only text outside label groups. */
+        private fun unreadable(text: String) = EvidenceAttrs(unreadable = true) to withoutLabels(text)
+
+        /** Index of the parenthesis that closes the one at 0, or -1 when it is never closed. */
+        private fun closingParen(t: String): Int {
+            var depth = 0
+            for ((i, ch) in t.withIndex()) {
+                if (ch == '(') depth++ else if (ch == ')') { depth--; if (depth == 0) return i }
+            }
+            return -1
+        }
+
+        /** Splits on `·` and `;` that are outside parentheses and brackets; empty parts (a trailing "· )") are dropped. */
+        private fun topLevelParts(inner: String): List<String> {
+            val parts = ArrayList<String>()
+            var depth = 0
+            val cur = StringBuilder()
+            for (ch in inner) {
+                when {
+                    ch == '(' || ch == '[' -> { depth++; cur.append(ch) }
+                    (ch == ')' || ch == ']') && depth > 0 -> { depth--; cur.append(ch) }
+                    (ch == '·' || ch == ';') && depth == 0 -> { parts += cur.toString(); cur.clear() }
+                    else -> cur.append(ch)
+                }
+            }
+            parts += cur.toString()
+            return parts.map { it.trim() }.filter { it.isNotEmpty() }
+        }
+
+        /** Removes every parenthesised group that holds a label (to the end when unclosed), then any stray `key=value`. */
+        internal fun withoutLabels(text: String): String {
+            val out = StringBuilder()
+            var i = 0
+            while (i < text.length) {
+                val ch = text[i]
+                if (ch == '(') {
+                    val close = closingParen(text.substring(i))
+                    val group = if (close < 0) text.substring(i) else text.substring(i, i + close + 1)
+                    if (LABEL.containsMatchIn(group)) { i += group.length; continue }
+                }
+                out.append(ch); i++
+            }
+            return Regex("""\b(?:kind|origin|asof|about|scope)\s*=[^·;]*""", RegexOption.IGNORE_CASE).replace(out.toString(), "")
+                .replace(Regex("""\s*[·;]\s*"""), " ").replace(Regex("\\s+"), " ").trim()
         }
 
         /** `7d`, `3w`, `6m`, `1y` (or a bare number of days); anything else is no window. */

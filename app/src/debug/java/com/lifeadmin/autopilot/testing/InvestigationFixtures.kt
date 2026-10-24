@@ -175,9 +175,9 @@ object InvestigationFixtures {
 
     // ---- R-D: a gift recommendation with a budget; prices are volatile, the follow-up changes the budget
     const val FRAGRANCE = "Best men's fragrance under $150 in the US as a gift"
-    val deptStore = RawCitation("https://www.deptstore.example/sauvage-edt-100", "Dior Sauvage EDT 100 ml", "Dior Sauvage Eau de Toilette 100 ml, $128.00, in stock.")
+    val deptStore = RawCitation("https://www.deptstore.example/sauvage-edt-100", "Dior Sauvage EDT 100 ml", "Dior Sauvage Eau de Toilette 100 ml, $128.00, in stock. Prices updated October 2026.")
     val reviewSite = RawCitation("https://www.scentreview.example/sauvage", "Sauvage EDT review", "Lasts about eight hours on skin; strong projection for the first two.")
-    val discounter = RawCitation("https://www.discounter.example/bleu-edt-50", "Bleu de Chanel EDT 50 ml", "Bleu de Chanel Eau de Toilette 50 ml, $95.00, ships from the US.")
+    val discounter = RawCitation("https://www.discounter.example/bleu-edt-50", "Bleu de Chanel EDT 50 ml", "Bleu de Chanel Eau de Toilette 50 ml, $95.00, ships from the US. Prices updated October 2026.")
 
     fun fragranceGather(): CallResult.Done = done(
         listOf(

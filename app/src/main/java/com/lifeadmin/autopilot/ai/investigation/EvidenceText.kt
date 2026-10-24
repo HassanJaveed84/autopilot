@@ -233,12 +233,59 @@ object EvidenceDisplay {
     /** The verbatim cited text, or null when the provider gave none for this line. */
     fun quoted(e: EvidenceRef): String? = e.quote?.trim()?.takeIf { it.isNotEmpty() }?.take(240)
 
-    /** The model's line, labelled; omitted when it only repeats the quoted words. */
+    /**
+     * The model's line, labelled; omitted when it only repeats the quoted words. Contract syntax never shows: a line
+     * whose labels could not be read gets no summary, and any label left in a line is removed.
+     */
     fun summary(e: EvidenceRef): String? {
-        val line = e.excerpt.trim().takeIf { it.isNotEmpty() } ?: return null
+        if (e.labelsUnreadable) return "Claude's summary is not shown: its labels could not be read, so this source is not counted."
+        val line = LeakageScan.clean(EvidenceAttrs.withoutLabels(e.excerpt)).trim().takeIf { it.isNotEmpty() } ?: return null
         val quote = quoted(e) ?: return "Claude's summary (not the page's words): ${line.take(240)}"
         return if (norm(quote).contains(norm(line))) null else "Claude's summary: ${line.take(240)}"
     }
 
+    /** The note under an evidence row: why it does not count, what it is about, or what its date rests on. */
+    fun note(e: EvidenceRef): String? = when {
+        e.pointerOnly -> "Points to a source cited elsewhere; it doesn't verify this."
+        e.labelsUnreadable -> "Its labels could not be read, so it is kept here for inspection but not counted."
+        e.scopeNote.isNotBlank() -> e.scopeNote
+        e.asOf != null && e.asOfBasis == DateBasis.QUOTED -> "As of ${e.asOf}"
+        e.asOf != null -> "Dated ${e.asOf} by Claude; the page's cited text does not show this date"
+        else -> null
+    }
+
     private fun norm(s: String) = s.lowercase(Locale.ROOT).replace(Regex("""[^\p{L}\p{N}]+"""), " ").trim()
+}
+
+/**
+ * Whether a text shows a date (RES-046). A date counts as shown when the text has it in ISO form, or its year and,
+ * at month or day precision, the month (by name, three-letter abbreviation or number) and the day. A year alone
+ * shows only a year-precision date. This is how a date a reply gives is checked against the page's cited words.
+ */
+object DateSupport {
+    private val MONTHS = listOf("january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december")
+    private val DATE = Regex("""^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?$""")
+
+    fun shown(date: String?, text: String?): Boolean = date != null && shownPrecision(date, text) == date.trim()
+
+    /**
+     * The most precise part of [date] the text shows: the whole date, its `YYYY-MM`, its `YYYY`, or null. A page that
+     * says "October 2026" supports a claimed 2026-10-23 only to the month.
+     */
+    fun shownPrecision(date: String, text: String?): String? {
+        val d = date.trim()
+        val m = DATE.matchEntire(d) ?: return null
+        val t = text?.lowercase(Locale.ROOT) ?: return null
+        if (t.contains(d)) return d
+        val y = m.groupValues[1]
+        if (!Regex("""\b$y\b""").containsMatchIn(t)) return null
+        val month = m.groupValues[2].toIntOrNull() ?: return y
+        if (month !in 1..12) return y
+        val name = MONTHS[month - 1]
+        val monthShown = Regex("""\b(?:$name|${name.take(3)})\b""").containsMatchIn(t) ||
+            Regex("""\b0?$month[/.-]$y\b|\b$y[/.-]0?$month\b|\b\d{1,2}[/.-]0?$month[/.-]$y\b|\b0?$month[/.-]\d{1,2}[/.-]$y\b""").containsMatchIn(t)
+        if (!monthShown) return y
+        val day = m.groupValues[3].toIntOrNull() ?: return "$y-${m.groupValues[2]}"
+        return if (Regex("""\b0?$day(?:st|nd|rd|th)?\b""").containsMatchIn(t)) d else "$y-${m.groupValues[2]}"
+    }
 }

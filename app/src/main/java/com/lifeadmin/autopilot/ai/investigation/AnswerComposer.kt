@@ -45,6 +45,40 @@ object CallNarration {
 
     fun narrates(text: String): Boolean = CALL.containsMatchIn(text)
 
+    /** A remark about a call's search allowance or budget: the engine, not the reply, knows the budget and why it stopped. */
+    private val BUDGET_TALK = Regex(
+        """\b(?:search(?:es)?\s+(?:allowance|budget|limit|cap)|(?:allowance|budget|limit)\s+(?:was|is|of)\s+(?:only\s+)?(?:one|two|three|four|five|\d+)\s+search(?:es)?|(?:only|just)\s+(?:one|two|three|four|five|\d+)\s+search(?:es)?\s+(?:was|were|is|are)\s+(?:allowed|available|permitted)|searches\s+(?:allowed|available)\s+(?:on|for|in)\s+this|(?:one|two|three|\d+)-search\s+(?:limit|allowance|budget)|limited\s+to\s+(?:one|two|three|four|five|\d+)\s+search(?:es)?|(?:could|can|was able to)\s+only\s+(?:run|do|make|use|perform)\s+(?:one|two|three|four|five|\d+)\s+search(?:es)?)\b""",
+        RegexOption.IGNORE_CASE,
+    )
+    private val CLAUSE = Regex(""",\s+(?:and|but|so)\s+|;\s+""")
+
+    /** Removes the clauses that talk about search allowance or budget; returns "" when nothing else is left. */
+    fun withoutBudgetTalk(text: String): String {
+        if (!BUDGET_TALK.containsMatchIn(text)) return text
+        val sentences = text.split(SENTENCE).mapNotNull { sentence ->
+            if (!BUDGET_TALK.containsMatchIn(sentence)) return@mapNotNull sentence
+            val end = sentence.trimEnd().lastOrNull()?.takeIf { it == '.' || it == '!' || it == '?' }
+            val body = sentence.trimEnd().trimEnd('.', '!', '?')
+            // Clauses with the separator that follows each, so what is kept reads as written.
+            val clauses = ArrayList<Pair<String, String>>()
+            var at = 0
+            for (m in CLAUSE.findAll(body)) { clauses += body.substring(at, m.range.first) to m.value; at = m.range.last + 1 }
+            clauses += body.substring(at) to ""
+            val kept = clauses.filterNot { BUDGET_TALK.containsMatchIn(it.first) }
+            if (kept.isEmpty()) null else kept.dropLast(1).joinToString("") { it.first + it.second } + kept.last().first + (end ?: "")
+        }
+        return sentences.joinToString(" ").trim()
+    }
+
+    /** The same for answer text: sentences keep their claim markers. */
+    fun withoutBudgetTalk(segments: List<AnswerSegment>): List<AnswerSegment> = segments.mapNotNull { seg ->
+        if (seg.sentences.isNotEmpty()) {
+            val kept = seg.sentences.mapNotNull { s -> withoutBudgetTalk(s.text).takeIf { it.isNotBlank() }?.let { s.copy(text = it) } }
+            return@mapNotNull if (kept.isEmpty()) null else seg.copy(text = kept.joinToString(" ") { it.text }, sentences = kept)
+        }
+        withoutBudgetTalk(seg.text).takeIf { it.isNotBlank() }?.let { seg.copy(text = it) }
+    }
+
     /** True for a note about re-citing a page the investigation already holds. */
     fun aboutHeldSource(text: String): Boolean = narrates(text) && HELD.any { it.containsMatchIn(text) }
 

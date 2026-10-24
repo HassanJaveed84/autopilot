@@ -122,7 +122,7 @@ data class EvidenceRef(
     val excerpt: String,
     /** Set when the source is about another variant, jurisdiction, population, seller or period than the claim: it then supports nothing (RES-044). */
     val scopeNote: String = "",
-    /** When the source says the fact held; not when it was fetched (RES-046). */
+    /** When the fact held, as a bare date (`YYYY`, `YYYY-MM`, `YYYY-MM-DD`); never the fetch time (RES-046). See [asOfBasis]. */
     val asOf: String? = null,
     /** What kind of source this is for this claim (RES-043/047); null when not stated. */
     val kind: EvidenceKind? = null,
@@ -142,7 +142,25 @@ data class EvidenceRef(
      * agreeing sources are independent; never to raise a source's standing on its own. Null when not stated.
      */
     val origin: String? = null,
+    /**
+     * Where [asOf] comes from. [DateBasis.QUOTED]: the provider's cited text for this line shows that date.
+     * [DateBasis.STATED]: only the reply gives it (for example worked out from a search result's page age); such a
+     * date can make the evidence older, never newer. Null with a date (records stored before this existed) is STATED.
+     */
+    val asOfBasis: DateBasis? = null,
+    /** The reply's own `asof=` wording when it was more than a bare date ("2026 (page about 168 days old)"), kept for inspection. */
+    val asOfNote: String? = null,
+    /**
+     * The line's leading label block was present but could not be read safely (unclosed, an unknown or repeated
+     * label, labels outside the block). The citation and its verbatim text are kept for inspection, but the
+     * evidence never counts as support: an unreadable `about=` must not let off-scope evidence establish a claim.
+     */
+    val labelsUnreadable: Boolean = false,
 )
+
+/** The basis of an evidence date (RES-046): what the page shows, or only what the reply says. */
+@Serializable
+enum class DateBasis { QUOTED, STATED }
 
 /** RES-043/047: the standing of one source for one claim. General, not a domain list. */
 @Serializable
@@ -205,7 +223,7 @@ data class Claim(
     val checked: Boolean = true,
 ) {
     /** Distinct origins among the verified support, after merging one site, one declared publisher and repeated text (RES-045). */
-    val independentOrigins: Int get() = ClaimAssessor.origins(support.filter { !it.pointerOnly }).size
+    val independentOrigins: Int get() = ClaimAssessor.origins(support.filter { !it.pointerOnly && !it.labelsUnreadable }).size
 }
 
 // ------------------------------------------------------------------ derived state

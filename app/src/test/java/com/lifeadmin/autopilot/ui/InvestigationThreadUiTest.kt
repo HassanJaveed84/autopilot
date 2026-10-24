@@ -204,6 +204,39 @@ class InvestigationThreadUiTest {
         assertTrue(provider.calls.isEmpty())
     }
 
+    // N1/N2 (docs/live-eval/R-N-a-2026-10-24-rerun.md): the second live run's own reply, through the real screen.
+    @Test fun theSecondLiveRunsReplyShowsNoContractSyntaxAndNoAllowanceRemark() {
+        val replay = com.lifeadmin.autopilot.ai.investigation.LiveReplay.load("fixtures/live/R-N-a-2026-10-24-rerun.replies.json")
+        launch(openTask = false)
+        compose.onNodeWithTag("nav_research").performClick()
+        waitFor("home_new")
+        compose.onNodeWithTag("home_new").performClick()
+        waitFor("thread_question")
+        compose.onNodeWithTag("thread_question").performTextInput(replay.question)
+        compose.onNodeWithTag("thread_prepare").performClick()
+        waitFor("auth_start")
+        provider.enqueue(replay.exchanges.single().reply)
+        compose.onNodeWithTag("auth_start").assertIsEnabled().performClick()
+        waitFor("turn_title_0")
+        scrollTo("turn_evidence_toggle_0").performClick()
+        scrollTo("claim_c1").performClick()
+        waitFor("evidence_sheet")
+        val labels = Regex("""(?i)\b(?:kind|origin|asof|about|scope)\s*=""")
+        fun screenText(): List<String> = compose.onAllNodes(hasText("", substring = true), useUnmergedTree = true).fetchSemanticsNodes()
+            .flatMap { n -> n.config.getOrElse(androidx.compose.ui.semantics.SemanticsProperties.Text) { emptyList() }.map { it.text } }
+        val sheet = screenText()
+        assertTrue("the page's own words are quoted", sheet.any { it.startsWith("“Union Station D.C. Union Station 50 Massachusetts Ave.") })
+        assertTrue(sheet.filter { labels.containsMatchIn(it) }.toString(), sheet.none { labels.containsMatchIn(it) })
+        compose.onAllNodes(hasContentDescription("Close") or hasText("Close"))[0].performClick()
+        gone("evidence_sheet")
+        scrollTo("turn_log_toggle_0").performClick()
+        waitFor("turn_stop_0")
+        val all = screenText()
+        assertTrue(all.none { labels.containsMatchIn(it) })
+        assertTrue(all.filter { it.contains("allowance", true) }.toString(), all.none { it.contains("allowance", true) })
+        assertTrue(hasTextIn("turn_stop_0", "authorized search"))
+    }
+
     @Test fun stoppingKeepsWhatWasFoundAndResumeNeedsANewApproval() {
         launch(title = "Water filter")
         startFromTask("Does the AquaPure X9 remove 99.99% of microplastics?")
