@@ -55,16 +55,16 @@ class CrossCallEvidenceTest {
     @Test fun aLaterCallThatRestatesAClaimKeepsTheEvidenceTheTurnAlreadyHeld() {
         val t = turn()
         t.call(
-            s("## CLAIM c1 · type=fact · load=yes · scope=City pool, winter hours · asof=- · volatile=no · fresh=1y · needs=corroborated · needs_input=no\nThe city pool opens at 07:00 in winter.\nEVIDENCE: (kind=secondary) "),
+            s("## CLAIM c1 · type=fact · load=yes · scope=City pool, winter hours · asof=- · volatile=no · fresh=1y · needs=corroborated · needs_input=no\nThe city pool opens at 07:00 in winter.\nEVIDENCE: (kind=secondary · origin=Local News) "),
             s("Winter opening 07:00.", cite("https://www.localnews.example/pool", "Winter opening 07:00.")),
         )
         t.call(
-            s("## CLAIM c1 · type=fact · load=yes · scope=City pool, winter hours · asof=- · volatile=no · fresh=1y · needs=corroborated · needs_input=no\nThe city pool opens at 07:00 in winter.\nEVIDENCE: (kind=secondary) "),
+            s("## CLAIM c1 · type=fact · load=yes · scope=City pool, winter hours · asof=- · volatile=no · fresh=1y · needs=corroborated · needs_input=no\nThe city pool opens at 07:00 in winter.\nEVIDENCE: (kind=secondary · origin=Visit City) "),
             s("Pool: winter 7am.", cite("https://www.visitcity.example/pool", "Pool: winter 7am.")),
         )
         val c1 = t.work.current().first { it.id == "c1" }
         assertEquals("both calls' sources count", setOf("localnews.example", "visitcity.example"), c1.support.map { it.originKey }.toSet())
-        assertEquals("two independent origins meet the corroboration it asked for", ClaimStatus.ESTABLISHED, c1.status)
+        assertEquals("two origins known to be independent meet the corroboration it asked for", ClaimStatus.ESTABLISHED, c1.status)
     }
 
     @Test fun aChangedValueIsANewStatementAndDoesNotInheritTheEarlierEvidence() {

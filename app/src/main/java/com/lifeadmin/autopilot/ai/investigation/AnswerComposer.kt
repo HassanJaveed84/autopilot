@@ -12,7 +12,7 @@ object LeakageScan {
         Regex("""\[\s*c\d+(?:\s*,\s*c\d+)*\s*]""") to "claim marker",
         Regex("""\b(?:NOT_ESTABLISHED|ESTABLISHED|INDICATIVE|CONTESTED|DEPENDS_ON_INPUT|ANSWERED_WITH_CONDITIONS|PARTIALLY_ANSWERED|NEEDS_INPUT|RESOLVED_CONFLICT|NEEDS_CHECK|YOUR_CALL|NOT_FOUND)\b""") to "status label",
         Regex("""#{1,4}\s*(?:TITLE|ANSWER|CLAIM|REQ|CAND|ATTR|PICK|STEPS?|COMPARE|RECOMMEND|CHANGED|CONFIRMED|PROPOSE|UNRESOLVED|CONDITION|NEEDS_INPUT|WORTH_KNOWING|CALLOUT|EXCLUDED|CONFLICT)\b""") to "contract heading",
-        Regex("""\b(?:status|load|asof|volatile|needs_input|needs|fresh|about|type|claims|req|tag|kind)=\S+""") to "heading attribute",
+        Regex("""\b(?:status|load|asof|volatile|needs_input|needs|fresh|about|origin|type|claims|req|tag|kind)=\S+""") to "heading attribute",
         Regex("""\bsrc\s*=\s*s\d+""") to "source pointer",
         // A held source's registry number ("held as s1"), with the "as"/"source" that introduces it, so "held as s1, but" reads "held, but".
         Regex("""\s?\b(?:as\s+|source\s+)?(?<![=\w])s\d{1,3}\b""") to "source number",
@@ -50,8 +50,64 @@ object CallNarration {
 
     /** Drops the narrating sentences; a segment left empty is dropped. Claim markers stay on what remains. */
     fun strip(segments: List<AnswerSegment>): List<AnswerSegment> = segments.mapNotNull { seg ->
+        if (seg.sentences.isNotEmpty()) {
+            val kept = seg.sentences.filterNot { narrates(it.text) }
+            return@mapNotNull if (kept.isEmpty()) null else seg.copy(text = kept.joinToString(" ") { it.text }, sentences = kept)
+        }
         val kept = seg.text.split(SENTENCE).filterNot(::narrates)
         if (kept.isEmpty()) null else seg.copy(text = kept.joinToString(" ").trim())
+    }
+}
+
+/**
+ * RES-062/086, Document F §4 status honesty: no sentence in the answer reads as an established fact when the
+ * claims it states are not established. Each sentence is judged by its own claim markers, so one weak claim
+ * does not taint the rest of its paragraph:
+ * - every claim it states is weak → the sentence is kept, prefixed with the weakest status in plain words;
+ * - some are weak → the sentence is kept, with the weak claims named after it;
+ * - the sentence already says it is uncertain ("may", "reportedly", "not confirmed") → left as written;
+ * - no markers, or only established or user-dependent claims → left as written.
+ * Nothing is dropped, so a partly supported answer stays an answer, and caveats for load-bearing gaps still follow.
+ */
+object StatusQualifier {
+    private val HEDGED = Regex(
+        """\b(?:may|might|possibly|perhaps|reportedly|apparently|appears?|seems?|suggests?|unconfirmed|unverified|unclear|uncertain|disputed|conflicting|disagree\w*|not (?:yet )?(?:established|confirmed|verified)|no source (?:confirms|establishes|verifies|shows)|could not be (?:confirmed|verified|established)|only indicated|some sources|one source|could(?: not|n't)? be found|not found|found no|could(?: not|n't) find|no confirmed|no source showed)\b|\bno\b[^.!?]{0,80}\b(?:found|identified|located)\b""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** @param absence rewrites "does not exist" style wording for a sentence none of whose claims is established (RES-063). */
+    fun qualify(seg: AnswerSegment, byId: Map<String, Claim>, absence: ((String) -> String)? = null): String =
+        if (seg.sentences.isEmpty()) qualify(seg.text, seg.claimIds, byId, absence)
+        else seg.sentences.joinToString(" ") { qualify(it.text, it.claimIds, byId, absence) }
+
+    fun qualify(raw: String, claimIds: List<String>, byId: Map<String, Claim>, absence: ((String) -> String)? = null): String {
+        val claims = claimIds.mapNotNull { byId[it] }
+        val text = if (absence != null && claims.none { it.status == ClaimStatus.ESTABLISHED }) absence(raw) else raw
+        val weak = claims.mapNotNull { c -> weakness(c)?.let { c to it } }
+        if (weak.isEmpty() || HEDGED.containsMatchIn(text)) return text
+        if (weak.size == claims.size) return "${weak.minByOrNull { rank(it.first) }!!.second}: $text"
+        val notes = weak.joinToString("; ") { (c, label) -> "${label.replaceFirstChar { it.lowercase(Locale.ROOT) }}: ${c.text.trim().trimEnd('.')}" }
+        val body = text.trimEnd()
+        val end = body.lastOrNull()?.takeIf { it == '.' || it == '!' || it == '?' }
+        return if (end != null) "${body.dropLast(1)} ($notes)$end" else "$body ($notes)"
+    }
+
+    /** The plain-language label for a claim that is not established and current, or null when it is. */
+    private fun weakness(c: Claim): String? = when {
+        c.superseded -> "No longer current"
+        c.status == ClaimStatus.ESTABLISHED || c.status == ClaimStatus.DEPENDS_ON_INPUT -> null
+        !c.checked -> "Not checked"
+        c.type.derived -> "Rests on findings that are not established"
+        c.status == ClaimStatus.INDICATIVE -> "Only indicated, not established"
+        c.status == ClaimStatus.CONTESTED -> "Sources disagree"
+        else -> "Not established"
+    }
+
+    private fun rank(c: Claim): Int = when {
+        c.superseded -> 0
+        !c.checked || c.status == ClaimStatus.NOT_ESTABLISHED -> 1
+        c.status == ClaimStatus.CONTESTED -> 2
+        else -> 3
     }
 }
 
@@ -96,7 +152,7 @@ object AnswerComposer {
 
     fun compose(objective: Objective, out: TurnOutput, claims: List<Claim>, derivation: Derivation, fallbackTitle: String): Answer {
         val byId = claims.associateBy { it.id }
-        val lead = out.answer.map { seg -> guardNegative(scrub(seg, byId), byId) }.filter { it.text.isNotBlank() }
+        val lead = out.answer.map { seg -> scrub(seg, byId, absence = true) }.filter { it.text.isNotBlank() }
         val caveats = caveats(derivation)
         val sections = ArrayList<AnswerSection>()
         // Structure follows the ask, never the subject (RES-080/083).
@@ -127,18 +183,16 @@ object AnswerComposer {
     }
 
     /** Markers stay only on current claims that can carry a citation (RES-085, RES-107); internal residue is removed from the text. */
-    private fun scrub(seg: AnswerSegment, byId: Map<String, Claim>): AnswerSegment {
+    private fun scrub(seg: AnswerSegment, byId: Map<String, Claim>, absence: Boolean = false): AnswerSegment {
         val ids = seg.claimIds.filter { id -> byId[id]?.let { it.type.citable && !it.superseded } == true }
-        return AnswerSegment(LeakageScan.clean(seg.text), ids)
+        return AnswerSegment(LeakageScan.clean(StatusQualifier.qualify(seg, byId, if (absence) ::absenceWording else null)), ids)
     }
 
-    /** "This investigation couldn't find support" is never shown as "this is false" (RES-063). */
-    private fun guardNegative(seg: AnswerSegment, byId: Map<String, Claim>): AnswerSegment {
-        val supported = seg.claimIds.any { byId[it]?.status == ClaimStatus.ESTABLISHED }
-        if (supported) return seg
-        var t = seg.text
+    /** "This investigation couldn't find support" is never shown as "this is false" (RES-063); applied per sentence. */
+    private fun absenceWording(text: String): String {
+        var t = text
         for ((rx, replacement) in NEGATIVE) t = rx.replace(t, replacement)
-        return seg.copy(text = t)
+        return t
     }
 
     /** Every load-bearing gap is named in the main answer (RES-086), whether or not the model mentioned it. */

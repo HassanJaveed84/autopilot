@@ -1,5 +1,6 @@
 package com.lifeadmin.autopilot.ai.investigation
 
+import com.lifeadmin.autopilot.ai.research.Sources
 import java.time.Duration
 import java.time.LocalDate
 import java.time.YearMonth
@@ -38,11 +39,11 @@ object ClaimAssessor {
         // RES-071: opposing evidence about another scope or an earlier period is a different claim or a change over time, not a conflict.
         val opposing = c.against.filter { !it.pointerOnly && it.scopeNote.isBlank() && fresh(c, it, nowMs) }
         val standard = c.needs ?: if (consequential && c.loadBearing) EvidenceStandard.CORROBORATED else EvidenceStandard.DIRECT
-        val origins = usable.map { it.originKey }.distinct().size
+        val groups = origins(usable)
         return when {
             usable.isNotEmpty() && opposing.isNotEmpty() -> c.copy(status = ClaimStatus.CONTESTED, statusReason = "Sources disagree about this")
-            usable.isNotEmpty() && meets(standard, usable) -> c.copy(status = ClaimStatus.ESTABLISHED, statusReason = established(standard, usable, origins))
-            usable.isNotEmpty() -> c.copy(status = ClaimStatus.INDICATIVE, statusReason = "This needs ${standard.label}; what was found falls short (${describe(usable)})")
+            usable.isNotEmpty() && meets(standard, usable, groups) -> c.copy(status = ClaimStatus.ESTABLISHED, statusReason = established(standard, usable, groups))
+            usable.isNotEmpty() -> c.copy(status = ClaimStatus.INDICATIVE, statusReason = "This needs ${standard.label}; what was found falls short (${describe(usable)}${independenceNote(standard, usable, groups)})")
             inScope.isNotEmpty() -> c.copy(status = ClaimStatus.INDICATIVE, statusReason = staleReason(c, inScope, nowMs))
             pointers.isNotEmpty() -> c.copy(status = ClaimStatus.INDICATIVE, statusReason = "Restated from earlier evidence, not checked here")
             // The note is the reply's own label for what the page covers; the reason reports it as a label, never as a verified mismatch.
@@ -52,20 +53,77 @@ object ClaimAssessor {
         }
     }
 
-    /** RES-043: proportional, never a universal count. Independent agreement is one route among three, not a minimum. */
-    private fun meets(standard: EvidenceStandard, usable: List<EvidenceRef>): Boolean = when (standard) {
+    /**
+     * RES-043: proportional, never a universal count. Independent agreement is one route among three, not a minimum,
+     * and it counts only origins whose independence is known (RES-045): see [origins].
+     */
+    private fun meets(standard: EvidenceStandard, usable: List<EvidenceRef>, groups: List<Origin>): Boolean = when (standard) {
         EvidenceStandard.DIRECT -> true
-        EvidenceStandard.CORROBORATED -> usable.any { it.kind == EvidenceKind.PRIMARY || it.kind == EvidenceKind.REVIEW } || usable.map { it.originKey }.distinct().size >= 2
+        EvidenceStandard.CORROBORATED -> issuerOrReview(usable) || groups.count { it.attributed } >= 2
         EvidenceStandard.REVIEW -> usable.any { it.kind == EvidenceKind.REVIEW }
     }
 
-    private fun established(standard: EvidenceStandard, usable: List<EvidenceRef>, origins: Int): String = when {
+    private fun issuerOrReview(usable: List<EvidenceRef>) = usable.any { it.kind == EvidenceKind.PRIMARY || it.kind == EvidenceKind.REVIEW }
+
+    private fun established(standard: EvidenceStandard, usable: List<EvidenceRef>, groups: List<Origin>): String = when {
         standard == EvidenceStandard.REVIEW -> "Review-level evidence, in scope"
-        usable.any { it.kind == EvidenceKind.PRIMARY } && origins == 1 -> "The issuing source, in scope"
-        origins == 1 -> "One source, in scope"
-        // Origins are told apart by host only; two sites run by one publisher still count twice, so the reason claims no more than that.
-        else -> "$origins sources on different sites, in scope"
+        usable.any { it.kind == EvidenceKind.PRIMARY } && groups.size == 1 -> "The issuing source, in scope"
+        groups.size == 1 -> "One source, in scope"
+        standard == EvidenceStandard.CORROBORATED && !issuerOrReview(usable) -> "${groups.count { it.attributed }} independent sources agree, in scope"
+        // Without known independence the reason claims only what was checked: separate origins.
+        else -> "${groups.size} sources from separate origins, in scope"
     }
+
+    private fun independenceNote(standard: EvidenceStandard, usable: List<EvidenceRef>, groups: List<Origin>): String = when {
+        standard != EvidenceStandard.CORROBORATED || issuerOrReview(usable) -> ""
+        groups.size == 1 && usable.size > 1 -> ", all from one origin"
+        groups.size >= 2 -> "; it is not known whether they are independent of each other"
+        else -> ""
+    }
+
+    /** One origin of evidence: pages that share a site, a stated publisher or a passage of text. */
+    class Origin(val members: List<EvidenceRef>) {
+        /** The reply said who first published at least one of its pages; only such origins can count as independent. */
+        val attributed: Boolean get() = members.any { it.origin != null }
+    }
+
+    /**
+     * RES-045: groups evidence into origins. Two pages are one origin when they are on one registrable site
+     * (subdomains included), when the reply names the same publisher for both, when the publisher it names for one
+     * is the other's site, or when their cited text shares a passage of [SHARED_WORDS] words or more (one
+     * announcement or data release repeated). These checks only merge: a reply calling two pages independent never
+     * separates pages they join, and a page whose publisher the reply does not state has independence unknown.
+     */
+    fun origins(evidence: List<EvidenceRef>): List<Origin> {
+        val parent = IntArray(evidence.size) { it }
+        fun find(i: Int): Int { var x = i; while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x] }; return x }
+        for (i in evidence.indices) for (j in i + 1 until evidence.size) if (sameOrigin(evidence[i], evidence[j])) parent[find(i)] = find(j)
+        return evidence.indices.groupBy { find(it) }.values.map { ix -> Origin(ix.map { evidence[it] }) }
+    }
+
+    const val SHARED_WORDS = 12
+
+    private fun sameOrigin(a: EvidenceRef, b: EvidenceRef): Boolean {
+        if (Sources.site(a.originKey) == Sources.site(b.originKey)) return true
+        val na = a.origin?.let(::words)
+        val nb = b.origin?.let(::words)
+        if (na != null && nb != null && na.joinToString("") == nb.joinToString("")) return true
+        if (na != null && names(na, Sources.siteName(b.originKey))) return true
+        if (nb != null && names(nb, Sources.siteName(a.originKey))) return true
+        return sharesPassage(a.quote, b.quote)
+    }
+
+    /** A stated publisher names a site when its words are the site's name, or one of them is ("BBC News" names bbc.co.uk). */
+    private fun names(publisher: List<String>, siteName: String): Boolean = siteName.length >= 3 && (publisher.joinToString("") == siteName || siteName in publisher)
+
+    private fun sharesPassage(a: String?, b: String?): Boolean {
+        val wa = a?.let(::words)?.takeIf { it.size >= SHARED_WORDS } ?: return false
+        val wb = b?.let(::words)?.takeIf { it.size >= SHARED_WORDS } ?: return false
+        val runs = wa.windowed(SHARED_WORDS).map { it.joinToString(" ") }.toSet()
+        return wb.windowed(SHARED_WORDS).any { it.joinToString(" ") in runs }
+    }
+
+    private fun words(s: String): List<String> = s.lowercase(java.util.Locale.ROOT).split(Regex("""[^\p{L}\p{N}]+""")).filter { it.isNotEmpty() }
 
     /** Plain words for what was found, e.g. "one study and one secondary source". */
     private fun describe(usable: List<EvidenceRef>): String {

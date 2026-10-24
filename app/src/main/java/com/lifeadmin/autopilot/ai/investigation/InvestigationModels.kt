@@ -136,6 +136,12 @@ data class EvidenceRef(
      * pointer, for a restatement validated against held evidence, and for records stored before it was kept.
      */
     val quote: String? = null,
+    /**
+     * Who first published this information, as the reply states it (`origin=`): the issuer itself, or the organisation
+     * whose announcement or data the page repeats. Used only to merge sources into one origin, and to know which
+     * agreeing sources are independent; never to raise a source's standing on its own. Null when not stated.
+     */
+    val origin: String? = null,
 )
 
 /** RES-043/047: the standing of one source for one claim. General, not a domain list. */
@@ -198,7 +204,8 @@ data class Claim(
     /** False when the run stopped or failed before this claim was investigated (OD-11, RES-151). */
     val checked: Boolean = true,
 ) {
-    val independentOrigins: Int get() = support.filter { !it.pointerOnly }.map { it.originKey }.distinct().size
+    /** Distinct origins among the verified support, after merging one site, one declared publisher and repeated text (RES-045). */
+    val independentOrigins: Int get() = ClaimAssessor.origins(support.filter { !it.pointerOnly }).size
 }
 
 // ------------------------------------------------------------------ derived state
@@ -230,7 +237,19 @@ enum class TurnEnding(val label: String) {
 
 /** A run of answer text and the claims whose markers it carried; markers resolve to evidence in one tap (RES-084/088). */
 @Serializable
-data class AnswerSegment(val text: String, val claimIds: List<String> = emptyList())
+data class AnswerSegment(
+    val text: String,
+    val claimIds: List<String> = emptyList(),
+    /**
+     * The same text split into sentences, each with the claims its own markers name. Filled by the parser so the
+     * composer can qualify one sentence without touching the rest of its paragraph; empty once composed.
+     */
+    val sentences: List<AttributedSentence> = emptyList(),
+)
+
+/** One sentence of model-written text and the claims it states (its own [cN] markers). */
+@Serializable
+data class AttributedSentence(val text: String, val claimIds: List<String> = emptyList())
 
 @Serializable
 enum class SectionKind(val title: String) {

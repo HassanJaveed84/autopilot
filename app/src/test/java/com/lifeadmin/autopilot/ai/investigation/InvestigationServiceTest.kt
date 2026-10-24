@@ -3,12 +3,16 @@ package com.lifeadmin.autopilot.ai.investigation
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.lifeadmin.autopilot.ai.AiPlanningService
 import com.lifeadmin.autopilot.ai.context.FindingDisposition
+import com.lifeadmin.autopilot.ai.research.RawSegment
 import com.lifeadmin.autopilot.ai.research.ResearchConfig
 import com.lifeadmin.autopilot.ai.research.ResearchError
 import com.lifeadmin.autopilot.ai.research.ResearchScope
+import com.lifeadmin.autopilot.ai.research2.CallResult
+import com.lifeadmin.autopilot.ai.research2.CallStop
 import com.lifeadmin.autopilot.ai.security.InMemoryApiKeyStore
 import com.lifeadmin.autopilot.ai.usage.CallOutcome
 import com.lifeadmin.autopilot.ai.usage.InMemoryUsageLedger
+import com.lifeadmin.autopilot.ai.usage.MeasuredUsage
 import com.lifeadmin.autopilot.ai.usage.UsageFeature
 import com.lifeadmin.autopilot.ai.usage.UsageRecord
 import com.lifeadmin.autopilot.data.local.AppDatabase
@@ -160,6 +164,51 @@ class InvestigationServiceTest {
         assertEquals(CallOutcome.COMPLETE, rows[0].outcome)
         assertEquals("the title follows the answer", "Union Station, Washington DC: address", runBlocking { store.get(ready.investigationId)!!.title })
         assertEquals(1, runBlocking { service.requestsToday() })
+    }
+
+    // Document F R-N(b): which place is meant is settled before any authorization, in the app's default flow.
+    @Test fun aPlaceDependentQuestionWithNoPlaceClarifiesLocallyWithNoCallAndNoAuthorization() {
+        val ready = prepare("address of Union Station", task = null)
+        assertEquals(TurnState.CLARIFYING, ready.turn.state)
+        assertEquals(ObjectiveSource.LOCAL, ready.turn.objective.preparedBy)
+        assertTrue(provider.calls.isEmpty())
+        assertTrue("nothing is ledgered", runBlocking { ledger.getAll() }.isEmpty())
+        assertTrue("no paid call can start while the place is unknown", authorize(ready) is StartResult.Rejected)
+        assertTrue(provider.calls.isEmpty())
+        val fixed = runBlocking { service.clarify(ready.investigationId, ready.turn.id, "Chicago") }!!
+        assertEquals(TurnState.AUTHORIZING, fixed.state)
+        assertTrue(fixed.objective.question.contains("Chicago"))
+        assertTrue("answering costs nothing", provider.calls.isEmpty())
+    }
+
+    @Test fun aFullySpecifiedAddressQuestionGoesStraightToAuthorizationWithNoPreparationCall() {
+        val ready = prepare("What is the address of Union Station in Washington, DC?", task = null)
+        assertEquals(TurnState.AUTHORIZING, ready.turn.state)
+        assertTrue(provider.calls.isEmpty())
+        assertTrue(runBlocking { ledger.getAll() }.isEmpty())
+    }
+
+    @Test fun withThePreparationCallOnTheProviderCanSettleAPlaceTheLocalPassCouldNot() {
+        provider.enqueue(
+            CallResult.Done(
+                listOf(RawSegment("## OBJECTIVE\nFind the street address of the British Museum in London\n## ASK · kind=fact\n## DEPTH · level=quick\nOne authoritative source settles an address.\n", emptyList())),
+                emptyList(), MeasuredUsage(120, 40, 0, 0, 0, 0), CallStop.END, 15, "msg_prep",
+            ),
+        )
+        val ready = prepare("address of the British Museum", task = null, useProvider = true)
+        assertEquals(TurnState.AUTHORIZING, ready.turn.state)
+        assertEquals("Find the street address of the British Museum in London", ready.turn.objective.text)
+        assertEquals(listOf(UsageFeature.OBJECTIVE_PREP), runBlocking { ledger.getAll() }.map { it.feature })
+    }
+
+    @Test fun ifThePreparationCallFailsThePlaceIsStillAskedForNeverAssumed() {
+        val ready = prepare("address of Union Station", task = null, useProvider = true)
+        assertEquals("the scripted provider has no reply, so the call fails", 1, provider.calls.size)
+        assertEquals(TurnState.CLARIFYING, ready.turn.state)
+        assertEquals(ObjectiveSource.LOCAL, ready.turn.objective.preparedBy)
+        val rows = runBlocking { ledger.getAll() }
+        assertEquals(listOf(UsageFeature.OBJECTIVE_PREP), rows.map { it.feature })
+        assertTrue(rows.single().outcome != CallOutcome.COMPLETE)
     }
 
     @Test fun aClarificationBlocksAuthorizationUntilAnsweredAndTheObjectiveCallIsLedgeredAsPreparation() {

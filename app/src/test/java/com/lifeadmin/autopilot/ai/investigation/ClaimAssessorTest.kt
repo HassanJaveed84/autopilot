@@ -35,7 +35,7 @@ class ClaimAssessorTest {
         assertEquals(1, one.independentOrigins)
         assertEquals(2, two.independentOrigins)
         assertTrue(one.statusReason.startsWith("One source"))
-        assertTrue(two.statusReason, two.statusReason.startsWith("2 sources on different sites"))
+        assertTrue(two.statusReason, two.statusReason.startsWith("2 sources from separate origins"))
     }
 
     @Test fun judgmentsInheritTheWeakestPremiseAndAreNeverEstablishedOnTheirOwn() {

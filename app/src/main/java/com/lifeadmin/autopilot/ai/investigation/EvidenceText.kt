@@ -94,6 +94,35 @@ object EvidenceText {
     val URL = Regex("""\b(?:https?://|www\.)\S+""", RegexOption.IGNORE_CASE)
     val SRC = Regex("""\s*\bsrc\s*=\s*((?:s\d+\s*,?\s*)+)""", RegexOption.IGNORE_CASE)
     val BRACKET = Regex("""\s*\[\d+(?:,\s*\d+)*]""")
+    /** A sentence end: the punctuation, any closing quote or bracket, then the markers that close the sentence. */
+    private val SENTENCE_END = Regex("""[.!?]["'”’)]*((?:\s*\[\s*c\d+(?:\s*,\s*c\d+)*\s*])*)(?=\s+["'“‘(]?[A-Z0-9])""")
+    /** Words whose trailing period is not a sentence end ("Dr. Smith", "Main St. Station", "the U.S. rule"). */
+    private val ABBREVIATIONS = setOf(
+        "st", "ave", "rd", "blvd", "ln", "dr", "mr", "mrs", "ms", "prof", "no", "nos", "inc", "ltd", "co", "corp", "jr", "sr", "vs", "etc", "mt", "ft", "approx", "dept",
+        "gov", "sen", "rep", "fig", "vol", "ch", "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec", "e.g", "i.e", "u.s", "u.k", "d.c", "a.m", "p.m",
+    )
+
+    /**
+     * Splits one line of model text into sentences, each with the claim markers it carries itself. A marker written
+     * after the full stop ("…20002. [c1] The station…") belongs to the sentence it follows.
+     */
+    fun sentences(raw: String): List<AttributedSentence> {
+        val out = ArrayList<AttributedSentence>()
+        fun add(piece: String) {
+            val text = clean(piece).replace(Regex("\\s+"), " ").replace(Regex("""\s+([.,;:!?])"""), "$1").trim()
+            if (text.isNotEmpty()) out += AttributedSentence(text, markers(piece))
+        }
+        var start = 0
+        for (m in SENTENCE_END.findAll(raw)) {
+            val word = Regex("""([\p{L}.]+)$""").find(raw.substring(start, m.range.first))?.value?.lowercase(Locale.ROOT)?.trimEnd('.')
+            if (word != null && (word in ABBREVIATIONS || word.length == 1)) continue
+            add(raw.substring(start, m.range.last + 1))
+            start = m.range.last + 1
+        }
+        add(raw.substring(start))
+        return out
+    }
+
     /** Claim markers in prose: [c1], [c1, c2], [c1][c2]. */
     val MARKER = Regex("""\[\s*(c\d+(?:\s*,\s*c\d+)*)\s*]""")
     val INJECTION = Regex(

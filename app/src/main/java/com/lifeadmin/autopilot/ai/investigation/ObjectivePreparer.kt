@@ -7,8 +7,10 @@ import java.util.Locale
  * Establishes the objective (RES-010, 013, 020, 025) before any authorization surface exists.
  *
  * Two paths, one result type. [local] is free and offline: the person's words become the objective,
- * the ask is read from the request's own words (never from its subject), and the only ambiguity it
- * can see is a question with no stated subject ("is it worth it?"). [fromProvider] parses the one
+ * the ask is read from the request's own words (never from its subject), and the ambiguity it can see
+ * is a question with no stated subject ("is it worth it?") or a place-dependent ask that names no place
+ * ("address of Union Station"). It cannot tell a unique landmark from a common name, so the second asks
+ * which place; the optional provider pass can settle it instead. [fromProvider] parses the one
  * no-search preparation call made under general AI consent. Neither path consults a topic list to
  * shape the answer; a consequential-domain hint only adds the RES-053 caution.
  */
@@ -28,6 +30,30 @@ object ObjectivePreparer {
     )
     private val BUDGET = Regex("""(?:up to|under|below|max(?:imum)?|budget(?: of)?|no more than|less than|around|about|≤|<=?)\s*([$£€]\s?\d[\d,]*(?:\.\d+)?)|([$£€]\s?\d[\d,]*(?:\.\d+)?)\s*(?:or less|max(?:imum)?|budget|limit|cap)""", RegexOption.IGNORE_CASE)
     private val PLACE = Regex("""\b(?:in|within|for|from|ships? to|available in)\s+(the\s+)?(USA|US|U\.S\.|United States|UK|U\.K\.|United Kingdom|Canada|Australia|Ireland|Germany|France|Spain|Italy|Netherlands|New Zealand|India|Europe|EU|[A-Z][a-z]+(?:,\s*[A-Z]{2})?)\b""")
+    /**
+     * Asks whose answer depends on which place is meant: where something is, how to reach it, when it opens, how to
+     * call it, the nearest one. Read from the request's words, never from its subject.
+     */
+    private val PLACE_ASK = Regex(
+        """\b(?:address(?:es)?|where (?:is|are)|where's|located|location of|directions?|how (?:do|can|would|should) (?:i|we|you) get to|opening (?:hours|times)|hours of|open(?:s|ing)? (?:on|at|until|today|tonight|tomorrow|now)|what time does .+ (?:open|close)|clos(?:e|es|ing) (?:on|at|today|tonight|tomorrow|time)|phone number|telephone number|contact number|nearest|closest|near me)\b""",
+        RegexOption.IGNORE_CASE,
+    )
+    /** Words after "in"/"near" that name a time or a language, not a place. */
+    private val NOT_PLACES = setOf(
+        "january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december",
+        "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "english", "spanish", "french", "german", "italian", "portuguese", "chinese", "japanese", "arabic",
+    )
+    /** Ways a question names the place itself: "in Boston", ", Washington, DC", a postcode, a street address, "the Lisbon passport office". */
+    private val PLACE_NAMED = listOf(
+        Regex("""\b(?:in|near|outside|around|at)\s+(?:the\s+)?([A-Z][\p{L}'’.-]+)"""),
+        Regex(""",\s*([A-Z][\p{L}'’.-]+)"""),
+        Regex("""\b(\d{5})(?:-\d{4})?\b"""),
+        Regex("""\b([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\b"""),
+        Regex("""\b(\d+[A-Za-z]?\s+(?:[A-Z][\p{L}'’-]+\s+){1,3}(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Way|Square|Sq|Place|Pl|Court|Ct|Terrace|Highway|Hwy))\b"""),
+        // A capitalised place word qualifying a common facility noun: "Lisbon passport office", "Denver public library".
+        Regex("""\b([A-Z][a-z]+)\s+(?:[a-z]+\s+){0,2}(?:office|station|airport|library|hospital|museum|branch|clinic|embassy|consulate|court|school|university|centre|center|stadium|terminal|post office|town hall|city hall)\b"""),
+    )
+
     private val TIME = Regex("""\b(by|before|until|on|this|next)\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|week|month|weekend|[A-Z][a-z]+ \d{1,2}(?:st|nd|rd|th)?|\d{1,2}(?:st|nd|rd|th)? [A-Z][a-z]+)\b""", RegexOption.IGNORE_CASE)
 
     /** The free, offline objective: correct for clear questions, honest about the one kind of ambiguity it can detect. */
@@ -43,7 +69,13 @@ object ObjectivePreparer {
         }
         val consequential = CONSEQUENTIAL.containsMatchIn(q)
         val depth = recommendedDepth(ask, consequential)
-        val clarification = if (noSubject) Clarification("What are you weighing up, and against what? Name the thing and what would make it worth it for you.") else null
+        // Document F R-N(b): the place changes the answer and the question does not say which; no consented location is known.
+        val placeUnknown = !noSubject && PLACE_ASK.containsMatchIn(q) && !namesPlace(q)
+        val clarification = when {
+            noSubject -> Clarification("What are you weighing up, and against what? Name the thing and what would make it worth it for you.")
+            placeUnknown -> Clarification("Which one do you mean? Name the city or area, so the answer is about the right place.")
+            else -> null
+        }
         return Objective(
             question = q,
             text = if (noSubject) "" else objectiveText(q, ask),
@@ -51,14 +83,17 @@ object ObjectivePreparer {
             satisfies = if (noSubject) emptyList() else listOf(satisfiesLine(ask)),
             constraints = constraints,
             evidenceNeeds = emptyList(),
-            unknowns = emptyList(),
+            unknowns = if (placeUnknown) listOf(Unknown("Which place is meant: the city or area", blocking = true)) else emptyList(),
             consequential = consequential,
             recommendedDepth = depth.first, depthReason = depth.second,
-            established = !noSubject,
+            established = !noSubject && !placeUnknown,
             clarification = clarification,
             preparedBy = ObjectiveSource.LOCAL,
         )
     }
+
+    /** True when the question itself names where: a place after "in"/"near", a trailing ", Place", a postcode, a street address or a place-qualified facility. */
+    private fun namesPlace(q: String): Boolean = PLACE_NAMED.any { rx -> rx.findAll(q).any { it.groupValues[1].lowercase(Locale.ROOT).trimEnd('.') !in NOT_PLACES } }
 
     /** The provider's preparation blocks → an [Objective]; falls back to [local] for anything it left out. Never trusts it with the user's words. */
     fun fromProvider(question: String, segments: List<RawSegment>, model: String): Objective {
@@ -174,7 +209,7 @@ object ObjectivePreparer {
         if (a.isBlank()) return current
         val q = current.question.trimEnd('?', '.', ' ') + " — " + a
         val re = local(q)
-        return re.copy(question = q, text = re.text.ifBlank { a }, established = true, clarification = null, preparedBy = ObjectiveSource.USER_EDITED, consequential = re.consequential || current.consequential)
+        return re.copy(question = q, text = re.text.ifBlank { a }, unknowns = re.unknowns.filterNot { it.blocking }, established = true, clarification = null, preparedBy = ObjectiveSource.USER_EDITED, consequential = re.consequential || current.consequential)
     }
 
     fun askKind(q: String): AskKind = when {

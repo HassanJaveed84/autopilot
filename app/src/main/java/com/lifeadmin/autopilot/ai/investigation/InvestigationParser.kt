@@ -60,12 +60,16 @@ object InvestigationParser {
             fun ref(n: Int, pointer: Boolean) = EvidenceRef(
                 n, excerpt.take(300), scopeNote = attrs.scopeNote, asOf = attrs.asOf,
                 kind = attrs.kind ?: EvidenceKind.PRIMARY.takeIf { registry.official(n) }, retrievedAtMs = nowMs, originKey = registry.originKey(n), pointerOnly = pointer,
-                quote = if (pointer) null else quotes[n],
+                quote = if (pointer) null else quotes[n], origin = attrs.origin,
             )
             return r.verified.map { ref(it, false) } + r.reused.map { ref(it, true) }
         }
+        // A cited line with no marker of its own is attributed to its implicit claim.
         fun segment(text: String, range: IntRange, extraIds: List<String> = emptyList()): AnswerSegment =
-            AnswerSegment(EvidenceText.clean(text, keepTrailingSpace = true).replace(Regex("\\s+"), " ").trim(), (EvidenceText.markers(text) + extraIds).distinct())
+            AnswerSegment(
+                EvidenceText.clean(text, keepTrailingSpace = true).replace(Regex("\\s+"), " ").trim(), (EvidenceText.markers(text) + extraIds).distinct(),
+                sentences = EvidenceText.sentences(text).map { if (it.claimIds.isEmpty() && extraIds.isNotEmpty()) it.copy(claimIds = extraIds) else it },
+            )
 
         if (blocks.none { it.kind != "FREE" }) return freeForm(full, spans, registry, turnId, nowMs, queries)
 
@@ -287,10 +291,10 @@ object InvestigationParser {
 }
 
 /**
- * What a reply says about one EVIDENCE or AGAINST line, written as a leading `(about=… · asof=… · kind=…)`.
+ * What a reply says about one EVIDENCE or AGAINST line, written as a leading `(kind=… · origin=… · asof=… · about=…)`.
  * These can only narrow what the evidence supports; the assessor still decides every status.
  */
-data class EvidenceAttrs(val scopeNote: String = "", val asOf: String? = null, val kind: EvidenceKind? = null) {
+data class EvidenceAttrs(val scopeNote: String = "", val asOf: String? = null, val kind: EvidenceKind? = null, val origin: String? = null) {
     companion object {
         private val LEAD = Regex("""^\s*\(([^()]*)\)\s*""")
 
@@ -308,7 +312,8 @@ data class EvidenceAttrs(val scopeNote: String = "", val asOf: String? = null, v
                 "secondary", "news", "blog", "forum", "aggregator" -> EvidenceKind.SECONDARY
                 else -> null
             }
-            return EvidenceAttrs(note, kv["asof"]?.takeIf { it != "-" && it.isNotBlank() }?.take(20), kind) to raw.substring(m.range.last + 1).trim()
+            val origin = kv["origin"]?.takeIf { it != "-" && it.isNotBlank() }?.take(80)
+            return EvidenceAttrs(note, kv["asof"]?.takeIf { it != "-" && it.isNotBlank() }?.take(20), kind, origin) to raw.substring(m.range.last + 1).trim()
         }
 
         /** `7d`, `3w`, `6m`, `1y` (or a bare number of days); anything else is no window. */
