@@ -444,6 +444,9 @@ private fun AuthorizationCard(t: Turn, s: ThreadUi, vm: InvestigationThreadViewM
             }
             Text("Unticked findings are not sent now or in later turns of this research.", style = MaterialTheme.typography.bodySmall, color = c.ink2)
         }
+        if (s.authorization?.wordingCheck == true) {
+            Text("Includes one more call, without searching, that checks the answer's wording against the pages it cites. It is in the estimate.", style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.testTag("auth_wording_check"))
+        }
         LinkButton("See exactly what's sent", onClick = onPayload, modifier = Modifier.testTag("auth_payload"))
         Text("Research only reads the web. It never buys, books, signs up or messages anyone. Your task changes only when you apply proposals.", style = MaterialTheme.typography.bodySmall, color = c.ink2)
     }

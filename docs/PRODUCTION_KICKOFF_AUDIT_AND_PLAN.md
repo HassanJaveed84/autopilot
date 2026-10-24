@@ -749,3 +749,89 @@ The full scorecard is `docs/live-eval/R-N-a-2026-10-24-run3.md`. **Verdict: FAIL
 | **N4** | The status qualifier checks each sentence's claim **statuses**, not its content against the claims' cited text. | "where Massachusetts Avenue NE meets First Street NE" was shown unqualified, although no cited text supports it. |
 
 The proposed fixes are in the report (§5).
+
+---
+
+# M4 answer-grounding pass: N3, N4, R-C review and R-N(b) harness, 2026-10-24
+
+Approved after the third R-N(a) live run. Every new case was first run on `ddf6b44`: 11 of 15 failed there. The 4 that passed are guards the fix must keep: a relevant exception, a safety warning, a supported paraphrase and qualified uncertainty. No paid call was made in this pass. All three historical R-N(a) scorecards and their sanitized JSON are unchanged.
+
+## N3: objective relevance
+
+**Root cause.** `AnswerComposer.compose()` showed every WORTH_KNOWING item whose claims were current. The prompt asked for materiality, but nothing enforced it.
+
+**Fix (`Relevance`).**
+- The contract (prompt v6) asks each item to state how it bears on the answer: `bears=risk|exception|limitation|prerequisite`, with `on=cN` naming the answer claim it qualifies.
+- A risk is always kept: omitting a warning could do harm.
+- An exception, limitation or prerequisite is kept only when it is tied to the answer (`on=` names an answer claim, or the item states a load-bearing claim) and its words actually restrict it ("only", "closed", "unless", "must", "not" and similar).
+- Anything else is omitted, not disclaimed.
+- For a narrow fact ask, a main-answer sentence that states only claims the reply marked `load=no`, and neither restricts nor warns, is background and is also left out.
+- No topic, category or template is consulted.
+
+## N4: complete factual grounding
+
+**Root cause.** The composer judged a sentence only by its claims' *statuses*. Nothing compared the sentence, or the claim's own wording, with the cited page text.
+
+**Design.**
+1. **Atomic attribution.** Prompt v6 says a sentence may state only what its cited claims state, and a claim only what its cited text says. Any further detail needs its own claim and evidence, or is left out.
+2. **Lexical grounding (`Grounding`, every objective, free).**
+   - **Corpus.** Each sentence is checked against the corpus of the claims it names: verbatim cited text, page title, page address and site name. A judgment uses its premises. The claims' own wording, the reply's evidence summaries and the reply's labels never count.
+   - **Checkable details** must appear in the corpus: numbers with the unit that follows them ("1000 IU" is not supported by "1000 mcg"), names, places and dates.
+   - **Normalization** covers abbreviations (Ave, D.C., NE/Northeast), ISO dates, leading zeros, decimals and number words.
+   - **Certainty and universality words** ("prevents", "always", "for every", "at any scale") must be the source's own.
+   - **Hedges.** Hedged research evidence (study or review: "may", "limited", "associated with") must not be stated flatly.
+   - **Claims.** A fact claim whose own wording adds a detail its cited text does not show is only indicated: "The cited text does not show 500 mg".
+3. **What happens to an unsupported part.**
+   - A separable clause (", where …", ", which …", ", also …", a parenthesis) holding the unsupported detail is removed.
+   - Contrastive clauses (", but …", ", unless …") are never removed.
+   - Otherwise the sentence is kept and the unsupported part is named: "(the cited sources do not show: 18:00)". A sentence whose claims are already weak keeps its status label instead.
+   - In optional material, an item that still says something unsupported is omitted, except a risk, which is kept and qualified.
+4. **Model-assisted check (`WordingCheck`, consequential objectives only).**
+   - **Why it is needed.** String matching cannot tell whether a paraphrase means the same thing: "increased lean mass" is not "builds muscle strength". For health, legal, financial and safety answers, an overstated sentence is a Document F §6 serious failure.
+   - **How it runs.** The authorization includes one extra call, without search (`CHECK_WORDING`), and the estimate includes it. The card says so.
+   - **What it sees.** The verifier sees only the sentences and their verbatim cited text.
+   - **How its findings are used.** Findings only remove or qualify. A span that is not the sentence's own words is not trusted: the whole sentence is then named as not shown. A "supported" verdict never overrides the lexical checks. Claim statuses never change because of it.
+   - **If it cannot run** (failure, refusal or spending limit), the answer says so and the lexical checks still apply.
+   - **R-N(a)** is not consequential, so it stays one call.
+   - **Limits.** It is still a model's judgment, not proof.
+
+**Tests:**
+- `ObjectiveRelevanceTest` (6);
+- `AnswerGroundingTest` (10, including steps and comparison cells);
+- `WordingCheckServiceTest` (6, Robolectric, scripted replies);
+- run-3 replay: the Columbus Circle item is omitted and the address answer is unchanged.
+
+Five existing tests were updated:
+- three because a non-load-bearing side sentence is now omitted rather than shown qualified, which is the N3 decision;
+- two whose fixtures cited pages without a title, which real citations always carry.
+
+## R-C price freshness: review
+
+**Question.** Can R-C ("Answered only with fresh seller-sourced prices; Partially if some unverifiable") be satisfied when a current seller listing has no explicit date?
+
+**Finding.** Web search returns the index's copy of a page, captured at a time the engine is not told. So none of the following dates a price:
+- the time of the search (`retrievedAtMs`);
+- the result's page age (search metadata, often a page-modified time that can be newer than the indexed text);
+- a date the reply works out (`DateBasis.STATED`).
+
+An undated seller listing is therefore only indicated. The status reason now says why: the cited text is the search index's copy, shows no date, and the price was not seen on the live page. A seller page that shows its date (for example "Price as of 23 October 2026") within the claim's window establishes the price.
+
+**Consequence.**
+- R-C is not impossible to pass: when listings are undated, *Partially* is the state Document F says is justified.
+- *Answered* is reachable only when seller pages show their date.
+
+**Not implemented (needs approval).** An *observed* current price would need a live page fetch whose retrieval time the provider reports, for example Anthropic's web fetch tool. That time would be recorded as an observation ("seen on the seller's page at T"), never as the price's effective date for undated index text. It adds a new outbound capability with its own consent, cost and injection considerations, so it is left for a separately approved slice.
+
+Tests: `PriceFreshnessTest` (4).
+
+**Risk noted, not changed.** A price from an aggregator can still be established if the reply labels it `needs=direct`. The prompt defines the seller as the primary source for its own price, but that labelling is the model's.
+
+## R-N(b) clarification recording
+
+The live harness now takes `-PliveEvalScenario=R-N-a|R-A|R-N-b`. R-N-a is the default; each paid scenario has its own guard.
+
+R-N-b records the clarification flow through the real service. It needs no key and has a provider that refuses every call. The report records:
+- that "address of Union Station" is prepared locally as not established and asks which place;
+- that no authorization exists before the answer;
+- that no provider call and no ledger row exists;
+- that after "Washington, DC" the objective is established and an authorization can be built, but is never authorized.

@@ -120,7 +120,7 @@ object ResearchPresets {
         StageKind.GATHER -> if (stageCount <= 1) remaining else maxOf(1, (total * 0.6).toInt().coerceAtMost(remaining))
         StageKind.FILL_GAPS -> maxOf(1, (total * 0.3).toInt()).coerceAtMost(remaining)
         StageKind.CROSS_CHECK -> remaining.coerceAtLeast(0)
-        StageKind.SYNTHESIZE -> 0
+        StageKind.SYNTHESIZE, StageKind.CHECK_WORDING -> 0
     }
 
     /** RES-035: the warning informs; it never blocks. */

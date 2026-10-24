@@ -62,7 +62,7 @@ object InvestigationParser {
                 kind = attrs.kind ?: EvidenceKind.PRIMARY.takeIf { registry.official(n) }, retrievedAtMs = nowMs, originKey = registry.originKey(n), pointerOnly = pointer,
                 quote = if (pointer) null else quotes[n], origin = attrs.origin,
                 asOfBasis = attrs.asOf?.let { if (!pointer && !attrs.asOfQualified && DateSupport.shown(it, quotes[n])) DateBasis.QUOTED else DateBasis.STATED },
-                asOfNote = attrs.asOfNote, labelsUnreadable = attrs.unreadable,
+                asOfNote = attrs.asOfNote, labelsUnreadable = attrs.unreadable, pageTitle = if (pointer) null else registry.title(n), pageUrl = if (pointer) null else registry.url(n),
             )
             return r.verified.map { ref(it, false) } + r.reused.map { ref(it, true) }
         }
@@ -115,7 +115,7 @@ object InvestigationParser {
                             val target = markerAt.firstOrNull { it.second >= sp.start }?.first ?: markerAt.last().first
                             val excerpt = EvidenceText.clean(full.substring(maxOf(sp.start, line.second.first), minOf(sp.end, line.second.last + 1))).take(300)
                             val quotes = quotesOf(sp.citations, registry)
-                            answerEvidence.getOrPut(target) { ArrayList() } += registry.register(sp.citations).map { n -> EvidenceRef(n, excerpt, retrievedAtMs = nowMs, originKey = registry.originKey(n), quote = quotes[n]) }
+                            answerEvidence.getOrPut(target) { ArrayList() } += registry.register(sp.citations).map { n -> EvidenceRef(n, excerpt, retrievedAtMs = nowMs, originKey = registry.originKey(n), quote = quotes[n], pageTitle = registry.title(n), pageUrl = registry.url(n)) }
                         }
                     }
                     segment(line.first, line.second, extra).takeIf { it.text.isNotBlank() }?.let { answer += it }
@@ -190,7 +190,12 @@ object InvestigationParser {
                     }
                     if (text.isNotBlank()) recommendation = Recommendation(text.take(400), reasons, assumes, flips, optional = EvidenceText.yes(EvidenceText.kv(b.head)["optional"]))
                 }
-                "WORTH_KNOWING" -> for (line in b.lines) segment(LIST_PREFIX.replace(line.first, ""), line.second).takeIf { it.text.isNotBlank() }?.let { worth += it }
+                "WORTH_KNOWING" -> {
+                    // How the item bears on the answer and what it qualifies, from the block heading (N3).
+                    val kv = EvidenceText.kv(b.head)
+                    val on = kv["on"]?.let { CLAIM_ID.findAll(it).map { m -> m.groupValues[1] }.toList() }.orEmpty()
+                    for (line in b.lines) segment(LIST_PREFIX.replace(line.first, ""), line.second).takeIf { it.text.isNotBlank() }?.let { worth += it.copy(bearing = kv["bears"]?.takeIf { v -> v != "-" }, relatesTo = on) }
+                }
                 "CHANGED" -> {
                     val m = CHANGE.find(b.head) ?: continue
                     changes += ClaimChange(m.groupValues[1], m.groupValues[2], ChangeKind.CHANGED, body.ifBlank { "Changed since the earlier finding" }.take(300))

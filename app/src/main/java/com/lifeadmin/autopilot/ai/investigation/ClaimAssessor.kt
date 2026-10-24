@@ -46,7 +46,11 @@ object ClaimAssessor {
         val groups = origins(usable)
         return when {
             usable.isNotEmpty() && opposing.isNotEmpty() -> c.copy(status = ClaimStatus.CONTESTED, statusReason = "Sources disagree about this")
-            usable.isNotEmpty() && meets(standard, usable, groups) -> c.copy(status = ClaimStatus.ESTABLISHED, statusReason = established(standard, usable, groups))
+            // N4: what the claim's own wording adds beyond its cited text (a number, unit, name, place) is not established by it.
+            usable.isNotEmpty() && meets(standard, usable, groups) -> Grounding.missingFromClaim(c, usable).let { missing ->
+                if (missing.isEmpty()) c.copy(status = ClaimStatus.ESTABLISHED, statusReason = established(standard, usable, groups))
+                else c.copy(status = ClaimStatus.INDICATIVE, statusReason = "The cited text does not show ${missing.joinToString(", ")}; the rest of this is supported")
+            }
             usable.isNotEmpty() -> c.copy(status = ClaimStatus.INDICATIVE, statusReason = "This needs ${standard.label}; what was found falls short (${describe(usable)}${independenceNote(standard, usable, groups)})")
             inScope.isNotEmpty() -> c.copy(status = ClaimStatus.INDICATIVE, statusReason = staleReason(c, inScope, nowMs))
             pointers.isNotEmpty() -> c.copy(status = ClaimStatus.INDICATIVE, statusReason = "Restated from earlier evidence, not checked here")
@@ -189,7 +193,8 @@ object ClaimAssessor {
         if (shown == null) {
             // Only the reply dates it, or nothing does. A stated date can still show the evidence is old.
             if (stated != null && nowMs - endOfPeriodMs(stated)!! > windowMs) return "As of $stated (a date the reply gives; the page does not show it); this changes within about $days days, so it may no longer be current"
-            return if (c.volatile) "This changes within about $days days, and the page does not show when it applied"
+            // Search results are the index's copy of a page, captured at an unknown time; reading it now is not seeing it now.
+            return if (c.volatile) "This changes within about $days days, and the cited text, the search index's copy of the page, shows no date: when it applied is not known, and it was not seen on the live page"
             else "No source dates it, and it was last read $readDaysAgo days ago; it needs re-checking every $days days or so"
         }
         if (readDaysAgo > days) return "Changes within about $days days; the evidence is $readDaysAgo days old"

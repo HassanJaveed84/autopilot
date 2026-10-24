@@ -85,6 +85,8 @@ android {
                     test.systemProperty("liveEval.enabled", "true")
                     test.systemProperty("liveEval.outDir", layout.buildDirectory.dir("live-eval").get().asFile.absolutePath)
                     providers.gradleProperty("liveEvalRerun").orNull?.let { test.systemProperty("liveEval.rerun", it) }
+                    // Which scenario: R-N-a (the default), R-A, or R-N-b (clarification only, no paid call).
+                    providers.gradleProperty("liveEvalScenario").orNull?.let { test.systemProperty("liveEval.scenario", it) }
                     test.outputs.upToDateWhen { false }
                 } else {
                     test.exclude("**/liveeval/**")

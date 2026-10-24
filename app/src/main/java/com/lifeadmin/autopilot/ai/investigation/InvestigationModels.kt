@@ -156,6 +156,10 @@ data class EvidenceRef(
      * evidence never counts as support: an unreadable `about=` must not let off-scope evidence establish a claim.
      */
     val labelsUnreadable: Boolean = false,
+    /** The cited page's title as the provider's citation gave it: page metadata, used with [quote] to check what a sentence names (N4). */
+    val pageTitle: String? = null,
+    /** The cited page's address: its path often names what the page is about ("/stations/was", "/lisbon"). */
+    val pageUrl: String? = null,
 )
 
 /** The basis of an evidence date (RES-046): what the page shows, or only what the reply says. */
@@ -263,6 +267,12 @@ data class AnswerSegment(
      * composer can qualify one sentence without touching the rest of its paragraph; empty once composed.
      */
     val sentences: List<AttributedSentence> = emptyList(),
+    /**
+     * Unrequested material only (WORTH_KNOWING): how the reply says it bears on the answer (`bears=`: risk, exception,
+     * limitation, prerequisite) and which answer claims it qualifies (`on=`). See [Relevance]; null elsewhere.
+     */
+    val bearing: String? = null,
+    val relatesTo: List<String> = emptyList(),
 )
 
 /** One sentence of model-written text and the claims it states (its own [cN] markers). */
@@ -421,6 +431,8 @@ data class Authorization(
     val warnings: List<String> = emptyList(),
     /** Disclosed gaps the person may still fill before the first search (RES-025). */
     val disclosedGaps: List<String> = emptyList(),
+    /** One extra call without search compares the answer's wording with the cited pages (N4, [WordingCheck]); in the estimate. */
+    val wordingCheck: Boolean = false,
 )
 
 /** Usage of one turn as recorded; unknown portions stay unknown (RES-143/154). */

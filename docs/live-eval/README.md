@@ -44,8 +44,12 @@ A cloud session does not pick up an environment variable added after the session
 
 ```
 ./gradlew --no-daemon :app:compileDebugUnitTestKotlin          # free: everything compiles
-./gradlew --no-daemon :app:testDebugUnitTest -PliveEval=true --tests 'com.lifeadmin.autopilot.liveeval.LiveInvestigationEval'
+./gradlew --no-daemon :app:testDebugUnitTest -PliveEval=true --tests 'com.lifeadmin.autopilot.liveeval.LiveInvestigationEval'                              # R-N(a), paid
+./gradlew --no-daemon :app:testDebugUnitTest -PliveEval=true -PliveEvalScenario=R-A --tests 'com.lifeadmin.autopilot.liveeval.LiveInvestigationEval'     # R-A, paid
+./gradlew --no-daemon :app:testDebugUnitTest -PliveEval=true -PliveEvalScenario=R-N-b --tests 'com.lifeadmin.autopilot.liveeval.LiveInvestigationEval'   # R-N(b), no call, no key
 ```
+
+`-PliveEvalScenario` picks one scenario per invocation; without it only R-N(a) runs. R-A uses the Standard level's own budget (6 searches) and a 100-cent per-turn limit; for a consequential objective the authorization also includes the one wording-check call, which the estimate covers. R-N(b) records the clarification flow before any authorization: it uses no key, its provider refuses every call, and the report shows zero provider calls and zero ledger rows.
 
 The output goes to a new directory for every run, `app/build/live-eval/<scenario>/run-<UTC time>/result.json`, with its own database. The harness refuses before any call if that directory already exists, so no earlier report is overwritten. The first R-N(a) run predates this layout and stays at `app/build/live-eval/R-N-a/result.json`. Reports stay untracked. It holds every request and reply, every search with its results, the ledger rows, the run events and the stored turn. The prompt text is synthetic and public. The system prompt is recorded by version and SHA-256.
 
@@ -58,14 +62,13 @@ The output goes to a new directory for every run, `app/build/live-eval/<scenario
 
 ## Next steps
 
-These need the owner's authorization. None is scheduled.
+These need the owner's authorization unless stated otherwise.
 
-1. **Fix N3** (a Worth-knowing item is shown without any materiality check) and consider **N4** (a sentence can state more than its claim and cited text), with replay tests from the third run. See `R-N-a-2026-10-24-run3.md` §5.
-2. **Rerun R-N(a)** on the candidate build once those fixes land: one call, about $0.05. No rerun is made without approval.
-3. **R-N(b).** The app asks which place locally, with no call. The harness needs a clarification-scenario mode before this run can be recorded.
-4. Then the rest of the Stage 1 subset (R-A, R-D, R-J, …): two runs each on the candidate, as Document F §2.3 requires.
+1. **N3 and N4 are fixed** (objective relevance; factual grounding, with a model-assisted wording check for consequential answers). See `docs/PRODUCTION_KICKOFF_AUDIT_AND_PLAN.md`, "M4 answer-grounding pass". One conditional R-N(a) rerun and, only if it passes, one exploratory R-A run are approved for this pass.
+2. **R-N(b)** can now be recorded with no call (`-PliveEvalScenario=R-N-b`).
+3. Then the rest of the Stage 1 subset (R-D, R-J, …): two runs each on the candidate, as Document F §2.3 requires.
 
-All three R-N(a) reports are historical records and are not edited after a fix:
+All R-N(a) reports are historical records and are not edited after a fix:
 - the 2026-10-23 report covers the prompt-v2 run and the fixes that followed it;
 - the 2026-10-24 rerun report covers the prompt-v4 run (N1, N2);
 - the 2026-10-24 run-3 report covers the prompt-v5 run (N3, N4).

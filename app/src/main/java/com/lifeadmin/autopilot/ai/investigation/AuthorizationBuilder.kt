@@ -58,7 +58,8 @@ object AuthorizationBuilder {
             config = config.turnConfig(),
         )
         val payload = InvestigationTurnBuilder.build(input)
-        val estimate = config.estimate()
+        val check = WordingCheck.applies(objective)
+        val estimate = config.estimate()?.let { e -> if (!check) e else WordingCheck.estimate(config.model)?.let { w -> e.copy(micros = e.micros + w.micros, lowMicros = e.lowMicros + w.lowMicros, highMicros = e.highMicros + w.highMicros) } ?: e }
         val warnings = InvestigationTurnBuilder.warnings(input) + listOfNotNull(ResearchPresets.insufficientLevelWarning(config.depth, objective))
         return Authorization(
             approvedAtMs = nowMs, objectiveText = input.objective, constraints = input.constraints,
@@ -68,7 +69,7 @@ object AuthorizationBuilder {
             config = config.turnConfig(), presetName = config.presetName,
             payloadJson = payload.json, payloadSha256 = payload.sha256, payloadLines = payload.lines,
             estimateLowMicros = estimate?.lowMicros, estimateHighMicros = estimate?.highMicros,
-            warnings = warnings, disclosedGaps = objective.disclosedGaps.map { it.text },
+            warnings = warnings, disclosedGaps = objective.disclosedGaps.map { it.text }, wordingCheck = check,
         )
     }
 

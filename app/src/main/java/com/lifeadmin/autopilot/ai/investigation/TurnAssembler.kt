@@ -38,6 +38,10 @@ class TurnWork(
     var merged = false
     /** The verify pass ran (or was not planned); otherwise open claims count as not checked when the turn ends early. */
     var verifyRan = false
+    /** What the model-assisted wording check found, by [WordingCheck.key] (N4); empty when it did not run. */
+    var wordingIssues: Map<String, List<GroundingIssue>> = emptyMap()
+    /** Why a planned wording check did not run, said in the answer; null when it ran or was not planned. */
+    var wordingUnchecked: String? = null
 
     fun current(): List<Claim> = claims.values.toList()
     fun openClaims(): List<Claim> = current().filter { it.loadBearing && !it.superseded && !it.dependsOnUser && it.status != ClaimStatus.ESTABLISHED }
@@ -119,7 +123,9 @@ class TurnWork(
         val assessed = ClaimAssessor.assess(list, nowMs, consequential)
         val derivation = ResultDeriver.derive(assessed, ending)
         val out = TurnOutput(title, answer, assessed, steps, compareRows, compareOptions, options, recommendation, worthKnowing, changes.toList(), unresolved.toList(), proposals.values.toList(), queries.toList(), injectionNoticed)
-        val composed = AnswerComposer.compose(objective, out, assessed, derivation, AnswerComposer.fallbackTitle(objective))
+        val composed = AnswerComposer.compose(objective, out, assessed, derivation, AnswerComposer.fallbackTitle(objective), wordingIssues).let { a ->
+            wordingUnchecked?.let { why -> a.copy(caveats = a.caveats + "The extra check of this answer's wording against the cited pages did not run ($why); its numbers, names and dates were still compared with them.") } ?: a
+        }
         val (kept, heldBack) = gateProposals(proposals.values.toList(), assessed)
         return TurnResult(
             answer = composed, state = derivation.state, ending = ending, claims = assessed, sources = sources, queries = queries.toList(),

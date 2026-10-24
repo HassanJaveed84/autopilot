@@ -104,7 +104,7 @@ object CallNarration {
  * Nothing is dropped, so a partly supported answer stays an answer, and caveats for load-bearing gaps still follow.
  */
 object StatusQualifier {
-    private val HEDGED = Regex(
+    internal val HEDGED = Regex(
         """\b(?:may|might|possibly|perhaps|reportedly|apparently|appears?|seems?|suggests?|unconfirmed|unverified|unclear|uncertain|disputed|conflicting|disagree\w*|not (?:yet )?(?:established|confirmed|verified)|no source (?:confirms|establishes|verifies|shows)|could not be (?:confirmed|verified|established)|only indicated|some sources|one source|could(?: not|n't)? be found|not found|found no|could(?: not|n't) find|no confirmed|no source showed)\b|\bno\b[^.!?]{0,80}\b(?:found|identified|located)\b""",
         RegexOption.IGNORE_CASE,
     )
@@ -184,23 +184,32 @@ object AnswerComposer {
         Regex("""\bno such\b""", RegexOption.IGNORE_CASE) to "no confirmed",
     )
 
-    fun compose(objective: Objective, out: TurnOutput, claims: List<Claim>, derivation: Derivation, fallbackTitle: String): Answer {
+    /**
+     * @param checked issues the model-assisted wording check ([WordingCheck]) found, by [WordingCheck.key] of the
+     *   sentence; they can only remove or qualify, never add or upgrade.
+     */
+    fun compose(objective: Objective, out: TurnOutput, claims: List<Claim>, derivation: Derivation, fallbackTitle: String, checked: Map<String, List<GroundingIssue>> = emptyMap()): Answer {
         val byId = claims.associateBy { it.id }
-        val lead = out.answer.map { seg -> scrub(seg, byId, absence = true) }.filter { it.text.isNotBlank() }
+        val answerClaims = out.answer.flatMap { seg -> seg.claimIds + seg.sentences.flatMap { it.claimIds } }.toSet()
+        val g = Grounder(byId, checked)
+        val leadCorpus = Grounding.corpusFor(answerClaims.toList(), byId)
+        val lead = out.answer.mapNotNull { seg -> g.core(seg, leadCorpus, absence = true, background = objective) }.filter { it.text.isNotBlank() }
         val caveats = caveats(derivation)
         val sections = ArrayList<AnswerSection>()
         // Structure follows the ask, never the subject (RES-080/083).
         if (objective.askKind == AskKind.PROCEDURE || (out.steps.isNotEmpty() && objective.satisfies.any { it.contains("step", true) })) {
-            if (out.steps.isNotEmpty()) sections += AnswerSection(SectionKind.STEPS, out.steps.map { scrub(it, byId) })
+            if (out.steps.isNotEmpty()) sections += AnswerSection(SectionKind.STEPS, out.steps.mapNotNull { g.core(it) })
         }
         if (objective.askKind == AskKind.COMPARE || objective.askKind == AskKind.RECOMMEND) {
-            if (out.compareRows.isNotEmpty()) sections += AnswerSection(SectionKind.COMPARISON, rows = out.compareRows.map { r -> r.copy(cells = r.cells.mapValues { scrub(it.value, byId) }) }, options = out.compareOptions)
+            if (out.compareRows.isNotEmpty()) sections += AnswerSection(SectionKind.COMPARISON, rows = out.compareRows.map { r -> r.copy(cells = r.cells.mapValues { g.core(it.value) ?: AnswerSegment("") }) }, options = out.compareOptions)
         }
         if (out.options.isNotEmpty() && (objective.askKind == AskKind.RECOMMEND || objective.askKind == AskKind.COMPARE || objective.askKind == AskKind.DECIDE)) {
-            sections += AnswerSection(SectionKind.OPTIONS, out.options.map { scrub(it, byId) })
+            sections += AnswerSection(SectionKind.OPTIONS, out.options.mapNotNull { g.core(it) })
         }
         if (derivation.conditions.isNotEmpty()) sections += AnswerSection(SectionKind.CONDITIONS, derivation.conditions.map { AnswerSegment(it.text, listOf(it.id)) })
-        if (out.worthKnowing.isNotEmpty()) sections += AnswerSection(SectionKind.MATERIAL, out.worthKnowing.map { scrub(it, byId) })
+        // N3: unrequested material only when it bears on this answer; N4: only what its cited text shows.
+        val material = out.worthKnowing.filter { Relevance.keepMaterial(it, answerClaims, byId) }.mapNotNull { g.optional(it) }
+        if (material.isNotEmpty()) sections += AnswerSection(SectionKind.MATERIAL, material)
         val changed = out.changes.filter { it.kind != ChangeKind.CONFIRMED }
         if (changed.isNotEmpty()) sections += AnswerSection(SectionKind.CHANGES, changed.map { AnswerSegment(it.note, listOfNotNull(it.newClaimId ?: it.earlierClaimId)) })
         val confirmed = out.changes.filter { it.kind == ChangeKind.CONFIRMED }
@@ -209,21 +218,86 @@ object AnswerComposer {
         if (out.unresolved.isNotEmpty()) sections += AnswerSection(SectionKind.UNRESOLVED, out.unresolved.map { AnswerSegment(LeakageScan.clean("${it.topic} — ${it.why}")) })
         val rec = out.recommendation?.let { r ->
             // A recommendation is given when asked for; on a neutral comparison it is a clearly separate, optional addition (RES-050).
-            val cleaned = r.copy(text = LeakageScan.clean(r.text), reasons = r.reasons.map { scrub(it, byId) }, assumptions = r.assumptions.map(LeakageScan::clean), flipConditions = r.flipConditions.map(LeakageScan::clean))
+            // Its own words are judged against the cited text of the premises it gives: a broader conclusion is named (N4).
+            val premises = r.reasons.flatMap { it.claimIds + it.sentences.flatMap { s -> s.claimIds } } + listOfNotNull(r.claimId)
+            val cleaned = r.copy(text = LeakageScan.clean(g.judgment(r.text, Grounding.corpusFor(premises, byId))), reasons = r.reasons.mapNotNull { g.core(it) }, assumptions = r.assumptions.map(LeakageScan::clean), flipConditions = r.flipConditions.map(LeakageScan::clean))
             if (objective.askKind.wantsRecommendation || objective.askKind == AskKind.COMPARE || objective.askKind == AskKind.FORECAST) cleaned else null
         }
         val title = (out.title?.let(LeakageScan::clean)?.takeIf { it.isNotBlank() } ?: fallbackTitle).take(80)
         return Answer(title = title, stateLine = derivation.stateLine, lead = lead.ifEmpty { listOf(AnswerSegment(emptyLead(derivation))) }, caveats = caveats, sections = sections, recommendation = rec)
     }
 
-    /** Markers stay only on current claims that can carry a citation (RES-085, RES-107); internal residue is removed from the text. */
-    private fun scrub(seg: AnswerSegment, byId: Map<String, Claim>, absence: Boolean = false): AnswerSegment {
-        val ids = seg.claimIds.filter { id -> byId[id]?.let { it.type.citable && !it.superseded } == true }
-        return AnswerSegment(LeakageScan.clean(StatusQualifier.qualify(seg, byId, if (absence) ::absenceWording else null)), ids)
+    /**
+     * Per-sentence composition of model text: grounding (N4), then status honesty (RES-062/086), then leakage removal.
+     * Markers stay only on current claims that can carry a citation (RES-085, RES-107).
+     */
+    private class Grounder(val byId: Map<String, Claim>, val checked: Map<String, List<GroundingIssue>>) {
+        private fun sentencesOf(seg: AnswerSegment) = seg.sentences.ifEmpty { listOf(AttributedSentence(seg.text, seg.claimIds)) }
+
+        private fun issues(s: AttributedSentence, corpus: Grounding.Corpus): List<Pair<GroundingIssue, IntRange?>> =
+            Grounding.issues(s.text, corpus) + checked[WordingCheck.key(s.text)].orEmpty().map { it to Grounding.locate(s.text, it.span) }
+
+        private fun ids(seg: AnswerSegment, kept: List<AttributedSentence>): List<String> {
+            val keptIds = kept.flatMap { it.claimIds }.toSet()
+            return seg.claimIds.filter { id -> (seg.sentences.isEmpty() || id in keptIds) && byId[id]?.let { it.type.citable && !it.superseded } == true }
+        }
+
+        /**
+         * Main answer, steps, comparison cells, options, reasons: a sentence is kept; an unsupported separable clause is
+         * removed, and what remains unsupported is named in plain words. [background]: the objective, when sentences that
+         * are only found background (see [Relevance.background]) are to be left out.
+         */
+        fun core(seg: AnswerSegment, section: Grounding.Corpus = Grounding.Corpus.EMPTY, absence: Boolean = false, background: Objective? = null): AnswerSegment? {
+            val kept = ArrayList<AttributedSentence>()
+            val texts = ArrayList<String>()
+            for (s in sentencesOf(seg)) {
+                if (background != null && Relevance.background(s, byId, background)) continue
+                val corpus = if (s.claimIds.isEmpty()) section else Grounding.corpusFor(s.claimIds, byId)
+                val review = Grounding.review(s.text, issues(s, corpus))
+                val status = StatusQualifier.qualify(review.text, s.claimIds, byId, if (absence) ::absenceWording else null)
+                // A status label already says the sentence is weak; otherwise name what its cited text does not show.
+                texts += if (status != review.text) status else Grounding.qualify(review.text, review.remaining)
+                kept += s
+            }
+            if (texts.isEmpty()) return null
+            return AnswerSegment(LeakageScan.clean(texts.joinToString(" ")), ids(seg, kept))
+        }
+
+        /**
+         * Unrequested material: only what its cited text shows. An unsupported separable clause is removed; an item that
+         * still says something unsupported, or rests on a claim that is not established, is left out. A stated risk is
+         * the exception: it is kept and qualified, because omitting a warning could do harm.
+         */
+        fun optional(seg: AnswerSegment): AnswerSegment? {
+            val risk = Relevance.Bearing.of(seg.bearing) == Relevance.Bearing.RISK
+            val kept = ArrayList<AttributedSentence>()
+            val texts = ArrayList<String>()
+            for (s in sentencesOf(seg)) {
+                val corpus = Grounding.corpusFor(s.claimIds, byId)
+                val review = Grounding.review(s.text, issues(s, corpus))
+                val status = StatusQualifier.qualify(review.text, s.claimIds, byId)
+                val unsupported = s.claimIds.isEmpty() || status != review.text || review.remaining.isNotEmpty()
+                if (unsupported && !risk) continue
+                texts += when {
+                    status != review.text -> status
+                    s.claimIds.isEmpty() -> "Not shown by the cited sources: ${review.text}"
+                    else -> Grounding.qualify(review.text, review.remaining)
+                }
+                kept += s
+            }
+            if (texts.isEmpty()) return null
+            return AnswerSegment(LeakageScan.clean(texts.joinToString(" ")), ids(seg, kept), bearing = seg.bearing, relatesTo = seg.relatesTo)
+        }
+
+        /** A judgment's own words: its certainty and specifics must not outrun its premises' cited text. Never removed, only named. */
+        fun judgment(text: String, premises: Grounding.Corpus): String {
+            val issues = Grounding.issues(text, premises).map { it.first }.filter { it.kind != GroundingIssue.Kind.TENTATIVE } + checked[WordingCheck.key(text)].orEmpty()
+            return Grounding.qualify(EvidenceText.MARKER.replace(text, "").trim(), issues)
+        }
     }
 
     /** "This investigation couldn't find support" is never shown as "this is false" (RES-063); applied per sentence. */
-    private fun absenceWording(text: String): String {
+    internal fun absenceWording(text: String): String {
         var t = text
         for ((rx, replacement) in NEGATIVE) t = rx.replace(t, replacement)
         return t

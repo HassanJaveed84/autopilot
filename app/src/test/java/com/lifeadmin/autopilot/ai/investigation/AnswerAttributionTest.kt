@@ -34,7 +34,7 @@ class AnswerAttributionTest {
         s("## CLAIM c1 · type=fact · load=yes · scope=museum hours · asof=- · volatile=no · needs=direct · needs_input=no\nThe museum opens at 09:00.\nEVIDENCE: (kind=primary) "),
         s("Open daily from 09:00.", cite("https://www.museum.example/visit", "Open daily from 09:00.")),
     )
-    private val parking = s("\n## CLAIM c2 · type=fact · load=no · scope=museum parking · asof=- · volatile=no · needs=direct · needs_input=no\nParking is free on Sundays.\n")
+    private val parking = s("\n## CLAIM c2 · type=fact · load=yes · scope=museum parking · asof=- · volatile=no · needs=direct · needs_input=no\nParking is free on Sundays.\n")
     private val ticket = arrayOf(
         s("## CLAIM c3 · type=fact · load=yes · scope=museum day ticket · asof=2026-10 · volatile=yes · needs=direct · needs_input=no\nA day ticket costs $12.\nEVIDENCE: (kind=primary · asof=2026-10) "),
         s("Day ticket $12.", cite("https://www.museum.example/tickets", "October 2026: day ticket $12.")),
@@ -44,7 +44,7 @@ class AnswerAttributionTest {
 
     @Test fun eachSentenceInAParagraphIsQualifiedByItsOwnClaims() {
         val r = run(
-            "When is the museum open and what does a ticket cost?",
+            "When is the museum open, is parking free and what does a ticket cost?",
             s("## ANSWER\nThe museum opens at 09:00 [c1]. Parking is free on Sundays [c2]. A day ticket costs $12 [c3].\n"),
             *hours, parking, *ticket,
         )
@@ -95,8 +95,9 @@ class AnswerAttributionTest {
         assertEquals("Dr. Smith's clinic opens at 09:00. Which plan fits depends on how often you visit. I found no page giving weekend hours.", r.answer.lead.single().text)
     }
 
-    @Test fun anUnsupportedSideClaimInTheLiveReplayIsQualified() {
-        // R-N(a), the fixed engine's GATHER-only answer: c2 (Columbus Circle) is not established.
+    @Test fun anUnsupportedSideClaimInTheLiveReplayIsLeftOut() {
+        // R-N(a), the fixed engine's GATHER-only answer: c2 (Columbus Circle) is not established, and the address question
+        // did not ask for it. Since N3 an unrequested side claim is left out of the answer rather than shown qualified.
         val replay = LiveReplay.load("fixtures/live/R-N-a-2026-10-23.replies.json")
         val at = replay.ranAt.toEpochMilli()
         val registry = SourceRegistry(turnId = "t1")
@@ -107,13 +108,13 @@ class AnswerAttributionTest {
         val r = work.result(ObjectivePreparer.local(replay.question), TurnEnding.COMPLETE, registry.sources(), emptyList(), emptyList(), null, at)
         assertEquals(ClaimStatus.NOT_ESTABLISHED, r.claim("c2")!!.status)
         val lead = r.answer.lead.joinToString(" ") { it.text }
-        assertTrue(lead, lead.contains("Not established: The station fronts Columbus Circle"))
+        assertFalse(lead, lead.contains("Columbus Circle"))
         assertTrue("the established address is stated plainly", lead.startsWith("Union Station in Washington, DC is at 50 Massachusetts Avenue NE"))
         assertFalse(lead, lead.contains("Not established: Union Station"))
     }
 
     @Test fun storedSegmentsWithoutSentenceAttributionComposeUnchanged() {
-        val out = TurnOutput(answer = listOf(AnswerSegment("Parking is free on Sundays.", listOf("c2"))), claims = listOf(Claim("c2", "Parking is free on Sundays.", ClaimType.FACT, loadBearing = false, turnId = "t0")))
+        val out = TurnOutput(answer = listOf(AnswerSegment("Parking is free on Sundays.", listOf("c2"))), claims = listOf(Claim("c2", "Parking is free on Sundays.", ClaimType.FACT, loadBearing = true, turnId = "t0")))
         val claims = ClaimAssessor.assess(out.claims, now)
         val a = AnswerComposer.compose(ObjectivePreparer.local("parking?"), out, claims, ResultDeriver.derive(claims, TurnEnding.COMPLETE), "t")
         assertEquals("Not established: Parking is free on Sundays.", a.lead.single().text)

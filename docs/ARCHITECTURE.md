@@ -228,6 +228,20 @@ behind the new model; the M3A and M3A.2 run, preflight and apply paths were remo
   ask calls for them (steps, comparison rows, conditions, changes); every load-bearing gap is a caveat
   in the main answer; absence of evidence is never worded as "false"; no internal ids, markers or
   status labels reach the text.
+- **Grounding and relevance** (`Grounding`, `Relevance`, `WordingCheck`; N3/N4, 2026-10-24): every
+  sentence of the main answer, steps, comparison cells, options, reasons, recommendation and
+  Worth-knowing items is checked against the verbatim cited text (plus page title and address) of the
+  claims it names, never against the claims' own wording. Checkable details (numbers with their
+  units, names, places, dates), certainty words and flattened research hedges must be the source's
+  own. An unsupported separable clause is removed; otherwise the unsupported part is named in plain
+  words. A fact claim whose own wording adds such a detail is only indicated. Unrequested material is
+  shown only when the reply states how it bears on the answer (`bears=risk|exception|limitation|prerequisite`,
+  `on=cN`) and, apart from a risk, it is tied to the answer and restricts it; a narrow fact's
+  background sentences are left out. These lexical checks are a necessary condition, not proof of
+  meaning: for a consequential objective the authorization includes one extra call without search
+  (`StageKind.CHECK_WORDING`) that compares each cited sentence with its cited text. Its findings only
+  remove or qualify, a span that is not the sentence's own words is not trusted, and if it cannot run
+  the answer says so.
 - **Turns** (`InvestigationService`, `TurnWork`): stages from the R48 preset (Quick / Standard /
   Thorough / Deep + Custom; model, effort, searches and limit independent); at most 6 searches per
   call; a verify pass only for open load-bearing claims; a reconcile pass only for contested ones;

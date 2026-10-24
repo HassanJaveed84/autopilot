@@ -278,6 +278,8 @@ enum class StageKind(val label: String) {
     FILL_GAPS("Checking what the answer rests on"),
     CROSS_CHECK("Reconciling sources"),
     SYNTHESIZE("Writing the result"),
+    /** No search: the answer's sentences compared with the page text cited for them (N4); consequential objectives only. */
+    CHECK_WORDING("Checking the wording against the sources"),
 }
 
 @Serializable

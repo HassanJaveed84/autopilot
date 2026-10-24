@@ -65,6 +65,11 @@ class SourceRegistry(seed: List<SourceRef2> = emptyList(), private val turnId: S
     fun isCited(n: Int): Boolean = (byN[n]?.cited ?: 0) > 0
     fun originKey(n: Int): String = byN[n]?.let { Sources.host(it.url) } ?: "s$n"
 
+    /** The page title the provider gave for a source (or its host when it gave none). */
+    fun title(n: Int): String? = byN[n]?.title
+
+    fun url(n: Int): String? = byN[n]?.url
+
     /** A government host by domain; only a fallback when the reply did not say what kind of source it is. */
     fun official(n: Int): Boolean = byN[n]?.official == true
 

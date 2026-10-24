@@ -17,7 +17,7 @@ import java.time.ZoneOffset
 class EvidenceCorrectnessTest {
     private val now = LocalDate.of(2026, 10, 23).atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli()
 
-    private fun cite(url: String, text: String) = RawCitation(url, null, text)
+    private fun cite(url: String, text: String, title: String? = null) = RawCitation(url, title, text)
     private fun s(text: String, c: RawCitation? = null) = RawSegment(text, listOfNotNull(c))
 
     private fun run(question: String, vararg reply: RawSegment, consequential: Boolean? = null, taskLinked: Boolean = false): TurnResult {
@@ -48,7 +48,7 @@ class EvidenceCorrectnessTest {
             "What is the maximum daily dose printed on the label of Brand X ibuprofen 200 mg?",
             s("## ANSWER\nThe label says no more than six tablets in 24 hours [c1].\n"),
             s("## CLAIM c1 · type=fact · load=yes · scope=Brand X ibuprofen 200 mg, US label · asof=2026 · volatile=no · needs_input=no\nThe Brand X 200 mg label allows at most six tablets in 24 hours.\nEVIDENCE: (kind=primary) "),
-            s("Do not take more than 6 tablets in 24 hours.", cite("https://www.brandx.example/ibuprofen-200/label", "Do not take more than 6 tablets in 24 hours.")),
+            s("Do not take more than 6 tablets in 24 hours.", cite("https://www.brandx.example/ibuprofen-200/label", "Do not take more than 6 tablets in 24 hours.", "Brand X Ibuprofen 200 mg tablets: Drug Facts label")),
             consequential = true,
         )
         assertEquals(ClaimStatus.ESTABLISHED, r.claim("c1")!!.status)
@@ -166,7 +166,7 @@ class EvidenceCorrectnessTest {
             "When does the last train to Sintra leave on weekdays?",
             s("## ANSWER\nThe last weekday train leaves at 23:41 [c1].\n"),
             s("## CLAIM c1 · type=fact · load=yes · scope=Lisbon Rossio to Sintra, weekday timetable · asof=2026-10-10 · volatile=yes · fresh=60d · needs_input=no\nThe last weekday train to Sintra leaves Rossio at 23:41.\nEVIDENCE: (asof=2026-10-10 · kind=primary) "),
-            s("Timetable valid from 10 October 2026: last departure 23:41.", cite("https://www.operator.example/sintra", "Timetable valid from 10 October 2026: last departure 23:41.")),
+            s("Timetable valid from 10 October 2026: last departure 23:41.", cite("https://www.operator.example/sintra", "Timetable valid from 10 October 2026: last departure 23:41.", "Rossio–Sintra line timetable")),
         ).claim("c1")!!
         assertEquals("a timetable that changes by season is current within its own window", ClaimStatus.ESTABLISHED, c1.status)
     }

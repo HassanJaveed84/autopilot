@@ -13,6 +13,8 @@ import com.lifeadmin.autopilot.ai.investigation.ResearchPresets
 import com.lifeadmin.autopilot.ai.investigation.StartResult
 import com.lifeadmin.autopilot.ai.investigation.TurnEvent
 import com.lifeadmin.autopilot.ai.investigation.TurnRunState
+import com.lifeadmin.autopilot.ai.investigation.TurnState
+import com.lifeadmin.autopilot.ai.investigation.WordingCheck
 import com.lifeadmin.autopilot.ai.research.ResearchConfig
 import com.lifeadmin.autopilot.ai.research.ResearchScope
 import com.lifeadmin.autopilot.ai.research2.CallResult
@@ -66,6 +68,9 @@ import java.util.Locale
  * Run only on purpose, from a session whose environment has the key:
  *   ./gradlew --no-daemon :app:testDebugUnitTest -PliveEval=true --tests 'com.lifeadmin.autopilot.liveeval.LiveInvestigationEval'
  *
+ * The scenario is chosen with -PliveEvalScenario: R-N-a (the default), R-A, or R-N-b, which records the
+ * clarification flow before any authorization and makes no paid call (it needs no key).
+ *
  * Guards: refuses without the key, without the model, when a report for the scenario already exists
  * (pass -PliveEvalRerun=true to override), or when the estimate exceeds the cap; sets the per-turn
  * spending limit; never retries. Each run writes its report to its own new directory,
@@ -74,13 +79,25 @@ import java.util.Locale
  */
 @RunWith(AndroidJUnit4::class)
 class LiveInvestigationEval {
-    private val scenario = "R-N-a"
-    private val question = "What is the address of Union Station in Washington, DC?"
-    private val searches = 3
-    private val capCents = 300
+    /** A paid scenario: Document F §5.2 question, search budget at the Standard level, and the per-turn spending cap. */
+    private data class Paid(val id: String, val question: String, val searches: Int, val capCents: Int)
+
+    private val paid = mapOf(
+        "R-N-a" to Paid("R-N-a", "What is the address of Union Station in Washington, DC?", searches = 3, capCents = 300),
+        // Health evidence over several candidates: the Standard level's own budget, never a one-search shortcut.
+        "R-A" to Paid("R-A", "Best supplements for men aged 40", searches = ResearchPresets.STANDARD.searches, capCents = 100),
+    )
+    private val selected = System.getProperty("liveEval.scenario") ?: "R-N-a"
+    private val enabled get() = System.getProperty("liveEval.enabled") == "true"
 
     @Test fun runOneInvestigation() {
-        assumeTrue("live evaluation runs only with -PliveEval=true", System.getProperty("liveEval.enabled") == "true")
+        assumeTrue("live evaluation runs only with -PliveEval=true", enabled)
+        val sc = paid[selected]
+        assumeTrue("$selected is not a paid investigation scenario", sc != null)
+        val scenario = sc!!.id
+        val question = sc.question
+        val searches = sc.searches
+        val capCents = sc.capCents
         val scenarioDir = File(System.getProperty("liveEval.outDir") ?: "build/live-eval", scenario).apply { mkdirs() }
         val keys = EnvApiKeyStore()
         val key = keys.get()
@@ -148,6 +165,9 @@ class LiveInvestigationEval {
                     put("ranAtUtc", Instant.ofEpochMilli(provider.exchanges.firstOrNull()?.startedAtMs ?: clock.now().toEpochMilli()).toString())
                     put("promptContractVersion", InvestigationPrompt.VERSION)
                     put("systemPromptSha256", LiveEvalSafety.sha256(InvestigationPrompt.SYSTEM))
+                    put("wordingCheckVersion", WordingCheck.VERSION)
+                    put("wordingCheckSystemSha256", LiveEvalSafety.sha256(WordingCheck.SYSTEM))
+                    put("wordingCheckAuthorized", auth.wordingCheck)
                     put("requested", buildJsonObject {
                         put("preset", cfg.presetName); put("depth", cfg.depth.name); put("model", cfg.model); put("searchBudget", cfg.searchBudget)
                         put("outputTokens", cfg.outputTokens); put("stages", JsonArray(cfg.stages.map { JsonPrimitive(it.name) })); put("spendLimitCents", cfg.spendLimitCents ?: -1)
@@ -178,6 +198,79 @@ class LiveInvestigationEval {
         } finally {
             scope.cancel()
             adapter.reset()
+            db.close()
+        }
+    }
+
+    /**
+     * Document F R-N(b) and §7 "clarification before authorization": "address of Union Station" names no city. The real
+     * service prepares the objective locally; the report records that it asks which place, that no authorization
+     * surface exists before the answer, that no provider call or ledger row exists, and that supplying the place
+     * establishes the objective so an authorization can be built. Nothing is authorized or sent; no key is needed.
+     */
+    @Test fun recordClarificationFlow() {
+        assumeTrue("live evaluation runs only with -PliveEval=true", enabled)
+        assumeTrue("the clarification flow is recorded only for -PliveEvalScenario=R-N-b", selected == "R-N-b")
+        val scenario = "R-N-b"
+        val question = "What is the address of Union Station?"
+        val place = "Washington, DC"
+        val scenarioDir = File(System.getProperty("liveEval.outDir") ?: "build/live-eval", scenario).apply { mkdirs() }
+        val runId = "run-" + java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC).format(Instant.now())
+        val out = File(scenarioDir, runId)
+        check(!out.exists()) { "$out already exists; a run never overwrites an earlier report." }
+        out.mkdirs()
+        val db = fileDatabase("live-eval-$scenario-$runId.db")
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val clock = AppClock.system()
+        val zone = ZoneProvider { ZoneOffset.UTC }
+        val ids = SequentialIds("live")
+        val settings = InMemorySettingsRepository(AppSettings(aiEnabled = true, aiConsentAt = clock.now(), researchExplainerVersion = ResearchConfig.EXPLAINER_VERSION))
+        val log = RoomDiagnosticsLog(db, clock, ids)
+        val engine = ReminderEngine(db, settings, FakeAlarmDriver(), FakeNotificationPublisher(), clock, zone, ids, log, FakeEnvironmentProbe(DeliveryEnvironment()))
+        val tasks = TaskRepository(db, clock, ids, zone::current, engine, log)
+        val store = InvestigationRepository(db)
+        val ledger = RoomUsageLedger(db)
+        // A provider that refuses to send anything: this flow must never reach it.
+        val provider = RecordingCallProvider(object : com.lifeadmin.autopilot.ai.research2.ResearchCallProvider {
+            override val id = "no-calls"
+            override suspend fun call(call: com.lifeadmin.autopilot.ai.research2.ModelCall, apiKey: String): CallResult = error("R-N(b) must not send a research call")
+        })
+        // Local preparation and clarification never use a key; a placeholder keeps the gate open, and nothing is sent.
+        val noKey = com.lifeadmin.autopilot.ai.security.InMemoryApiKeyStore("not-a-key")
+        val planning = AiPlanningService(settings, noKey, FakePlanningProvider(), tasks, clock, zone, ids) { true }
+        val service = InvestigationService(settings, noKey, planning, provider, tasks, store, ledger, clock, zone, ids, scope, { true }, { Locale.US })
+        try {
+            runBlocking {
+                val ready = service.prepare(question, null, null, false) as? PrepareResult.Ready ?: error("prepare was rejected")
+                val before = store.get(ready.investigationId)!!.turns.first { it.id == ready.turn.id }
+                val o = before.objective
+                val cfg = ResearchPresets.resolve(ResearchDepth.STANDARD, settings.current(), searches = 3, limitCents = 300)
+                val clarified = service.clarify(ready.investigationId, ready.turn.id, place) ?: error("the clarification was not accepted")
+                val after = store.get(ready.investigationId)!!.turns.first { it.id == ready.turn.id }
+                val auth = if (after.objective.established) service.authorization(store.get(ready.investigationId)!!, after, service.contextItems(null, ResearchScope()), cfg) else null
+                val report = buildJsonObject {
+                    put("scenario", scenario); put("runId", runId); put("question", question); put("ranAtUtc", clock.now().toString())
+                    put("before", buildJsonObject {
+                        put("turnState", before.state.name); put("objectiveEstablished", o.established); put("askKind", o.askKind.name)
+                        put("clarificationQuestion", o.clarification?.question ?: ""); put("clarificationOptions", JsonArray(o.clarification?.options.orEmpty().map { JsonPrimitive(it) }))
+                        put("authorizationExists", before.authorization != null); put("preparedBy", o.preparedBy.name)
+                    })
+                    put("answer", place)
+                    put("after", buildJsonObject {
+                        put("turnState", after.state.name); put("objectiveEstablished", after.objective.established); put("objective", after.objective.text)
+                        put("authorizationBuildable", auth != null); put("authorized", after.authorization != null)
+                        put("estimateHighUsd", (auth?.estimateHighMicros ?: 0) / 1e6)
+                    })
+                    put("providerCalls", provider.exchanges.size)
+                    put("ledgerRows", ledger.getAll().size)
+                    put("clarifiedTurnState", clarified.state.name)
+                }
+                File(out, "result.json").writeText(InvestigationJson.json.encodeToString(JsonElement.serializer(), report))
+                check(provider.exchanges.isEmpty() && ledger.getAll().isEmpty()) { "a call or ledger row exists" }
+                check(before.state != TurnState.AUTHORIZING || before.authorization == null)
+            }
+        } finally {
+            scope.cancel()
             db.close()
         }
     }

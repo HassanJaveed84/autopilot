@@ -402,6 +402,7 @@ class InvestigationService(
             var crash: Exception? = null
             try {
                 runStages(ctx)
+                checkWording(ctx)
             } catch (e: CancellationException) {
                 cancelled = true
             } catch (e: Exception) {
@@ -441,6 +442,7 @@ class InvestigationService(
                 StageKind.FILL_GAPS -> if (!ctx.work.merged) "nothing gathered" else if (open.isEmpty()) ResearchSummary.SUFFICIENT else if (ctx.remaining <= 0) "no searches left" else null
                 StageKind.CROSS_CHECK -> if (contested.isEmpty()) "no sources disagree" else if (ctx.remaining <= 0) "no searches left" else null
                 StageKind.SYNTHESIZE -> if (!ctx.work.merged) "nothing gathered to write up" else null
+                StageKind.CHECK_WORDING -> "runs after the research stages"
             }
             if (skip != null) {
                 if (stage == StageKind.FILL_GAPS && open.isEmpty() && ctx.work.merged) ctx.work.verifyRan = true
@@ -490,6 +492,7 @@ class InvestigationService(
             StageKind.FILL_GAPS -> InvestigationPrompt.verify(ctx.payload, ctx.work.openClaims(), ctx.registry.sources(), ctx.work.queries, allowance, next)
             StageKind.CROSS_CHECK -> InvestigationPrompt.reconcile(ctx.payload, ctx.work.contested(), ctx.registry.sources(), ctx.work.queries, allowance)
             StageKind.SYNTHESIZE -> InvestigationPrompt.synthesize(ctx.payload, ctx.objective, claims, ctx.registry.sources())
+            StageKind.CHECK_WORDING -> error("the wording check builds its own request")
         }
     }
 
@@ -646,6 +649,86 @@ class InvestigationService(
         }
     }
 
+    /**
+     * N4: the model-assisted wording check, after the research stages, when the authorization included it. One call,
+     * no search, within the turn's spending limit; it never fails the turn. If it cannot run, the answer says so and the
+     * lexical checks still apply. Its findings only remove or qualify wording (see [WordingCheck]).
+     */
+    private suspend fun checkWording(ctx: RunCtx) {
+        if (ctx.turn.authorization?.wordingCheck != true || !ctx.work.merged) return
+        val stage = StageKind.CHECK_WORDING
+        fun skip(result: StageResult, why: String, unchecked: Boolean) {
+            ctx.stages += StageRecord(stage, result, 0, 0, note = why)
+            if (unchecked) ctx.work.wordingUnchecked = why
+            event(ctx.turn.id, if (result == StageResult.BUDGET) TurnEventKind.BUDGET else TurnEventKind.STAGE_SKIPPED, "${stage.label}: not run — $why")
+        }
+        when (ctx.ending) {
+            TurnEnding.COMPLETE, TurnEnding.BUDGET_SEARCHES -> Unit
+            TurnEnding.BUDGET_SPEND -> return skip(StageResult.BUDGET, "the spending limit was reached", unchecked = true)
+            else -> return
+        }
+        val out = TurnOutput(ctx.work.title, ctx.work.answer, ctx.work.current(), ctx.work.steps, ctx.work.compareRows, ctx.work.compareOptions, ctx.work.options, ctx.work.recommendation, ctx.work.worthKnowing)
+        val items = WordingCheck.items(out, ctx.work.current())
+        if (items.isEmpty()) return skip(StageResult.SKIPPED, "no cited sentences to check", unchecked = false)
+        ctx.config.spendLimitCents?.let { limitCents ->
+            val low = WordingCheck.estimate(ctx.config.model)?.lowMicros ?: 0L
+            if (ctx.spentMicros + low > limitCents * 10_000L) return skip(StageResult.BUDGET, "it would pass the spending limit", unchecked = true)
+        }
+        ctx.stageAtEnd = stage
+        _state.update { s -> if (s is TurnRunState.Running && s.turnId == ctx.turn.id) s.copy(stage = stage) else s }
+        val limit = Research2Config.callTimeout(0, WordingCheck.OUTPUT_TOKENS)
+        val call = ModelCall(ctx.config.model, WordingCheck.SYSTEM, WordingCheck.prompt(ctx.payload.objective, items), WordingCheck.OUTPUT_TOKENS, 0, timeout = limit, effort = ctx.config.effort)
+        ctx.callsSent++
+        event(ctx.turn.id, TurnEventKind.SENT, "${stage.label}: request sent (${items.size} ${plural(items.size, "sentence", "sentences")}, no search; waiting up to ${ResearchError.describe(limit.seconds.toInt())})")
+        val sentAt = clock.now()
+        val record = UsageRecord(ids.newId(), if (ctx.turn.kind == TurnKind.INITIAL) UsageFeature.RESEARCH else UsageFeature.RESEARCH_CONTINUATION, ctx.config.model, sentAt, ctx.turn.id, ctx.inv.id, ctx.inv.taskId, stage.name, effort = ctx.config.effort)
+        ledger.record(record)
+        val result = try {
+            provider.call(call, ctx.key)
+        } catch (e: CancellationException) {
+            withContext(NonCancellable) { ledger.record(UsageRecord.priced(record, null, CallOutcome.STOPPED, null)) }
+            ctx.spentFloor = true
+            ctx.usage = ctx.usage.copy(floor = true)
+            throw e
+        }
+        when (result) {
+            is CallResult.Failed -> {
+                val outcome = if (notBilled(result.error)) CallOutcome.FAILED_NOT_BILLED else CallOutcome.FAILED_UNKNOWN
+                val observed = if (outcome == CallOutcome.FAILED_NOT_BILLED) null else result.usage
+                ledger.record(UsageRecord.priced(record, observed, outcome, result.elapsedMs))
+                if (outcome == CallOutcome.FAILED_UNKNOWN) { ctx.spentFloor = true; ctx.usage = ctx.usage.copy(floor = true) }
+                observed?.let { ctx.spentMicros += CostCalculator.price(ctx.config.model, it).estimate?.micros ?: 0L; addUsage(ctx, it, result.elapsedMs, floor = true) }
+                val diag = CallDiagnostic(1, stage, ctx.config.model, "failed", inputTokens = observed?.inputTokens, outputTokens = observed?.outputTokens, maxTokens = WordingCheck.OUTPUT_TOKENS, webSearches = 0, searchesAllowed = 0, durationMs = result.elapsedMs, classification = CallClass.HTTP_FAILED, error = result.error.technical)
+                ctx.diagnostics += diag
+                ctx.stages += StageRecord(stage, StageResult.FAILED, 0, 0, note = result.error.technical, calls = 1, callLog = listOf(diag))
+                ctx.work.wordingUnchecked = "the check call failed"
+                event(ctx.turn.id, TurnEventKind.STAGE_DONE, "${stage.label}: failed (${result.error.technical.lowercase(Locale.ROOT)}); the research findings are kept")
+            }
+            is CallResult.Done -> {
+                ledger.record(UsageRecord.priced(record, result.usage, if (result.stop == CallStop.MAX_TOKENS) CallOutcome.TRUNCATED else CallOutcome.COMPLETE, result.elapsedMs, result.providerMessageId))
+                val priced = CostCalculator.price(ctx.config.model, result.usage)
+                ctx.spentMicros += priced.estimate?.micros ?: 0L
+                if (priced.partial) ctx.spentFloor = true
+                addUsage(ctx, result.usage, result.elapsedMs, floor = result.usage.anyUnknown)
+                val shape = result.shape ?: ReplyShape.of(result.segments, result.searches)
+                val refused = result.stop == CallStop.REFUSAL
+                val found = if (refused) emptyMap() else WordingCheck.parse(result.segments.joinToString("") { it.text }, items)
+                val diag = CallDiagnostic(1, stage, ctx.config.model, if (refused) "refusal" else "end_turn", shape.blocks, shape.textChars, shape.citedBlocks, mapOf("issues" to found.values.sumOf { it.size }), result.usage.inputTokens, result.usage.outputTokens, WordingCheck.OUTPUT_TOKENS, result.usage.webSearches, 0, result.elapsedMs, if (refused) CallClass.REFUSED else CallClass.STRUCTURED)
+                ctx.diagnostics += diag
+                if (refused) {
+                    ctx.stages += StageRecord(stage, StageResult.FAILED, 0, 0, note = "STOP REASON: REFUSAL", calls = 1, callLog = listOf(diag))
+                    ctx.work.wordingUnchecked = "the check was declined"
+                    event(ctx.turn.id, TurnEventKind.STAGE_DONE, "${stage.label}: declined; the research findings are kept")
+                } else {
+                    ctx.work.wordingIssues = found
+                    ctx.stages += StageRecord(stage, StageResult.DONE, 0, 0, note = "${items.size} ${plural(items.size, "sentence", "sentences")} checked; ${found.size} with wording the cited text does not support", calls = 1, callLog = listOf(diag))
+                    event(ctx.turn.id, TurnEventKind.STAGE_DONE, "${stage.label}: done · ${items.size} ${plural(items.size, "sentence", "sentences")} checked, ${found.size} qualified or shortened")
+                }
+            }
+        }
+        updateRunning(ctx)
+    }
+
     private fun addUsage(ctx: RunCtx, u: MeasuredUsage, elapsedMs: Long, floor: Boolean) {
         ctx.usage = ctx.usage.copy(
             inputTokens = ctx.usage.inputTokens + (u.inputTokens ?: 0), outputTokens = ctx.usage.outputTokens + (u.outputTokens ?: 0),
@@ -657,7 +740,7 @@ class InvestigationService(
     private fun stillOpen(ctx: RunCtx, stage: StageKind): Boolean = when (stage) {
         StageKind.GATHER, StageKind.FILL_GAPS -> ctx.work.openClaims().isNotEmpty()
         StageKind.CROSS_CHECK -> ctx.work.contested().isNotEmpty()
-        StageKind.SYNTHESIZE -> false
+        StageKind.SYNTHESIZE, StageKind.CHECK_WORDING -> false
     }
 
     private fun spendAllows(ctx: RunCtx, stage: StageKind, searches: Int): Boolean {
