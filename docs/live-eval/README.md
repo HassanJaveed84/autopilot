@@ -17,14 +17,14 @@ Only the planning provider is a fake. It serves objective preparation by provide
 
 ## Guards
 
-- **Key handling.** The key is read from the environment variable `ANTHROPIC_API_KEY` by `EnvApiKeyStore`. It is never written, logged, printed or reported. Reports pass through a redaction step and are checked for the key before they are saved.
+- **Key handling.** The key is read from the environment variable `LIVE_EVAL_ANTHROPIC_API_KEY` by `EnvApiKeyStore`. It is deliberately not `ANTHROPIC_API_KEY`: cloud environments reserve that name for Claude Code's own authentication, and a value set under it did not reach the session's environment. It is never written, logged, printed or reported. Reports pass through a redaction step and are checked for the key before they are saved.
 - **Free preflight.** Before anything paid, the Models API must confirm that the key can use the configured model.
 - **One run per scenario.** The harness refuses if a report for the scenario already exists. Pass `-PliveEvalRerun=true` only with the owner's approval.
 - **Spending.** The estimate must be under the cap: R-N(a) uses Standard, 3 searches and a 300-cent per-turn spending limit enforced by the service. There are no retries.
 
 ## Running
 
-The key must be in the environment of the session that runs Gradle. A cloud session does not pick up an environment variable added after the session started. `--no-daemon` makes sure the test JVM inherits the current environment.
+The key must be in the environment of the session that runs Gradle, and the session needs an Android SDK (`ANDROID_HOME` or `local.properties`) for `testDebugUnitTest` to configure. A cloud session does not pick up an environment variable added after the session started. `--no-daemon` makes sure the test JVM inherits the current environment.
 
 ```
 ./gradlew --no-daemon :app:testDebugUnitTest -PliveEval=true --tests 'com.lifeadmin.autopilot.liveeval.LiveInvestigationEval'

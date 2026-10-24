@@ -83,7 +83,7 @@ class LiveInvestigationEval {
         val out = File(System.getProperty("liveEval.outDir") ?: "build/live-eval", scenario).apply { mkdirs() }
         val keys = EnvApiKeyStore()
         val key = keys.get()
-        check(key != null) { "ANTHROPIC_API_KEY is not set in this process's environment; nothing was sent." }
+        check(key != null) { "$LIVE_EVAL_KEY_VARIABLE is not set in this process's environment; nothing was sent." }
         check(System.getProperty("liveEval.rerun") == "true" || !File(out, "result.json").exists()) {
             "A report for $scenario already exists in $out; a second paid run needs -PliveEvalRerun=true. Nothing was sent."
         }
@@ -163,7 +163,7 @@ class LiveInvestigationEval {
                     })
                     put("turn", InvestigationJson.json.parseToJsonElement(InvestigationJson.encodeTurn(done)))
                 }
-                val text = LiveEvalSafety.redact(InvestigationJson.json.encodeToString(JsonElement.serializer(), report))
+                val text = LiveEvalSafety.redact(InvestigationJson.json.encodeToString(JsonElement.serializer(), report), key)
                 File(out, "result.json").writeText(text)
                 assertTrue("no credential in the report", key !in text)
             }

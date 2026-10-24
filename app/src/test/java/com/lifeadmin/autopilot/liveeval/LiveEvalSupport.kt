@@ -14,8 +14,14 @@ import java.security.MessageDigest
  * is never part of the app, the APKs or CI.
  */
 
+/**
+ * The environment variable that holds the live-eval key. Not `ANTHROPIC_API_KEY`: cloud environments reserve that
+ * name for Claude Code's own authentication, and a value set under it did not reach the session's environment.
+ */
+const val LIVE_EVAL_KEY_VARIABLE = "LIVE_EVAL_ANTHROPIC_API_KEY"
+
 /** Reads the key from the environment for the duration of the process. It is never written, logged or reported. */
-class EnvApiKeyStore(private val variable: String = "ANTHROPIC_API_KEY") : ApiKeyStore {
+class EnvApiKeyStore(private val variable: String = LIVE_EVAL_KEY_VARIABLE) : ApiKeyStore {
     override fun hasKey(): Boolean = get() != null
     override fun get(): String? = System.getenv(variable)?.trim()?.takeIf { it.isNotEmpty() }
     override fun save(key: String) = throw UnsupportedOperationException("The live-eval key store is read-only")
@@ -43,7 +49,7 @@ object LiveEvalSafety {
     private val KEY_SHAPE = Regex("""sk-ant-[A-Za-z0-9_\-]{4,}""")
 
     /** Removes anything key-shaped, and the configured key itself, from text bound for a report. */
-    fun redact(text: String, key: String? = System.getenv("ANTHROPIC_API_KEY")): String {
+    fun redact(text: String, key: String? = System.getenv(LIVE_EVAL_KEY_VARIABLE)): String {
         var t = KEY_SHAPE.replace(text, "[REDACTED]")
         if (!key.isNullOrBlank() && key.length >= 8) t = t.replace(key, "[REDACTED]")
         return t
