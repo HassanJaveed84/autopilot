@@ -79,6 +79,16 @@ android {
                     test.systemProperty("robolectric.dependency.repo.url", it)
                 }
                 test.maxHeapSize = "2g"
+                // Development-only paid evaluation (src/test/.../liveeval): never part of a normal or CI run.
+                if (providers.gradleProperty("liveEval").orNull == "true") {
+                    test.filter.includeTestsMatching("com.lifeadmin.autopilot.liveeval.*")
+                    test.systemProperty("liveEval.enabled", "true")
+                    test.systemProperty("liveEval.outDir", layout.buildDirectory.dir("live-eval").get().asFile.absolutePath)
+                    providers.gradleProperty("liveEvalRerun").orNull?.let { test.systemProperty("liveEval.rerun", it) }
+                    test.outputs.upToDateWhen { false }
+                } else {
+                    test.exclude("**/liveeval/**")
+                }
             }
         }
     }
