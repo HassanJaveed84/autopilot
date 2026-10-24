@@ -1,0 +1,75 @@
+now = Fri 23 Oct 14:00 Europe/London; defaults: preset=PERSISTENT, quiet=21:00-08:00 DEFER_AND_COALESCE, precision=false
+
+[A] Capture -> 'Save & nudge' with no edits (the one-tap path) for all nine tasks:
+  - Buy clothes
+  - Buy a gift for Sam
+  - Get a car inspection
+  - Buy perfume
+  - Change the hallway lightbulb
+  - Complete the work update by Monday 5pm
+  - Turn off the fan before bed
+  - Check my daughter's blanket at bedtime
+  - Buy Hans Zimmer concert tickets
+  every one of the nine gets the same schedule:
+      Fri 23 Oct 18:00
+      Sat 24 Oct 09:00
+      Sat 24 Oct 18:00
+      Sun 25 Oct 09:00
+      Sun 25 Oct 18:00
+      Mon 26 Oct 09:00
+  => 9 tasks x 2 = 18 notifications/day (cap 30)
+
+[B] 'Turn off the fan before bed' - user tunes Follow-up to Daily 22:30:
+  default quiet-hours behaviour (DEFER):
+      Sat 24 Oct 08:00   <- deferred from Fri 23 Oct 22:30 by quiet hours
+      Sun 25 Oct 08:00   <- deferred from Sat 24 Oct 22:30 by quiet hours
+      Mon 26 Oct 08:00   <- deferred from Sun 25 Oct 22:30 by quiet hours
+      Tue 27 Oct 08:00   <- deferred from Mon 26 Oct 22:30 by quiet hours
+  Advanced -> 'Skip that nudge':
+      (nothing will ever ring)
+  Once, tonight 22:30:
+      Sat 24 Oct 08:00   <- deferred from Fri 23 Oct 22:30 by quiet hours
+  Daily 20:45 (works, but only because it's before 21:00):
+      Fri 23 Oct 20:45
+      Sat 24 Oct 20:45
+      Sun 25 Oct 20:45
+      Mon 26 Oct 20:45
+
+[C] Routine lifecycle: Done on a daily routine
+  after tapping Done (status DONE):
+      (nothing will ever ring)
+
+[D] 'Complete the work update' with EXACT deadline Mon 26 Oct 17:00 and the default nudge:
+  nudges around the deadline (deadline is not an input to the planner):
+      Fri 23 Oct 18:00
+      Sat 24 Oct 09:00
+      Sat 24 Oct 18:00
+      Sun 25 Oct 09:00
+      Sun 25 Oct 18:00
+      Mon 26 Oct 09:00
+      Mon 26 Oct 18:00
+      Tue 27 Oct 09:00
+  a week after the deadline, still:
+      Mon 02 Nov 18:00
+      Tue 03 Nov 09:00
+
+[E] Snooze 'tomorrow morning' at 23:30 tonight (default snooze):
+  target = Sat 24 Oct 09:00
+
+[G] Blanket check nudged at 20:45, user taps Snooze 1 hour (snooze end falls in quiet hours):
+  next deliveries after the snooze:
+      Sat 24 Oct 08:00   <- deferred from Fri 23 Oct 21:45 by quiet hours
+      Sat 24 Oct 20:45
+  notification Snooze button (default TOMORROW_MORNING) at 20:45 -> Sat 24 Oct 09:00
+
+[F] PhraseResolver (used only to check AI plan dates; capture never parses text):
+  'before bed' -> UNKNOWN
+  'at bedtime' -> UNKNOWN
+  'tonight' -> PRECISE 2026-10-23
+  'by Monday 5pm' -> PRECISE 2026-10-26
+  'next month' -> VAGUE
+  'this weekend' -> VAGUE
+  'before they sell out' -> UNKNOWN
+  'before my sister's birthday' -> EVENT
+  'every year' -> UNKNOWN
+  'when the garage replies' -> UNKNOWN
