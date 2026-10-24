@@ -169,18 +169,19 @@ class MigrationTest {
             .build()
         assertEquals("Supplements", room.taskDao().get("t1")!!.title)
         assertEquals("legacy briefs are untouched", 1, room.researchDao().getForTask("t1").size)
-        assertEquals(0, room.researchSessionDao().observeCount().first())
-        room.researchSessionDao().upsert(
-            com.lifeadmin.autopilot.data.local.ResearchSessionEntity("s1", "t1", java.time.Instant.EPOCH, java.time.Instant.EPOCH, "Picks", "PICK_PER_ITEM", "COMPLETE", "claude-sonnet-5-5", 7, 5, "{}", "[]"),
+        assertEquals(0, room.investigationDao().observeCount().first())
+        room.investigationDao().upsert(
+            com.lifeadmin.autopilot.data.local.InvestigationEntity("s1", "TASK", "t1", null, java.time.Instant.EPOCH, java.time.Instant.EPOCH, "Picks", "DONE", 0, "{}"),
         )
         room.usageDao().upsert(
             com.lifeadmin.autopilot.data.local.UsageRecordEntity("u1", "RESEARCH", "claude-sonnet-5-5", java.time.Instant.EPOCH, "r1", "s1", "t1", "GATHER", 1000, 41000, 2600, 0, 0, 0, 5, "COMPLETE", "COMPLETE", 158_050, "2026-10", "msg_1"),
         )
-        assertEquals(1, room.researchSessionDao().getForTask("t1").size)
+        assertEquals(1, room.investigationDao().getForTask("t1").size)
         assertEquals(1, room.usageDao().forSession("s1").size)
-        // Sessions cascade with their task; the ledger does not (it has no foreign key by design).
+        // Investigations outlive their task as standalone history; the ledger has no foreign key by design.
         room.taskDao().delete("t1")
-        assertEquals(0, room.researchSessionDao().observeCount().first())
+        assertEquals(1, room.investigationDao().observeCount().first())
+        assertEquals(null, room.investigationDao().get("s1")!!.taskId)
         assertEquals(1, room.usageDao().getAll().size)
         room.close()
         context.deleteDatabase(name)
@@ -221,7 +222,7 @@ class MigrationTest {
         assertEquals(listOf("Find old passport", "Take photo"), steps.map { it.title })
         assertEquals("existing steps are the user's", listOf("USER", "USER"), steps.map { it.origin })
         assertTrue(steps[1].isDone)
-        assertEquals(1, room.researchSessionDao().getForTask("t1").size)
+        assertEquals("the v5 session arrives as an investigation", 1, room.investigationDao().getForTask("t1").size)
         assertEquals(1, room.usageDao().getAll().size)
         assertEquals(0, room.draftDao().getAll().size)
         assertEquals(0, room.proposalSetDao().getAll().size)
@@ -232,6 +233,86 @@ class MigrationTest {
         room.taskDao().delete("t1")
         assertEquals(1, room.draftDao().getAll().size)
         assertEquals(1, room.provenanceDao().getAll().size)
+        room.close()
+        context.deleteDatabase(name)
+    }
+
+    @Test fun migrateV6ToV7CarriesEverySessionIntoAnInvestigationWithOneTurnPerRunAndDropsNothing() = runTest {
+        context.deleteDatabase(name)
+        val file = context.getDatabasePath(name).also { it.parentFile?.mkdirs() }
+        // A real M3A.2 session payload: parsed content with two recorded runs (initial + stopped continuation) and one applied proposal.
+        val r = com.lifeadmin.autopilot.ai.research2.RequirementExtractor.extract(com.lifeadmin.autopilot.testing.Research2Fixtures.SUPPLEMENTS_REQUEST)
+        val registry = com.lifeadmin.autopilot.ai.research2.SourceRegistry2(runId = "r1")
+        val fx = com.lifeadmin.autopilot.testing.Research2Fixtures.supplementsGather()
+        var content = com.lifeadmin.autopilot.ai.research2.SessionContent("Picks", com.lifeadmin.autopilot.testing.Research2Fixtures.SUPPLEMENTS_REQUEST, r.template, r.requirements, outcome = com.lifeadmin.autopilot.ai.research2.SessionOutcome.INTERRUPTED)
+        content = com.lifeadmin.autopilot.ai.research2.SessionAssembler.merge(content, com.lifeadmin.autopilot.ai.research2.ContractParser.parse(fx.segments, fx.searches, registry, r.requirements, 1L), registry.sources())
+        val run1 = com.lifeadmin.autopilot.ai.research2.RunRecord("r1", com.lifeadmin.autopilot.ai.research2.RunKind.INITIAL, 1_000L, com.lifeadmin.autopilot.ai.research2.ResearchMode.THOROUGH, "claude-sonnet-5-5", 10, usage = com.lifeadmin.autopilot.ai.research2.RunUsage(41_000, 2_600, 0, 0, 5, 42_000), outcome = com.lifeadmin.autopilot.ai.research2.SessionOutcome.COMPLETE)
+        val run2 = run1.copy(id = "r2", kind = com.lifeadmin.autopilot.ai.research2.RunKind.CONTINUATION, startedAtEpochMs = 2_000L, usage = com.lifeadmin.autopilot.ai.research2.RunUsage(10_000, 500, 0, 0, 2, 9_000, complete = false), outcome = com.lifeadmin.autopilot.ai.research2.SessionOutcome.STOPPED)
+        content = content.copy(runs = listOf(run1, run2), outcome = com.lifeadmin.autopilot.ai.research2.SessionOutcome.STOPPED)
+        val codec = kotlinx.serialization.json.Json { ignoreUnknownKeys = true; encodeDefaults = true; classDiscriminator = "kind" }
+        val payload = codec.encodeToString(com.lifeadmin.autopilot.ai.research2.SessionContent.serializer(), content)
+        val applied = codec.encodeToString(kotlinx.serialization.builtins.ListSerializer(com.lifeadmin.autopilot.ai.research2.AppliedProposal.serializer()), listOf(com.lifeadmin.autopilot.ai.research2.AppliedProposal("p-1", 5L, "Buy multivitamin", "st1")))
+        SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+            schemaStatements(6).forEach(db::execSQL)
+            db.execSQL(
+                "INSERT INTO tasks (id,title,notes,status,priority,createdAt,updatedAt,completedAt,archivedAt,deadlineType,deadlineLocalDate,deadlineInstant,deadlineZoneId,snoozedUntil,snoozeRemindAtEnd,waitingReason,waitingCheckInAt,rev,eventLocalDate,eventLabel,intendedLocalDate,targetLocalDate,targetBasis) " +
+                    "VALUES ('t1','Supplements',NULL,'ACTIONABLE','NORMAL',1,2,NULL,NULL,'NONE',NULL,NULL,NULL,NULL,1,NULL,NULL,3,NULL,NULL,NULL,NULL,NULL)",
+            )
+            db.execSQL(
+                "INSERT INTO research_sessions (id,taskId,createdAt,updatedAt,title,template,outcome,model,searchCount,sourceCount,payload,applied) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                arrayOf("s1", "t1", 1_000L, 2_000L, "Picks", "PICK_PER_ITEM", "STOPPED", "claude-sonnet-5-5", 7, 4, payload, applied),
+            )
+            db.execSQL(
+                "INSERT INTO research_sessions (id,taskId,createdAt,updatedAt,title,template,outcome,model,searchCount,sourceCount,payload,applied) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                arrayOf("s-broken", "t1", 3_000L, 3_000L, "Unreadable", "QUICK_ANSWER", "COMPLETE", "claude-haiku-5-5", 0, 0, "{not json", "[]"),
+            )
+            db.execSQL(
+                "INSERT INTO usage_records (id,feature,model,startedAt,runId,sessionId,taskId,stage,durationMs,inputTokens,outputTokens,cacheWrite5mTokens,cacheWrite1hTokens,cacheReadTokens,webSearches,outcome,usageStatus,estimatedMicros,priceVersion,providerMessageId) " +
+                    "VALUES ('u1','RESEARCH','claude-sonnet-5-5',1,'r1','s1','t1','GATHER',1000,41000,2600,0,0,0,5,'COMPLETE','COMPLETE',158050,'2026-10','msg_1')",
+            )
+            db.version = 6
+        }
+        val room = Room.databaseBuilder(context, AppDatabase::class.java, name)
+            .addMigrations(*Migrations.ALL)
+            .setQueryCoroutineContext(Dispatchers.IO)
+            .build()
+        assertEquals("task data untouched", 3, room.taskDao().get("t1")!!.rev)
+        val inv = room.investigationDao().get("s1")!!
+        assertEquals("t1", inv.taskId)
+        assertEquals("TASK", inv.origin)
+        assertEquals("Picks", inv.title)
+        assertEquals("the latest run's ending is the thread's state", "STOPPED", inv.state)
+        assertEquals(2, inv.turnCount)
+        assertEquals(1_000L, inv.createdAt.toEpochMilli())
+        val turns = room.investigationTurnDao().forInvestigation("s1")
+        assertEquals(listOf(0, 1), turns.map { it.turnIndex })
+        assertEquals(listOf("INITIAL", "CONTINUATION"), turns.map { it.kind })
+        assertEquals(listOf("DONE", "STOPPED"), turns.map { it.state })
+        assertEquals(listOf(1_000L, 2_000L), turns.map { it.createdAt.toEpochMilli() })
+        val decoded = turns.map { com.lifeadmin.autopilot.ai.investigation.InvestigationJson.decodeTurn(it.payload)!! }
+        assertEquals("usage per run is carried over", 41_000L, decoded[0].usage.inputTokens)
+        assertEquals("a stopped run's usage is a floor", true, decoded[1].usage.floor)
+        assertEquals(listOf("r1", "r2"), decoded.map { it.legacy!!.runId })
+        assertEquals("the question is the person's words", com.lifeadmin.autopilot.testing.Research2Fixtures.SUPPLEMENTS_REQUEST, decoded[0].objective.question)
+        assertEquals(com.lifeadmin.autopilot.ai.investigation.AskKind.RECOMMEND, decoded[0].objective.askKind)
+        // The legacy content and applied history read back byte-for-byte through the legacy view.
+        val session = com.lifeadmin.autopilot.data.repository.ResearchSessionRepository(room).get("s1")!!
+        assertEquals(content, session.content)
+        assertEquals(listOf("p-1"), session.applied.map { it.proposalId })
+        assertEquals(4, session.content.body.picks.size)
+        // An unreadable payload is still carried (never dropped) and simply has no legacy view.
+        val broken = room.investigationDao().get("s-broken")!!
+        assertEquals(1, broken.turnCount)
+        assertTrue(room.investigationTurnDao().forInvestigation("s-broken").single().payload.contains("{not json"))
+        assertEquals(null, com.lifeadmin.autopilot.data.repository.ResearchSessionRepository(room).get("s-broken"))
+        // Ledger rows keep every value; the new effort column is empty for old calls.
+        val u = room.usageDao().get("u1")!!
+        assertEquals(158_050L, u.estimatedMicros)
+        assertEquals("msg_1", u.providerMessageId)
+        assertEquals(null, u.effort)
+        assertEquals(1, room.usageDao().forSession("s1").size)
+        // The old table is gone; nothing else changed.
+        room.openHelper.readableDatabase.query("SELECT name FROM sqlite_master WHERE type='table' AND name='research_sessions'").use { assertEquals(0, it.count) }
         room.close()
         context.deleteDatabase(name)
     }

@@ -197,32 +197,48 @@ data class ResearchBriefEntity(
 )
 
 /**
- * A saved M3A.2 research session: the request, requirements, structured result and proposals as
- * JSON, plus which proposals were applied. Owned by its task. Never raw transcripts, page content
- * or credentials.
+ * One Investigation Thread (M4): standalone or associated with a task (later a draft). Turns live in
+ * [InvestigationTurnEntity]. Deleting a task leaves its investigations as standalone history
+ * (the association is recorded in the meta JSON), never deletes the person's research.
  */
 @Entity(
-    tableName = "research_sessions",
-    foreignKeys = [ForeignKey(entity = TaskEntity::class, parentColumns = ["id"], childColumns = ["taskId"], onDelete = ForeignKey.CASCADE)],
-    indices = [Index("taskId"), Index("updatedAt")],
+    tableName = "investigations",
+    indices = [Index("taskId"), Index("draftId"), Index("updatedAt")],
+    foreignKeys = [ForeignKey(entity = TaskEntity::class, parentColumns = ["id"], childColumns = ["taskId"], onDelete = ForeignKey.SET_NULL)],
 )
-data class ResearchSessionEntity(
+data class InvestigationEntity(
     @PrimaryKey val id: String,
-    val taskId: String,
+    /** [com.lifeadmin.autopilot.ai.investigation.InvestigationOrigin] name. */
+    val origin: String,
+    val taskId: String?,
+    val draftId: String?,
     val createdAt: Instant,
     val updatedAt: Instant,
     val title: String,
-    /** [com.lifeadmin.autopilot.ai.research2.DeliverableTemplate] name. */
-    val template: String,
-    /** [com.lifeadmin.autopilot.ai.research2.SessionOutcome] name. */
-    val outcome: String,
-    val model: String,
-    val searchCount: Int,
-    val sourceCount: Int,
-    /** JSON of [com.lifeadmin.autopilot.ai.research2.SessionContent]. */
+    /** State of the latest turn ([com.lifeadmin.autopilot.ai.investigation.TurnState] name), for lists. */
+    val state: String,
+    val turnCount: Int,
+    /** JSON of [com.lifeadmin.autopilot.ai.investigation.InvestigationMeta]. */
+    val meta: String,
+)
+
+/** One turn of an investigation: an immutable record once its state is final (RES-032/092). */
+@Entity(
+    tableName = "investigation_turns",
+    indices = [Index("investigationId"), Index(value = ["investigationId", "turnIndex"], unique = true)],
+    foreignKeys = [ForeignKey(entity = InvestigationEntity::class, parentColumns = ["id"], childColumns = ["investigationId"], onDelete = ForeignKey.CASCADE)],
+)
+data class InvestigationTurnEntity(
+    @PrimaryKey val id: String,
+    val investigationId: String,
+    val turnIndex: Int,
+    /** [com.lifeadmin.autopilot.ai.investigation.TurnKind] name. */
+    val kind: String,
+    /** [com.lifeadmin.autopilot.ai.investigation.TurnState] name. */
+    val state: String,
+    val createdAt: Instant,
+    /** JSON of [com.lifeadmin.autopilot.ai.investigation.Turn]. */
     val payload: String,
-    /** JSON list of [com.lifeadmin.autopilot.ai.research2.AppliedProposal]. */
-    val applied: String,
 )
 
 /**
@@ -252,6 +268,8 @@ data class UsageRecordEntity(
     val estimatedMicros: Long?,
     val priceVersion: String,
     val providerMessageId: String?,
+    /** Effort level requested for the call (M4); null when none was sent. */
+    @ColumnInfo(defaultValue = "NULL") val effort: String? = null,
 )
 
 /**

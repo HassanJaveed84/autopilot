@@ -49,6 +49,8 @@ data class BackupFile(
     val drafts: List<DraftDto> = emptyList(),
     val proposals: List<ProposalSetDto> = emptyList(),
     val provenance: List<ProvenanceDto> = emptyList(),
+    /** M4 Investigation Threads (schema v7). Legacy sessions are also exported under [sessions] for older app versions; an id present in both is read from here. */
+    val investigations: List<InvestigationDto> = emptyList(),
 ) {
     companion object {
         const val FORMAT = "life-admin-autopilot-backup"
@@ -112,6 +114,16 @@ data class ResearchSessionDto(
     val applied: List<com.lifeadmin.autopilot.ai.research2.AppliedProposal> = emptyList(),
 )
 
+/** One investigation with its turns as exported. Turn payloads are the stored JSON, validated by decoding on import. */
+@Serializable
+data class InvestigationDto(
+    val id: String, val origin: String, val taskId: String? = null, val draftId: String? = null, val createdAt: String, val updatedAt: String,
+    val title: String, val state: String, val meta: String, val turns: List<InvestigationTurnDto> = emptyList(),
+)
+
+@Serializable
+data class InvestigationTurnDto(val id: String, val index: Int, val kind: String, val state: String, val createdAt: String, val payload: String)
+
 /** One ledger row as exported. Ids, counts, outcome and the local estimate — nothing else. */
 @Serializable
 data class UsageRecordDto(
@@ -120,6 +132,7 @@ data class UsageRecordDto(
     val durationMs: Long? = null, val inputTokens: Long? = null, val outputTokens: Long? = null,
     val cacheWrite5mTokens: Long? = null, val cacheWrite1hTokens: Long? = null, val cacheReadTokens: Long? = null, val webSearches: Int? = null,
     val outcome: String, val usageStatus: String, val estimatedMicros: Long? = null, val priceVersion: String = "", val providerMessageId: String? = null,
+    val effort: String? = null,
 )
 
 data class ImportResult(val created: Int, val updated: Int, val skipped: Int)
@@ -147,6 +160,15 @@ class BackupRepository(
             val drafts = db.draftDao().getAll().map { DraftDto(it.id, it.createdAt.toString(), it.updatedAt.toString(), it.status, it.text, it.savedTaskId, it.payload) }
             val proposals = db.proposalSetDao().getAll().map { ProposalSetDto(it.id, it.source, it.targetKind, it.targetId, it.investigationId, it.madeAt.toString(), it.status, it.payload) }
             val provenance = db.provenanceDao().getAll().map { ProvenanceDto(it.id, it.taskId, it.draftId, it.elementKind, it.elementId, it.proposalSetId, it.itemId, it.appliedAt.toString(), it.editedByUser, it.payload) }
+            val investigationRepo = InvestigationRepository(db)
+            val investigationRows = db.investigationDao().getAll()
+            val investigations = investigationRows.map { e ->
+                val turns = db.investigationTurnDao().forInvestigation(e.id)
+                InvestigationDto(e.id, e.origin, e.taskId, e.draftId, e.createdAt.toString(), e.updatedAt.toString(), e.title, e.state, e.meta, turns.map { InvestigationTurnDto(it.id, it.turnIndex, it.kind, it.state, it.createdAt.toString(), it.payload) })
+            }
+            val legacySessions = investigationRows.mapNotNull { e -> investigationRepo.decode(e, db.investigationTurnDao().forInvestigation(e.id)) }
+                .mapNotNull(com.lifeadmin.autopilot.ai.investigation.LegacyInvestigations::toSession)
+                .map { ResearchSessionDto(it.id, it.taskId, it.createdAt.toString(), it.updatedAt.toString(), it.content, it.applied) }
             BackupFile(
                 exportedAt = clock.now().toString(),
                 appVersion = appVersion,
@@ -157,11 +179,12 @@ class BackupRepository(
                     EventDto(it.id, it.taskId, it.at.toString(), it.eventType.name, it.summary, com.lifeadmin.autopilot.data.local.decodeMetadata(it.structuredMetadata))
                 },
                 research = db.researchDao().getAll().mapNotNull { it.toDto() },
-                sessions = db.researchSessionDao().getAll().mapNotNull { it.toDto() },
+                sessions = legacySessions,
                 usage = db.usageDao().getAll().map { it.toDto() },
                 drafts = drafts,
                 proposals = proposals,
                 provenance = provenance,
+                investigations = investigations,
             )
         }
         return json.encodeToString(BackupFile.serializer(), file)
@@ -202,7 +225,7 @@ class BackupRepository(
         val policies: List<Pair<ReminderPolicyEntity, List<LocalTime>>>,
         val events: List<TaskEventEntity>,
         val research: List<ResearchBriefEntity>,
-        val sessions: List<com.lifeadmin.autopilot.data.local.ResearchSessionEntity> = emptyList(),
+        val investigations: List<Pair<com.lifeadmin.autopilot.data.local.InvestigationEntity, List<com.lifeadmin.autopilot.data.local.InvestigationTurnEntity>>> = emptyList(),
         val usage: List<com.lifeadmin.autopilot.data.local.UsageRecordEntity> = emptyList(),
         val drafts: List<com.lifeadmin.autopilot.data.local.DraftEntity> = emptyList(),
         val proposals: List<com.lifeadmin.autopilot.data.local.ProposalSetEntity> = emptyList(),
@@ -213,7 +236,7 @@ class BackupRepository(
         if (f.format != BackupFile.FORMAT) throw ImportException("Unrecognized file format")
         if (f.schemaVersion !in 1..BackupFile.SCHEMA_VERSION) throw ImportException("Backup was made by a newer app version (schema ${f.schemaVersion})")
         if (f.tasks.size > MAX_TASKS || f.steps.size > MAX_STEPS || f.events.size > MAX_EVENTS || f.policies.size > MAX_TASKS || f.research.size > MAX_BRIEFS || f.sessions.size > MAX_BRIEFS || f.usage.size > MAX_USAGE ||
-            f.drafts.size > MAX_TASKS || f.proposals.size > MAX_BRIEFS || f.provenance.size > MAX_STEPS
+            f.drafts.size > MAX_TASKS || f.proposals.size > MAX_BRIEFS || f.provenance.size > MAX_STEPS || f.investigations.size > MAX_BRIEFS || f.investigations.sumOf { it.turns.size } > MAX_BRIEFS
         ) {
             throw ImportException("Backup has too many records")
         }
@@ -229,6 +252,7 @@ class BackupRepository(
         unique(f.tasks.map { it.id }, "task"); unique(f.steps.map { it.id }, "step"); unique(f.policies.map { it.id }, "policy"); unique(f.events.map { it.id }, "event")
         unique(f.research.map { it.id }, "research brief"); unique(f.sessions.map { it.id }, "research session"); unique(f.usage.map { it.id }, "usage record")
         unique(f.drafts.map { it.id }, "draft"); unique(f.proposals.map { it.id }, "proposal set"); unique(f.provenance.map { it.id }, "provenance record")
+        unique(f.investigations.map { it.id }, "investigation"); unique(f.investigations.flatMap { i -> i.turns.map { it.id } }, "investigation turn")
         val taskIds = f.tasks.map { id(it.id, "task") }.toSet()
         if (f.policies.map { it.taskId }.toSet().size != f.policies.size) throw ImportException("More than one reminder policy for a task")
 
@@ -307,18 +331,44 @@ class BackupRepository(
             )
         }
         val sessionRepo = ResearchSessionRepository(db)
-        val sessions = f.sessions.map { b ->
+        val investigationRepo = InvestigationRepository(db)
+        val fromDtos = f.investigations.map { i ->
+            id(i.id, "investigation")
+            val origin = enumOf(com.lifeadmin.autopilot.ai.investigation.InvestigationOrigin.entries.toTypedArray(), i.origin, "investigation origin")
+            val state = enumOf(com.lifeadmin.autopilot.ai.investigation.TurnState.entries.toTypedArray(), i.state, "investigation state")
+            if (i.meta.length > MAX_PAYLOAD_CHARS) throw ImportException("Investigation too large")
+            var meta = com.lifeadmin.autopilot.ai.investigation.InvestigationJson.decodeMeta(i.meta) ?: throw ImportException("Invalid investigation")
+            // A task that is not in this backup cannot be re-linked: the thread is kept as standalone history, and says so (same rule as a deleted task).
+            val taskId = i.taskId?.let { id(it, "task") }?.takeIf { it in taskIds }
+            if (i.taskId != null && taskId == null) meta = meta.copy(associations = meta.associations + com.lifeadmin.autopilot.ai.investigation.AssociationEvent(clock.now().toEpochMilli(), null, "Task not in the backup; kept as standalone"))
+            if (i.turns.map { it.index }.toSet().size != i.turns.size) throw ImportException("Duplicate investigation turn index")
+            val turns = i.turns.map { t ->
+                id(t.id, "investigation turn")
+                if (t.payload.length > MAX_PAYLOAD_CHARS) throw ImportException("Investigation turn too large")
+                val turn = com.lifeadmin.autopilot.ai.investigation.InvestigationJson.decodeTurn(t.payload) ?: throw ImportException("Invalid investigation turn")
+                if (turn.id != t.id || turn.index != t.index) throw ImportException("Investigation turn mismatch")
+                // A turn still running in a backup can never finish: it is interrupted.
+                val settled = if (turn.state == com.lifeadmin.autopilot.ai.investigation.TurnState.RUNNING) turn.copy(state = com.lifeadmin.autopilot.ai.investigation.TurnState.INTERRUPTED, endingNote = turn.endingNote ?: "Interrupted before the backup was made") else turn
+                investigationRepo.turnEntity(i.id, settled)
+            }
+            val latest = turns.maxByOrNull { it.turnIndex }
+            com.lifeadmin.autopilot.data.local.InvestigationEntity(
+                i.id, origin.name, taskId, i.draftId?.let { id(it, "draft") }, reqInstant(i.createdAt, "investigation"), reqInstant(i.updatedAt, "investigation"),
+                i.title.take(InvestigationRepository.MAX_TITLE), latest?.state ?: state.name, turns.size, com.lifeadmin.autopilot.ai.investigation.InvestigationJson.encodeMeta(meta),
+            ) to turns
+        }
+        val fromDtoIds = fromDtos.map { it.first.id }.toSet()
+        val fromSessions = f.sessions.filter { it.id !in fromDtoIds }.map { b ->
             id(b.id, "research session")
             if (b.taskId !in taskIds) throw ImportException("Research session refers to a missing task")
             val payload = sessionRepo.encode(b.content)
             if (payload.length > com.lifeadmin.autopilot.ai.research2.Research2Config.MAX_PAYLOAD_BYTES * 2) throw ImportException("Research session too large")
-            com.lifeadmin.autopilot.data.local.ResearchSessionEntity(
-                id = b.id, taskId = b.taskId, createdAt = reqInstant(b.createdAt, "research session"), updatedAt = reqInstant(b.updatedAt, "research session"),
-                title = b.content.title.take(com.lifeadmin.autopilot.ai.research2.Research2Config.MAX_TITLE_CHARS), template = b.content.template.name, outcome = b.content.outcome.name,
-                model = (b.content.latestRun?.model ?: "").take(80), searchCount = b.content.searchesTotal.coerceIn(0, 10_000), sourceCount = b.content.sources.size,
-                payload = payload, applied = sessionRepo.encodeApplied(b.applied.take(50)),
-            )
+            val session = com.lifeadmin.autopilot.ai.research2.ResearchSession(b.id, b.taskId, reqInstant(b.createdAt, "research session"), reqInstant(b.updatedAt, "research session"), b.content, b.applied.take(50))
+            val c = com.lifeadmin.autopilot.ai.investigation.LegacyInvestigations.fromSession(session)
+            val inv = com.lifeadmin.autopilot.ai.investigation.Investigation(b.id, com.lifeadmin.autopilot.ai.investigation.InvestigationOrigin.TASK, b.taskId, null, session.createdAt.toEpochMilli(), session.updatedAt.toEpochMilli(), c.meta, c.turns)
+            investigationRepo.entity(inv) to c.turns.map { investigationRepo.turnEntity(b.id, it) }
         }
+        val investigations = fromDtos + fromSessions
         val usage = f.usage.map { u ->
             id(u.id, "usage record")
             enumOf(com.lifeadmin.autopilot.ai.usage.UsageFeature.entries.toTypedArray(), u.feature, "usage feature")
@@ -329,7 +379,7 @@ class BackupRepository(
                 u.durationMs, u.inputTokens, u.outputTokens, u.cacheWrite5mTokens, u.cacheWrite1hTokens, u.cacheReadTokens, u.webSearches,
                 // A call still "in flight" in a backup can never finish: it is interrupted.
                 (if (outcome == com.lifeadmin.autopilot.ai.usage.CallOutcome.IN_FLIGHT) com.lifeadmin.autopilot.ai.usage.CallOutcome.INTERRUPTED else outcome).name,
-                u.usageStatus, u.estimatedMicros, u.priceVersion.take(32), u.providerMessageId?.take(64),
+                u.usageStatus, u.estimatedMicros, u.priceVersion.take(32), u.providerMessageId?.take(64), u.effort?.take(16),
             )
         }
         val drafts = f.drafts.map { d ->
@@ -367,7 +417,7 @@ class BackupRepository(
                 reqInstant(r.appliedAt, "provenance record"), record.editedByUser, com.lifeadmin.autopilot.domain.proposal.ProposalJson.encodeRecord(record),
             )
         }
-        return Validated(tasks, steps, policies, events, research, sessions, usage, drafts, proposals, provenance)
+        return Validated(tasks, steps, policies, events, research, investigations, usage, drafts, proposals, provenance)
     }
 
     private suspend fun write(v: Validated): ImportResult {
@@ -405,7 +455,14 @@ class BackupRepository(
         // Briefs are append-only records: restore every one whose task exists locally (idempotent by id).
         val present = db.taskDao().getAll().map { it.id }.toSet()
         for (brief in v.research) if (brief.taskId in present) db.researchDao().upsert(brief)
-        for (session in v.sessions) if (session.taskId in present) db.researchSessionDao().upsert(session)
+        // Investigations: newer wins, like tasks; a task-linked thread whose task is absent locally is kept standalone (the FK would null it anyway).
+        for ((inv, turns) in v.investigations) {
+            val local = db.investigationDao().get(inv.id)
+            if (local != null && local.updatedAt >= inv.updatedAt) continue
+            val linked = inv.taskId?.takeIf { it in present }
+            db.investigationDao().upsert(if (linked == inv.taskId) inv else inv.copy(taskId = null))
+            for (t in turns) db.investigationTurnDao().upsert(t)
+        }
         // The ledger is append-only: rows already present are never overwritten by a backup.
         // Append-only, and never the same provider response twice under two local ids.
         for (u in v.usage) if (db.usageDao().get(u.id) == null && (u.providerMessageId == null || db.usageDao().byProviderMessage(u.providerMessageId).isEmpty())) db.usageDao().upsert(u)
@@ -433,15 +490,9 @@ class BackupRepository(
         rev, eventLocalDate?.toString(), eventLabel, intendedLocalDate?.toString(), targetLocalDate?.toString(), targetBasis,
     )
 
-    private fun com.lifeadmin.autopilot.data.local.ResearchSessionEntity.toDto(): ResearchSessionDto? {
-        val repo = ResearchSessionRepository(db)
-        val content = repo.decodeContent(payload) ?: return null
-        return ResearchSessionDto(id, taskId, createdAt.toString(), updatedAt.toString(), content, repo.decodeApplied(applied))
-    }
-
     private fun com.lifeadmin.autopilot.data.local.UsageRecordEntity.toDto() = UsageRecordDto(
         id, feature, model, startedAt.toString(), runId, sessionId, taskId, stage, durationMs, inputTokens, outputTokens,
-        cacheWrite5mTokens, cacheWrite1hTokens, cacheReadTokens, webSearches, outcome, usageStatus, estimatedMicros, priceVersion, providerMessageId,
+        cacheWrite5mTokens, cacheWrite1hTokens, cacheReadTokens, webSearches, outcome, usageStatus, estimatedMicros, priceVersion, providerMessageId, effort,
     )
 
     private fun ResearchBriefEntity.toDto(): ResearchBriefDto? = runCatching {

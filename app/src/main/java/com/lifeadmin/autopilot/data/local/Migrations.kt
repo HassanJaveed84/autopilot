@@ -102,5 +102,51 @@ object Migrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+    /**
+     * v6 → v7 (M4 Investigation Thread): `investigations` + `investigation_turns`; every
+     * `research_sessions` row becomes one investigation with one turn per recorded run, its parsed
+     * content and applied history kept byte-for-byte (RES-092); `usage_records.effort` added. The
+     * old table is dropped only after every row has been copied.
+     */
+    val MIGRATION_6_7 = object : Migration(6, 7) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `investigations` (`id` TEXT NOT NULL, `origin` TEXT NOT NULL, `taskId` TEXT, `draftId` TEXT, `createdAt` INTEGER NOT NULL, " +
+                    "`updatedAt` INTEGER NOT NULL, `title` TEXT NOT NULL, `state` TEXT NOT NULL, `turnCount` INTEGER NOT NULL, `meta` TEXT NOT NULL, PRIMARY KEY(`id`), " +
+                    "FOREIGN KEY(`taskId`) REFERENCES `tasks`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_investigations_taskId` ON `investigations` (`taskId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_investigations_draftId` ON `investigations` (`draftId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_investigations_updatedAt` ON `investigations` (`updatedAt`)")
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `investigation_turns` (`id` TEXT NOT NULL, `investigationId` TEXT NOT NULL, `turnIndex` INTEGER NOT NULL, `kind` TEXT NOT NULL, " +
+                    "`state` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `payload` TEXT NOT NULL, PRIMARY KEY(`id`), " +
+                    "FOREIGN KEY(`investigationId`) REFERENCES `investigations`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_investigation_turns_investigationId` ON `investigation_turns` (`investigationId`)")
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_investigation_turns_investigationId_turnIndex` ON `investigation_turns` (`investigationId`, `turnIndex`)")
+            db.execSQL("ALTER TABLE usage_records ADD COLUMN effort TEXT DEFAULT NULL")
+
+            val cursor = db.query("SELECT id, taskId, createdAt, updatedAt, title, payload, applied FROM research_sessions")
+            val copied = ArrayList<Array<Any?>>()
+            cursor.use {
+                while (it.moveToNext()) {
+                    val id = it.getString(0); val taskId = it.getString(1); val createdAt = it.getLong(2); val updatedAt = it.getLong(3)
+                    val title = it.getString(4); val payload = it.getString(5); val applied = it.getString(6)
+                    val c = com.lifeadmin.autopilot.ai.investigation.LegacyInvestigations.fromStored(id, null, title, payload, applied, createdAt, updatedAt)
+                    copied += arrayOf(id, "TASK", taskId, null, createdAt, updatedAt, c.title, c.state.name, c.turns.size, com.lifeadmin.autopilot.ai.investigation.InvestigationJson.encodeMeta(c.meta))
+                    for (t in c.turns) {
+                        db.execSQL(
+                            "INSERT OR REPLACE INTO investigation_turns (id, investigationId, turnIndex, kind, state, createdAt, payload) VALUES (?,?,?,?,?,?,?)",
+                            arrayOf(t.id, id, t.index, t.kind.name, t.state.name, t.createdAtMs, com.lifeadmin.autopilot.ai.investigation.InvestigationJson.encodeTurn(t)),
+                        )
+                    }
+                }
+            }
+            for (row in copied) db.execSQL("INSERT OR REPLACE INTO investigations (id, origin, taskId, draftId, createdAt, updatedAt, title, state, turnCount, meta) VALUES (?,?,?,?,?,?,?,?,?,?)", row)
+            db.execSQL("DROP TABLE IF EXISTS research_sessions")
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
 }

@@ -159,20 +159,16 @@ class ResearchFlowUiTest {
         waitFor("detail_list")
         detailScrollTo("detail_research_latest")
         compose.onNodeWithTag("detail_research_latest").assertIsDisplayed()
-        // And the same through the apply screen's "Back to task".
+        // Since M4 a saved brief is read-only: no apply path exists, and opening it never changes the task.
+        val before = runBlocking { container.taskRepository.getSteps(taskId) }.size
         detailScrollTo("detail_research_latest")
         compose.onNodeWithTag("detail_research_latest").performClick()
         waitFor("brief_list")
-        compose.onNodeWithTag("brief_review").performClick()
-        waitFor("apply_rows")
-        compose.mainClock.advanceTimeBy(7_000)
-        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(7))
-        compose.onNodeWithTag("apply_confirm").performClick()
-        waitFor("apply_result")
-        compose.onNodeWithTag("apply_done").performClick()
+        assertTrue(compose.onAllNodes(hasTestTag("brief_review")).fetchSemanticsNodes().isEmpty())
+        compose.onNodeWithTag("brief_done").performClick()
         waitFor("detail_list")
         detailScrollTo("detail_title")
         compose.onNodeWithTag("detail_title").assertIsDisplayed()
-        assertEquals(2, runBlocking { container.taskRepository.getSteps(taskId) }.size)
+        assertEquals(before, runBlocking { container.taskRepository.getSteps(taskId) }.size)
     }
 }

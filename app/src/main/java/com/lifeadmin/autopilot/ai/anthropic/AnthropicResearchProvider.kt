@@ -283,6 +283,10 @@ class AnthropicResearchCalls(
         }
         builder.addUserMessage(call.user)
         if (call.maxSearches > 0) builder.addTool(WebSearchTool20250305.builder().maxUses(call.maxSearches.toLong()).build())
+        // Reasoning effort is a separate dimension from depth and search budget (RES-130/135); sent only when the turn set it.
+        call.effort?.takeIf { it.isNotBlank() }?.let { e ->
+            builder.outputConfig(com.anthropic.models.messages.OutputConfig.builder().effort(com.anthropic.models.messages.OutputConfig.Effort.of(e.lowercase())).build())
+        }
         (call.prior as? Message)?.let { builder.addMessage(it) }
         return builder.build()
     }

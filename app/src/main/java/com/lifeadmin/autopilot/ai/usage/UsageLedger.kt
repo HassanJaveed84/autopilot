@@ -4,7 +4,14 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.time.Instant
 
-enum class UsageFeature(val label: String) { PLANNING("Planning"), RESEARCH("Research"), RESEARCH_CONTINUATION("Research · continued"), ASSIST("Assist") }
+enum class UsageFeature(val label: String) {
+    PLANNING("Planning"),
+    RESEARCH("Research"),
+    RESEARCH_CONTINUATION("Research · continued"),
+    ASSIST("Assist"),
+    /** Objective preparation and clarification under general consent (RES-023): never investigation spend. */
+    OBJECTIVE_PREP("Research · understanding the question"),
+}
 
 enum class CallOutcome(val label: String) {
     IN_FLIGHT("In flight"),
@@ -45,6 +52,8 @@ data class UsageRecord(
     val estimatedMicros: Long? = null,
     val priceVersion: String = PricingCatalog.VERSION,
     val providerMessageId: String? = null,
+    /** Effort level sent with the call (M4), when the model supports one. */
+    val effort: String? = null,
 ) {
     val estimate: UsdEstimate? get() = estimatedMicros?.let { UsdEstimate(it, priceVersion = priceVersion) }
 

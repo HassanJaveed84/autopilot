@@ -14,23 +14,20 @@ object Routes {
     const val LICENSES = "licenses"
     const val PLAN = "plan?text={text}&auto={auto}"
     const val PLAN_TASK = "plan/task/{taskId}"
-    const val RESEARCH_HISTORY = "task/{taskId}/research"
-    const val RESEARCH_NEW = "task/{taskId}/research/new?q={q}"
-    const val RESEARCH_RUN = "task/{taskId}/research/run/{runId}?q={q}"
     const val RESEARCH_BRIEF = "task/{taskId}/research/{briefId}"
-    const val RESEARCH_APPLY = "task/{taskId}/research/{briefId}/apply?sel={sel}"
-    const val RESEARCH2_RUN = "task/{taskId}/research2/run/{sessionId}/{runId}"
     const val RESEARCH2_SESSION = "task/{taskId}/research2/{sessionId}"
     /** The one Proposal Review for planning and research sets (M2). */
     const val REVIEW = "task/{taskId}/review/{setId}"
     const val AI_USAGE = "ai_settings/usage?session={session}"
+    /** Investigation Threads (M4): history (optionally one task's), a new thread, one thread. */
+    const val INVESTIGATIONS = "research?task={task}"
+    const val INVESTIGATION_NEW = "research/new?task={task}&q={q}"
+    const val INVESTIGATION = "research/thread/{investigationId}"
+    fun investigations(taskId: String? = null) = "research?task=" + android.net.Uri.encode(taskId.orEmpty())
+    fun investigationNew(taskId: String? = null, question: String = "") = "research/new?task=" + android.net.Uri.encode(taskId.orEmpty()) + "&q=" + android.net.Uri.encode(question)
+    fun investigation(investigationId: String) = "research/thread/$investigationId"
     fun taskDetail(taskId: String) = "task/$taskId"
-    fun researchHistory(taskId: String) = "task/$taskId/research"
-    fun researchNew(taskId: String, question: String = "") = "task/$taskId/research/new?q=" + android.net.Uri.encode(question)
-    fun researchRun(taskId: String, runId: String, question: String) = "task/$taskId/research/run/$runId?q=" + android.net.Uri.encode(question)
     fun researchBrief(taskId: String, briefId: String) = "task/$taskId/research/$briefId"
-    fun researchApply(taskId: String, briefId: String, selected: Collection<String>) = "task/$taskId/research/$briefId/apply?sel=" + android.net.Uri.encode(selected.joinToString(","))
-    fun research2Run(taskId: String, sessionId: String, runId: String) = "task/$taskId/research2/run/$sessionId/$runId"
     fun research2Session(taskId: String, sessionId: String) = "task/$taskId/research2/$sessionId"
     fun review(taskId: String, setId: String) = "task/$taskId/review/$setId"
     fun aiUsage(sessionId: String? = null) = "ai_settings/usage?session=" + android.net.Uri.encode(sessionId.orEmpty())

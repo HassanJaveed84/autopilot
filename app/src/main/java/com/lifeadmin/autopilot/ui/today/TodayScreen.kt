@@ -88,6 +88,7 @@ fun TodayScreen(
     onOpenInbox: () -> Unit,
     onOpenSettings: () -> Unit = {},
     healthIssue: Boolean = false,
+    onOpenResearch: (() -> Unit)? = null,
     showHealth: Boolean = false,
     container: AppContainer? = null,
     onOpenHealth: () -> Unit = {},
@@ -113,7 +114,7 @@ fun TodayScreen(
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp),
     ) {
         item {
-            ScreenHeader(state.dateText, onOpenSettings, Modifier.statusBarsPadding(), showMark = true, healthDot = healthIssue)
+            ScreenHeader(state.dateText, onOpenSettings, Modifier.statusBarsPadding(), showMark = true, healthDot = healthIssue, onOpenResearch = onOpenResearch)
         }
         if (showHealth && container != null) item { HealthBanner(container, onFix = onOpenHealth) }
 

@@ -420,3 +420,418 @@ Earlier heads on this branch were red in CI and locally for test-synchronisation
 - Draft-targeted sets (`TargetKind.DRAFT`) are stored but the review opens task sets only until the Living Draft milestone (M3).
 - Emulator instrumentation and screenshots run in CI only; no physical device and no live provider call in this milestone.
 
+
+---
+
+# Milestone 4 plan — Research Online Investigation Thread (branch `prod-ux-m4-investigation-thread`, stacked on M2)
+
+Baseline: v1.0 + addenda A1–A3. Authorities: Documents A, C, D, F (Stage 0 fixtures and §5.2 cards), G §1–3, H, J; `UX-implementation-handoff.md` v1.1 (§3 components, §4.3 investigation, §5 states, §6 authorization, §8 inheritance and configuration, §13 production obligations, OD-3/4/8/11); `docs/TEST_MATRIX.md`. Written before any M4 code change, as the brief requires.
+
+## M4.1 Component disposition (read before this was written: every file under `ai/research`, `ai/research2`, `ui/research`, `ui/research2`, the Room schema, backup, usage ledger, M1 builders, M2 review)
+
+| Disposition | Component | Why |
+|---|---|---|
+| **Retain** | `ModelCall`, `CallResult`, `CallStop`, `ReplyShape`, `ResearchCallProvider`; `AnthropicResearchCalls` (adapter) | Provider seam is objective-neutral. Gains one field: reasoning effort via `output_config.effort` (SDK 2.73.0 exposes it; RES-135). |
+| **Retain** | `SourceRegistry2`, `SourceRef2`, the citation-overlap / `src=` pointer / restatement mechanics of `ContractParser` | Provenance rules (provider citations verify; model-typed pointers never do) are exactly RES-044/085/101. Moved into `ai/investigation/EvidenceText.kt` and reused by the new parser. |
+| **Retain** | `CallDiagnostic`, `CallClass`, `StageRecord`, `StageKind`, `RunUsage`, `Research2Config` limits (per-call timeout policy, bounded batches, caps), `ResearchError` catalogue | Privacy-safe diagnostics and the real-device fixes (P0-1/P0-2) carry over unchanged. |
+| **Retain** | Usage ledger (`UsageRecord`, `UsageLedger`, `RoomUsageLedger`, `CostCalculator`, `PricingCatalog`), `UsageScreen` | Adds `UsageFeature.OBJECTIVE_PREP` (RES-023 separate ledger entries) and a per-row `effort`; everything else as is. |
+| **Retain** | `InvestigationTurnBuilder` / `TurnInput` / `FrozenPayload` (M1), `ProposalSet` model, `ProposalApplier`, `ProposalReconciler`, Proposal Review (M2) | The frozen payload and the one write path were built for this milestone. |
+| **Retain (read-only)** | `SessionContent` and its sub-types, `ResearchBriefEntity` + `ResearchBriefScreen` | Legacy results stay readable exactly as produced (RES-092; the brief: never relabel historical conclusions). The types are kept as the legacy decoder; nothing new is written in that shape. |
+| **Refactor** | `DeepResearchService` → `InvestigationService` + `TurnRunner` | The gather / bounded-batch / checkpoint / spend-limit / stop / ledger loop is kept; what the loop asks for and how it judges "open" moves from requirement coverage to load-bearing claims. Stage plan: GATHER → VERIFY (open load-bearing claims, Standard and up) → SYNTHESIZE (Deep), each a ceiling. |
+| **Refactor** | `ResearchModes` → `ResearchPresets` | R48: Quick / Standard / Thorough / Deep + Custom. Quick, Thorough and Deep keep their exact model, budget and stage definitions; Standard is new (Sonnet 5.5, 6 searches, gather + verify). Saved settings map 1:1; `researchStandardModel` is a new, blank-by-default setting. |
+| **Refactor** | `ResearchProposalBridge` → `InvestigationProposalBridge` | The transitional coverage → "established" mapping is replaced by claim-level `src`: every item names the claims it rests on; each claim names its findings, status, as-of and evidence keys. Established → correction (may mark an assumption superseded); indicative/contested → labelled verification item; not established → no proposal; partial/stopped turns hold back anything resting on an unchecked claim (OD-8). |
+| **Refactor** | `ResearchSessionRepository` → `InvestigationRepository`; `research_sessions` → `investigations` + `investigation_turns` (Room v7) | Nullable task, nullable draft, origin, one immutable row per turn. Every existing session becomes one investigation (same id, so ledger rows still join) with one legacy turn per recorded run; the table is then dropped. |
+| **Refactor** | Backup | New `investigations` and `turns` arrays; files that still carry `sessions` import through the same conversion. |
+| **Refactor** | Task detail research card, AI settings research section, screenshot tour | Entry points for the thread (task-linked, standalone, association); legacy briefs listed read-only. |
+| **Retire** | `RequirementExtractor`, `DeliverableTemplate`, `Requirement` / `Coverage` as drivers, `CompletionPolicy`, `SessionAssembler`, `ProposalBuilder`, `Research2Prompt`, the REQ/CAND/ATTR/PICK/EXCLUDED/CALLOUT contract | RES-010/011 (Invariants): the objective, the investigation and the answer's shape come from the objective, never from a keyword or a template; RES-080: components present, never drive; RES-087: no requirement ids near user-facing text. `ProposalBuilder` manufactured a proposal per requested item — INT-041 forbids manufactured checklist actions. |
+| **Retire** | `ui/research2/*` (Preflight2Screen, InvestigationScreen, ResearchSessionScreen, Research2Components, Research2ViewModels), routes `RESEARCH_NEW`/`RESEARCH2_RUN`/`RESEARCH2_SESSION` | Replaced by `ui/investigation/*` (one thread screen with authorization / running / result / stopped / interrupted turns). |
+| **Retire** | M3A run and apply path: `ResearchService`, `ResearchActions`, `ResearchPrompt`, `BriefParser`, `AnthropicResearchProvider.research()`, `ResearchPreflightScreen`, `ResearchProgressScreen`, `ApplyResearchScreen`, `ResearchHistoryScreen`, routes `RESEARCH_HISTORY`/`RESEARCH_RUN`/`RESEARCH_APPLY`; `TaskRepository.applyTaskEdit` research-only undo | One canonical implementation (handoff §0.3). Saved briefs remain readable from the task (`RESEARCH_BRIEF`, read-only). |
+
+Not a wrapper: the keyword extractor and the deliverable templates are deleted, not hidden behind the new screens.
+
+## M4.2 Objective and evidence architecture (`ai/investigation`)
+
+**Objective (RES-010–013, 020, 025).** `Objective { question (verbatim), text (what is being learned or decided), askKind ∈ {FACT, PROCEDURE, COMPARE, RECOMMEND, EXPLAIN, FORECAST, DECIDE}, satisfies[], constraints[], evidenceNeeds[], unknowns[{text, blocking}], exclusions[], consequential, established, clarification? {question, options[]}, recommendedDepth + reason }`. `ObjectivePreparer` has two paths behind one interface: a local pass (verbatim objective; ask-kind from the sentence's own request words; ambiguity only from unresolved referents such as a bare "is it worth it?"; never from topic) and the provider pass (one no-search call, cheapest model, under general AI consent, ledgered as `OBJECTIVE_PREP` and never as investigation spend). With general consent off, no call is made and the local objective is shown for correction. Not established → a clarification card before any authorization surface exists (R-J, R-N(b)); the user's answer re-prepares. Established with a missing detail → authorization with the gap disclosed; the detail may be supplied under that authorization only before the first web search (RES-025, OQ engineering note).
+
+**Claims and evidence (RES-040–047, 070–072, 101, 107).** `Claim { id, text, type ∈ {FACT, CALCULATION, INFERENCE, JUDGMENT, RECOMMENDATION}, scope, asOf, loadBearing, volatile, dependsOnUser, support[EvidenceRef], against[EvidenceRef], status, statusReason, inheritedFromTurn?, supersededBy? }`; `EvidenceRef { sourceN, excerpt, scopeNote, retrievedAtMs, originKey }`. `ClaimAssessor` derives every status in code from the evidence attached to that claim: ESTABLISHED needs at least one provider-cited source in scope and not stale and no un-reconciled opposing evidence; opposing evidence on the same claim → CONTESTED (one claim, two positions); only pointers or restatements → INDICATIVE; nothing → NOT_ESTABLISHED; `dependsOnUser` → DEPENDS_ON_INPUT; JUDGMENT and RECOMMENDATION never carry a status of their own and inherit the weakest premise. Independence counts origins (`originKey` = publisher host), never pages. The same evidence yields the same statuses whatever model or depth produced it (RES-064): the assessor takes no configuration input.
+
+**Result state (RES-060–063).** `ResultDeriver` maps the load-bearing claims to ANSWERED / ANSWERED_WITH_CONDITIONS / PARTIALLY_ANSWERED / NOT_ESTABLISHED / NEEDS_INPUT. A condition is a `dependsOnUser` claim; an unresolved decisive fact (NOT_ESTABLISHED / CONTESTED / INDICATIVE on a load-bearing claim) is blocking → partial, never "with conditions" (RES-062). Stopped, budget-limited and failed turns derive from what was kept and are additionally marked. The model's own completeness words are parsed as text, never as state (RES-065).
+
+**Composition (RES-080–089).** The contract is objective-led: TITLE, ANSWER (prose with `[cN]` markers on factual premises), CLAIM blocks (type, scope, as-of, load-bearing, evidence lines with provider citations, AGAINST lines), CONDITION, NEEDS_INPUT, CHANGED / CONFIRMED (continuations), STEPS / COMPARE / RECOMMEND only when the ask kind calls for them, PROPOSE (task-linked only; must cite claim ids), UNRESOLVED. `AnswerComposer` validates: markers only on fact / calculation / inference claims (RES-085); a leakage scan removes or rejects internal ids and status words (RES-087); every load-bearing claim that is not established gets its caveat in the main answer when the model left it out (RES-086); "does not exist / is false" wording on a NOT_ESTABLISHED claim is rewritten as "no support was found" (RES-063); nothing is added because it was found (no price table unless the objective asks about price).
+
+**Thread (RES-090–094, 100–107; INT-021, 064; OD-4).** `Investigation { id, origin, taskId?, draftId?, title, turns[] }`; `Turn { id, index, kind, state, objective, authorization {includedContext, exclusions, inheritedDispositions, config (requested → actual model, effort, depth, budget, limit, preset), payloadSha, approvedAtMs}, payload (frozen JSON), result (immutable), usage, stop/failure/interruption record }`. A continuation keeps the prior objective and constraints, exposes a constraint change, inherits claims by relevance with dispositions SENT / EXCLUDED / NOT_SENT / REPLACED / FRESH (volatile claims are checked fresh, never reused), carries exclusions forward and never reinserts them, and records CHANGED (supersession, with the old claim marked superseded and never current support) or CONFIRMED (only when asked). Nothing from another investigation or another task is an input to the payload builder.
+
+**Authorization (RES-021–025, 030, 140–144, 150–154).** A turn row with its authorization record and frozen payload is written before any provider call; the runner refuses to start without one (Stage 0: no web-search call without an authorization event). Preparation under general consent is the only call allowed before it. Stop keeps established claims and marks the rest "not checked" in the main answer; failure midway does the same with the failure stated; process death marks the turn INTERRUPTED on next start, settles its ledger rows as unknown, restarts nothing, and the resume surface lists preserved / unresolved / proposed with remaining budget "unknown". Continue and Resume are new turns with new authorizations.
+
+**Configuration (R48; RES-120–123, 130–135, 141).** Independent dimensions: model, reasoning effort (sent as `output_config.effort` only for models the app lists as supporting it; otherwise the control is disabled with the reason; the setting is recorded either way), depth (preset), search budget (follows the preset until set), spending limit. Requested and actual model are both recorded per turn. No silent substitution: an unavailable model is an error with alternatives, never a swapped run.
+
+## M4.3 Slices (one reviewable PR, separate commits)
+
+1. Domain models, assessor, deriver, composer, parser, preparer, presets — deterministic tests incl. Stage 0 fixture sets and five cross-domain objectives.
+2. Room v7 (`investigations`, `investigation_turns`, `usage_records.effort`), migration 6→7 with seeded sessions, repository, backup round trip and legacy import.
+3. `InvestigationService` + `TurnRunner`: prepare, authorize, run, stop, failure, interruption/resume, association; fake-provider tests for authorization, payload exclusion, isolation, ceilings, preservation.
+4. Continuation: inheritance dispositions, exclusion persistence, supersession/changed-since, obsolescence of earlier proposals.
+5. Compose UI (`ui/investigation`): home/history, thread, configuration sheet, evidence sheet, association sheet, task-detail entry points; Robolectric at default and 320 dp / 200 %.
+6. Proposals through the canonical review; retirement of the research2 UI and the M3A run/apply path; legacy read-only access kept.
+7. Regression, gates, CI, screenshot tour, docs, report.
+
+Known boundaries recorded up front: draft-origin research and the Living Draft hand-offs are M3 (G6); the combined planning + research period budget with warning and hard-stop thresholds is M5 (RES-142) — M4 keeps the existing monthly soft note and the per-turn spending limit; objective-preparation calls are ledgered in M4 (the "necessary minimum" the brief allows) and the RES-142 combined threshold is not applied to them until M5.
+
+---
+
+# Milestone 4 report — Research Online Investigation Thread (branch `prod-ux-m4-investigation-thread`, stacked on M2; draft PR #8)
+
+Everything below is deterministic evidence: scripted call provider, in-memory or file Room, Robolectric Compose. **No live provider call was made and no physical device was used.** Emulator instrumentation runs in CI only.
+
+## Commits
+
+| Slice | Commit | Content |
+|---|---|---|
+| Plan | `76b7dca` | M4.1–M4.3 above, written before code |
+| 1 | `96e1d20` | Objective and evidence domain: `Objective`, `Claim`, `EvidenceRef`, `ClaimAssessor`, `ResultDeriver`, `AnswerComposer` + `LeakageScan`, `InvestigationParser`, `ObjectivePreparer`, `ResearchPresets` (R48) |
+| 2 | `53fa7e8` | Room v7 (`investigations`, `investigation_turns`, `usage_records.effort`), `MIGRATION_6_7`, `InvestigationRepository`, backup arrays and legacy import |
+| 3 | `c7e6e09` | `InvestigationService`: prepare / clarify / authorize / run / stop / failure / interruption / association; `AuthorizationBuilder` (frozen payload + SHA-256) |
+| 4 | `54f4a0d` | Objective-led composition across domains; continuation (inheritance dispositions, exclusions, supersession, CHANGED / CONFIRMED) |
+| 5 + 6 | see PR | Native thread UI and home; proposals through the canonical review; retirement of the M3A and M3A.2 run/apply paths. **Committed together**: the new routes, task-detail entry points and `AppContainer` wiring replace the retired screens in the same files, so neither half compiles alone. |
+| 7 | see PR | Regression fixes, screenshot tour, gates, docs and this report |
+
+## Components: what actually happened versus M4.1
+
+| Plan | Outcome |
+|---|---|
+| Retain provider seam, `SourceRegistry2`, diagnostics, ledger, M1 builders, M2 review | As planned. `ModelCall` gained `effort`; the ledger gained `UsageFeature.OBJECTIVE_PREP` and a per-row `effort`. |
+| `DeepResearchService` → `InvestigationService` + `TurnRunner` | **Deviation:** one class, `InvestigationService`. The run loop (GATHER → FILL_GAPS → CROSS_CHECK → SYNTHESIZE, each a ceiling) lives in it; a separate `TurnRunner` added no seam the tests needed. |
+| `ResearchModes` → `ResearchPresets` | New runs use `ResearchPresets` only. `ResearchModes` stays because the read-only legacy session screen labels old runs with it. |
+| `ResearchProposalBridge` → `InvestigationProposalBridge` | New bridge written (claim-level `src`). The old bridge stays only so a legacy M3A.2 report's pending proposals can still open in the canonical review. |
+| `research_sessions` → `investigations` + turns | As planned: same ids, one legacy turn per recorded run, table dropped. |
+| Retire `RequirementExtractor`, `DeliverableTemplate`, `CompletionPolicy`, `SessionAssembler`, `ProposalBuilder`, `Research2Prompt` | **Partly a deviation.** Removed from every run path: no new run reads a keyword, a template or a requirement. `RequirementExtractor` and `Research2Prompt` are deleted from the app (`RequirementExtractor` survives as a test fixture helper). `DeliverableTemplate`, `CompletionPolicy`, `SessionAssembler`, `ContractParser` and `ProposalBuilder` remain as the **decoder and display code for stored M3A.2 reports** (the read-only session screen and the legacy converter call them); their existing tests still run. Deleting them would make stored reports unreadable, which RES-092 forbids. |
+| Retire `ui/research2/*` and routes `RESEARCH_NEW` / `RESEARCH2_RUN` | `Preflight2Screen` and `InvestigationScreen` deleted; route `RESEARCH2_RUN` removed. **Deviation:** `ResearchSessionScreen` is kept as the read-only view of a legacy report (no continue, no run) because a legacy turn's "Open the original report" goes there. |
+| Retire the M3A run/apply path | `ResearchService`, `ResearchActions`, `ResearchPreflightScreen`, `ResearchProgressScreen`, `ApplyResearchScreen`, `ResearchHistoryScreen` and routes `RESEARCH_HISTORY` / `RESEARCH_RUN` / `RESEARCH_APPLY` deleted. The M3A brief screen is read-only (its "apply moves" path is gone, so there is now **one** task write path for research: the canonical review). **Retained, unused by any screen:** `BriefParser`, `ResearchPrompt` and `AnthropicResearchProvider.research()`; the adapter's HTTP tests still exercise them, and removing the adapter method is a separate clean-up. |
+
+Not a wrapper: the new thread never calls the keyword extractor, a deliverable template or the coverage policy. The answer's shape comes from the objective's ask kind (`AnswerComposer`), and statuses from evidence (`ClaimAssessor`).
+
+## Architecture as built
+
+`ObjectivePreparer` (local pass; provider pass only under general AI consent, one no-search call, ledgered as objective preparation) → turn in CLARIFYING or AUTHORIZING → `AuthorizationBuilder` (objective, context switches, inherited findings with dispositions, configuration, estimate, frozen payload JSON and its SHA-256) written onto the turn → `InvestigationService` run loop with bounded calls, a checkpoint after every call, the search budget and the spending limit as ceilings → `InvestigationParser` → `ClaimAssessor` → `ResultDeriver` → `AnswerComposer` → immutable turn result → `InvestigationProposalBridge` (task-linked turns only) → canonical Proposal Review → `ProposalApplier`. The thread UI (`ui/investigation`) renders every turn state from the stored turn, so a restart shows the same thread.
+
+## Room v7 migration
+
+`MIGRATION_6_7` creates `investigations` (task FK `ON DELETE SET NULL`, so deleting a task keeps the research) and `investigation_turns` (unique `investigationId + turnIndex`, cascade on investigation delete), adds `usage_records.effort`, converts every `research_sessions` row through `LegacyInvestigations.fromStored` with the same id (ledger rows still join), then drops the old table. No destructive fallback. Tested by `MigrationTest.migrateV6ToV7…` on a seeded v6 database, `InvestigationRepositoryTest` and the backup cases (files with `sessions`, files with `investigations`, a running turn in a backup imports as interrupted).
+
+## Document F Stage 0 — M4 rows
+
+| Stage 0 bullet | M4 coverage |
+|---|---|
+| Authorization events vs. provider calls (RES-021/023/025) | `InvestigationServiceTest.preparingAndOpeningMakeNoProviderCall…` asserts the authorization and payload hash are on the turn when the first call is made; clarification blocks authorization (`…aClarificationBlocks…`) |
+| Outbound payload inspection (RES-093/160; INT-020–022/064) | Same test: an unticked context item is listed as not sent and its text is absent from the payload and the prompt; excluded findings stay out of later turns (`InvestigationContinuationTest`, `InvestigationThreadUiTest.aFollowUpCanExcludeAnEarlierFinding…`) |
+| Ledger completeness incl. effort and partial/unknown | Effort per row; stopped and interrupted turns settle as floor / unknown (`InvestigationServiceTest` stop and recovery cases) |
+| Ceiling precedence (RES-030/141) | `InvestigationServiceTest` spending-limit cases (added in slice 7, see below) and the search-budget endings |
+| Status derivation, same evidence → same status, negative claims, contradictions, independence | `ClaimAssessorTest`, `ResultDeriverTest`, `AnswerComposerTest` — now on the claim model |
+| Citation-to-claim linkage (RES-044/085/101) | `InvestigationParserTest` (provider citations verify; typed pointers never do), `AnswerComposerTest` (markers only on citable claims) |
+| Provenance on incorporated findings; report immutability | `InvestigationProposalBridge` writes claim-level `src`; turns are immutable rows; continuations never edit an earlier turn |
+| Leakage scan (RES-087) | `LeakageScan` + `AnswerComposerTest` across five unrelated objectives |
+
+## Cross-domain results
+
+`InvestigationContinuationTest.fiveUnrelatedObjectivesGetFiveShapesFromTheirAskAndNoneLeaksInternals` runs five unrelated objectives through the same service, parser, assessor and composer:
+
+| Objective | Shape produced | Derived state |
+|---|---|---|
+| Address fact (Union Station, DC) | Lead only; no sections; no recommendation | Answered |
+| Passport renewal procedure | Steps + a condition the person resolves; no table | Answered with conditions |
+| Multivitamin comparison | Comparison table on criteria; optional pick; "Sources disagree" caveat in the main answer | Partially answered |
+| Engineering decision (Snowflake direct vs. replicate to Postgres) | Recommendation whose reasons cite claims; the recommendation itself uncited; flip condition | Answered with conditions |
+| Unverifiable product claim (filter removes 99.99 % of microplastics) | An "unresolved" section; nothing proposed | not asserted in this test |
+
+All five pass the leakage scan and contain no template vocabulary. The fragrance follow-up (`aFollowUpChangingTheBudget…`) adds a sixth domain for continuation: the new budget replaces the old constraint, volatile prices are checked fresh and the earlier pick is superseded.
+
+## Authorization and payload isolation
+
+Nothing paid runs before Start. Preparation, opening the thread and changing settings make no call. The payload is built only from the current task's allow-listed fields the person left switched on, the objective, and the inherited findings of the **same** investigation with their dispositions; nothing from another investigation or another task is an input. The exact JSON the run will send is viewable before Start ("See exactly what will be sent") and its SHA-256 is stored on the turn.
+
+## Stop, interruption and recovery
+
+Stop offers keep or discard. Keep marks unchecked load-bearing claims "Not checked before it stopped" in the main answer; discard drops the findings but keeps the turn and its usage. A failure midway keeps checkpointed evidence and states the failure. Process death leaves a RUNNING turn; on next start `recoverInterrupted()` marks it INTERRUPTED, settles its usage as unknown and restarts nothing. Resume is a new turn with a new authorization and lists what was preserved and what is unresolved.
+
+## UI and accessibility
+
+One thread screen for every state: question, objective card (editable), clarification, missing details, authorization (depth presets, Adjust panel with model / searches / limit / effort, context switches, inherited findings, payload sheet, estimate), running (progress, Stop), result turns (answer, caveats, sections, recommendation, evidence and sources sheets, "How this was researched"), stopped / failed / interrupted turns with resume, declined turns, legacy turns with "Open the original report", follow-up composer. A home list shows all investigations, task-linked and standalone, with link / unlink / delete. Task detail, Today and the review screen link into it. Robolectric tests cover the flows at default size and at 320 dp with 200 % text; the bottom-bar footer shortens at large font scales so Start stays reachable.
+
+## Slice 7 findings (regression pass)
+
+- **Depth or configuration tap could be lost (product bug, fixed).** The thread view model rebuilt the authorization preview from several coroutines at once. A slower rebuild that began before a tap could finish last and overwrite the configuration, so Start could run a different depth than the one chosen. Rebuilds are now serialised, always read the latest choices and write nothing if the choices changed mid-rebuild. Start resolves its configuration from the current choices directly. Seen in `InvestigationThreadUiTest.aFollowUpCanExcludeAnEarlierFinding…`, where a two-stage run was sent instead of Quick.
+- **A spending limit below the first call reported "the reply was empty" (product bug, fixed).** Nothing had been sent. The turn now fails with "Your spending limit is below the first call" and nothing sent. A turn whose ceiling left nothing gathered is FAILED, not DONE. New tests: `InvestigationServiceTest.aSpendingLimitBelowTheFirstCall…` and `…aSpendingLimitTrims…`. These restore the ceiling coverage the retired `DeepResearchServiceTest` had.
+- **Robolectric test harness.** Waiting on service or database state with Compose's `waitUntil` does not run the main looper when the UI is idle. A coroutine resuming on Main after a database hop could then sit unrun, and the stop test timed out. The thread UI tests now use a looper-pumping wait for non-UI conditions and the file-backed test database (WAL, as in production). This is a test-environment fix; it changes no app code.
+
+## Gates actually run
+
+Local, on the slice 7 working tree (committed as the head of this branch), `./gradlew --continue lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest`: **exit 0**.
+
+| Gate | Result |
+|---|---|
+| `testDebugUnitTest` | 596 tests in 83 classes, 0 failures, 0 errors, 0 skipped |
+| `lintDebug` | "No issues found." |
+| `assembleDebug` / `assembleRelease` / `assembleDebugAndroidTest` | all three APKs built (30.8 MB / 4.5 MB / 1.2 MB); local debug key only |
+| Thread UI + service tests, repeated | `InvestigationThreadUiTest`, `InvestigationThreadLargeTextUiTest`, `InvestigationServiceTest`: three consecutive green runs (6 + 15 tests) |
+| Emulator instrumentation + `ScreenshotTourInvestigation` | CI only (`Instrumented tests (emulator API 34)`); not run locally. The androidTest APK compiles. |
+
+Earlier runs on this branch, recorded rather than overwritten: the first full run on the slice 5 + 6 tree (`e760258`) had 594 tests with 1 failure (`stoppingKeepsWhatWasFound…`, the harness wait above). The second had 596 tests with 1 failure (same test). In isolation that run also exposed the lost-tap race in the follow-up test. Both were fixed as described above.
+
+Android CI on the pushed head is recorded in PR #8.
+
+## Limitations and dependencies
+
+- **No live provider run.** The prompts, contract and parser are tested against scripted replies only. A live Anthropic run (with web search) needs your explicit approval and your key.
+- **No physical device.** Emulator instrumentation and the screenshot tour run in CI only.
+- Legacy decoder code (see the components table) is retained for reading stored reports; removing it requires a decision to stop displaying them in their original form.
+- `AnthropicResearchProvider.research()`, `BriefParser` and `ResearchPrompt` are unused by any screen and should be removed in a clean-up PR.
+- Draft-origin research and the Living Draft hand-offs are **M3** (not started). The combined planning + research period budget with warning and hard-stop thresholds is **M5**; M4 keeps the monthly soft note and the per-turn spending limit, and objective-preparation calls are ledgered but not yet counted against a combined threshold.
+
+---
+
+# M4 evidence-correctness review (RES-042–046, 070–072, 107), 2026-10-23
+
+A narrow pass on PR #8, requested before M3. It traced the evidence path from the reply to the answer: the parser reads EVIDENCE and AGAINST lines, the turn work merges them, the claim assessor sets each status, the result deriver sets the state, then the composer and the proposal gate run. Each finding was reproduced as a failing test on `d01894a` before any change (8 of 15 new cases failed).
+
+## Findings
+
+| Concern | Verdict | Evidence on `d01894a` |
+|---|---|---|
+| Any one non-pointer citation without opposing evidence establishes a claim (RES-043) | **Confirmed.** Nothing scaled the evidence needed with the claim or its consequences. A health-benefit claim resting on one blog post and one small study was established. | `aConsequentialBenefitClaimOnLowQualityEvidence…`, `aConsequentialClaimWithNoDeclaredStandard…` failed |
+| Evidence about another variant, place, population or date establishes a claim (RES-044) | **Confirmed.** The prompt told the model not to cite such evidence, but code never checked. `EvidenceRef.scopeNote` existed and was never set. | `aSourceAboutAnotherVariant…` failed |
+| Freshness from a fixed seven-day window on fetch time (RES-046) | **Confirmed.** Every evidence item was stamped with the current call's time, so the window never fired within a turn. The claim's own `asof` was parsed and never used. An eleven-month-old price fetched today was established. | `anOldPrice…`, `aFastChangingClaimWithNoDate…`, `aRuleTheEvidenceSaysChangesYearly…` failed |
+| Opposing evidence from an earlier period or another seller (RES-071) | **Confirmed.** It made the claim contested. | `opposingEvidenceAboutAnotherScopeOrAnEarlierPeriod…` failed |
+| Replaced findings as current support (RES-107) | **Confirmed, in three places.** The answer kept citation markers to a replaced claim. A judgment resting on it kept its status. A proposal resting on it passed the gate. | `aSupersededFindingIsNeverCurrentSupport` failed |
+| Already protected | Pointer-only citations never verify. Repeats of one origin count once. Judgments and recommendations take their premises' status and are never cited. In-scope opposing evidence makes one contested claim. The result deriver and the outgoing payload ignore replaced claims. Volatile claims are never reused on a continuation. An old stable rule was already treated as current. One authoritative source already established a narrow fact. | Existing tests plus the 7 new cases that passed before the change |
+
+## What changed (smallest changes, no domain templates)
+
+- **Contract.** A CLAIM header may state `needs=direct|corroborated|review` (the evidence this claim needs, from its consequences) and `fresh=<7d|3m|1y>` (how long the fact stays true). An EVIDENCE or AGAINST line may begin with `(kind=primary|review|study|secondary · asof=… · about=…)`. The prompt explains these in general terms, with no category list. Prompt version 2.
+- **Parser.** Reads those attributes into the evidence and the claim and strips them from the excerpt. An `about` that restates the claim's own scope is no mismatch. A government host is only a fallback for `kind` when the reply gives none.
+- **Assessor.**
+  - Evidence counts only when it is in scope and fresh for this claim.
+  - Freshness uses the fact's own date: the evidence's, else the claim's, never the fetch time alone.
+  - The window is the claim's own. The seven-day default applies only to a volatile claim that states none. A stable fact with no window never goes stale.
+  - The standard is the claim's own. When a consequential objective's load-bearing claim states none, it needs the issuing source, a review, or independent agreement. Independent agreement is one route among three, never a minimum count.
+  - Opposing evidence about another scope or an earlier period no longer makes a claim contested.
+  - A judgment resting on a replaced finding is not established.
+  - Reasons say what fell short in plain words.
+- **Composer and proposal gate.** No citation marker to a replaced claim. Proposals resting on one are held back. The change itself is still shown, as history.
+- **UI.** Evidence rows show "About …" or "As of …" when the reply states it.
+- **Fixtures.** The supplement-comparison replies now state `kind=` the way the new contract asks. The old seven-day unit test now uses dated evidence. It had treated fetch time as the fact's date, the confirmed flaw.
+
+## Still dependent on live evaluation
+
+The code now enforces these signals, but a live model must supply them correctly: what a source is about, the date the page gives, the kind of source, the claim's standard and its freshness window. A model that labels a maker's marketing claim as `kind=primary`, or omits `about=`, can still overstate a claim. Signals the code can only use to lower a status cannot catch that. Confirming this needs live runs on Document F's live scenarios: R-A benefit claims, R-C prices, R-D the Chanel variants, R-E an official rule, and R-K price history. Those runs are paid and were not performed here.
+
+## Gates actually run
+
+Local, `./gradlew --continue lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest`: **exit 0**.
+
+| Gate | Result |
+|---|---|
+| Unit and Robolectric tests | 612 in 84 classes, 0 failures. That is 16 more than M4's 596: the new `EvidenceCorrectnessTest` class. |
+| Lint | "No issues found." |
+| APKs | debug, release and androidTest all built |
+
+Android CI on the pushed head is recorded in PR #8. No live provider call was made and no physical device was used.
+
+---
+
+# M4 live evaluation R-N(a) and its fixes, 2026-10-23
+
+This was the first paid live run, scored against the canonical frozen Document F at `docs/product-baseline/Document_F_Evaluation_Framework_v1.0_FROZEN.md`. The scorecard and the defect investigation are in `docs/live-eval/R-N-a-2026-10-23.md`, and the index is `docs/live-eval/README.md`.
+
+**Verdict: fail.** The address was correct and the state ANSWERED was justified. However:
+
+- **Gates:** the Leakage gate failed.
+- **Essential dimensions:** objective fidelity 2, evidence grounding 1, status honesty 1.
+- **Other dimensions:** efficiency 0.
+- **Serious failures (§6):** two, a misleading claim about completeness and a misattributed quotation.
+
+The run cost $0.09611 and used 2 of 3 searches.
+
+**Confirmed defects, each fixed generally and reproduced first from the run's own replies:**
+
+| Defect | Root cause | Fix |
+|---|---|---|
+| E: second stage run on a settled fact | An undated stable fact with a freshness window was judged stale | Undated stable evidence is current while it was read within the window |
+| A: false missing-source limitation | The merge replaced same-turn evidence. The composer passed a later call's narration about its own search. The prompt named no held evidence | Same-turn evidence is kept. A later call's search narration is left out. Prompt v3 lists held evidence and why each claim is open |
+| C: paraphrase shown as a quote | Only the model's line was stored on the evidence row | `EvidenceRef.quote` holds the verbatim cited text; the model's line is labelled a summary |
+| D: wrong scope reason | The model used `about=` to describe the page, and the reason stated the label as fact | The prompt defines `about=`; the reason reports a label |
+| Leakage: "held as s1" | Unresolved items were not scanned | Scanned; bare source numbers removed |
+| Independence overstated | Origins are hosts | The reason says "sources on different sites" |
+
+The `official` flag (government host only) was harmless and has been documented. Prompt contract version 3.
+
+**Stored data:** `EvidenceRef.quote` is a new nullable field with a default. Stored turns and backups without it decode unchanged, and the Room schema is unchanged.
+
+**Still dependent on live evaluation:** prompt v3 behaviour, the labels models supply (`kind`, `volatile`, `fresh`, `asof`), origin independence by publisher, an unestablished side claim stated in the lead, and R-N(b)'s reliance on the provider objective pass. The replays are not a pass. Document F §2.2 requires the scenario to be rerun live on the candidate build.
+
+---
+
+# M4 final correctness pass, 2026-10-24
+
+A narrow pass requested before the next paid call. It covered three issues raised in review. Each was reproduced first: 12 new test cases failed on `dd9de39`. No paid call was made. The historical R-N(a) record and scorecard are unchanged.
+
+| Issue | Confirmed? | Root cause | Fix |
+|---|---|---|---|
+| 1. A weak claim stated as plain fact in the answer | **Yes.** In the R-N(a) replay, "The station fronts Columbus Circle…" read as fact although c2 was not established. | Answer segments were whole paragraphs carrying every marker in them, so the composer could not tell which sentence stated which claim. It only guarded negative wording. | The parser records each sentence with its own markers (`AnswerSegment.sentences`). `StatusQualifier` keeps each sentence and labels the ones whose claims are weak. A mixed sentence names its weak part. Already-hedged and "nothing was found" sentences are left alone, and the absence guard (RES-063) runs per sentence. Paragraphs, chips and caveats are unchanged. |
+| 2. Different sites counted as independent agreement | **Yes.** Two sites of one publisher, three pages repeating one announcement, two subdomains, and two sites of unknown independence all established a `needs=corroborated` claim. | `meets()` counted distinct hosts. | Evidence is grouped into origins (registrable site, stated publisher `origin=`, a stated publisher naming the other page's site, a shared passage of 12+ words). Agreement corroborates only between origins whose independence is known. The issuer and review routes are unchanged. Prompt contract version 4 asks for `origin=` on each evidence line. |
+| 3. R-N(b): "address of Union Station" established with no city | **Yes.** The local preparer saw ambiguity only in a question with no subject. The app's default flow (preparation call off) offered authorization. | No local rule for a place-dependent ask that names no place. | A place-dependent ask (address, hours, directions, phone, nearest) that names no place is not established and asks which place, locally, with no call. A named place goes straight to authorization. With the optional preparation call on, the provider may settle a unique place, ledgered as `OBJECTIVE_PREP` under general consent. If that call fails, the place is still asked for. |
+
+**Stored data:** `AnswerSegment.sentences` and `EvidenceRef.origin` are new fields with defaults. Stored turns and backups decode unchanged. Composed answers keep no sentence list, and the Room schema is unchanged.
+
+**Known limits:**
+- Sentence splitting is English-oriented, with an abbreviation list.
+- Registrable sites use a short list of second-level suffixes, not the full public-suffix list.
+- Origin independence still depends on the reply stating publishers. Without that, agreement never corroborates, which can leave a claim only indicated where a careful reader would accept it.
+- The local place rule cannot tell a unique landmark from a common name, so it asks; the optional preparation call can settle it instead.
+
+---
+
+# M4 live rerun R-N(a), 2026-10-24
+
+This was one owner-approved paid rerun on the fixed engine (`41dc471`, prompt contract v4), run through the harness at `9cc17fe`. That commit changes only the development-only harness: each run gets its own directory and database, so nothing is overwritten. Report: `docs/live-eval/R-N-a-2026-10-24-rerun.md`.
+
+**Verdict: fail.**
+- **Gates:** the Leakage gate failed.
+- **Dimensions:** objective fidelity 2, evidence grounding 2, status honesty 2, presentation 0, efficiency 2.
+- **Serious failures:** none.
+
+**What went right:** one billed call, one search of 3, $0.051416. FILL_GAPS was skipped on sufficiency. The single claim rests on the station operator's own page, with all three citations verbatim. There was no side claim and no false process limitation in the answer.
+
+**New defects** (diagnosed, not fixed, no rerun):
+
+| Defect | Cause | Effect |
+|---|---|---|
+| **N1** | `EvidenceAttrs.split` cannot read an attribute block containing parentheses. The model wrote `origin=… (Union Station Redevelopment Corp.)` and `asof=2026 (page about 168 days old …)`. | `kind`, `origin` and `asof` were lost on every line. The raw block reaches the evidence sheet's summary line, which is not leakage-cleaned. |
+| **N2** | The GATHER prompt shows only "searches allowed on this call". | The unresolved section described that per-call allowance as the investigation's limit. |
+
+The proposed fixes are in the report (§6).
+
+---
+
+# M4 fix pass for N1, N2 and source dates, 2026-10-24
+
+This pass was approved after the second R-N(a) live run. Each defect was first reproduced on `0d4b900` from that run's own sanitized reply (`fixtures/live/R-N-a-2026-10-24-rerun.replies.json`): 9 new cases failed there, and 3 characterization cases passed. No paid call was made in this pass. Both historical scorecards and their sanitized JSON are unchanged.
+
+| Defect | Root cause | Fix |
+|---|---|---|
+| **N1:** a label block containing parentheses was ignored, and the raw block was shown as Claude's summary | `^\(([^()]*)\)` cannot match nested parentheses. A block that failed to match was silently treated as having no labels, so evidence counted as in scope. | A balanced-parenthesis reader splits fields only outside parentheses. Anything it cannot read safely marks the evidence "labels unreadable": the citation and quote are kept, but it is not counted as support (an unreadable AGAINST still counts). The displayed summary never carries labels. |
+| **N2:** the per-call allowance was described as the investigation's limit | The prompt gave only "searches allowed on this call". The model's remark reached the unresolved section. A run that used its whole budget with a gap open ended as "Finished". | The prompt gives each call's share against the authorized budget. Allowance remarks are removed from the answer and from unresolved items. The turn log states searches used against authorized, and the engine's stop reason. That case now ends as "Search budget reached". |
+| **Dates:** `asof=` came from search-result page age | Any `asof=` counted as the fact's date | `EvidenceRef.asOfBasis` (QUOTED or STATED) and `asOfNote`. Only a date the cited text shows dates the fact; a stated date can only make evidence older. |
+
+Prompt contract **version 5**: `asof=` must be a date the page states, attribute values must be plain words, and each call is told its share of the budget.
+
+**Fixture changes:** four fixtures with volatile prices whose cited text gave no date (fragrance seller pages, an X9 retailer and museum tickets) now carry the date in the cited text. Their tests are about conflict and continuation, not dating. `ClaimAssessorTest` constructs dates the page shows.
+
+**Consequence for live price scenarios (R-C, R-K):** a seller page that shows no date can no longer have its price called current on the strength of a date the model supplies. Such prices will be "only indicated" unless the page dates them. This is intended: the search index can serve old page content.
+
+---
+
+# Live R-N(a) third run on `afb9cad` (prompt v5), 2026-10-24
+
+The full scorecard is `docs/live-eval/R-N-a-2026-10-24-run3.md`. **Verdict: FAIL.** Every gate passes and there is no serious failure, but evidence grounding scores 1, and that dimension is essential.
+
+**What the fix pass achieved live:**
+- one billed call, one search of 3, $0.053328, FILL_GAPS skipped on sufficiency;
+- every label block was parsed;
+- no contract syntax or allowance remark was shown;
+- no date was claimed beyond what the pages show;
+- the log states the searches used and the stop reason.
+
+**New findings** (diagnosed, not fixed, no rerun):
+
+| Finding | Cause | Effect |
+|---|---|---|
+| **N3** | `AnswerComposer` shows WORTH_KNOWING for any ask whose claims are current. It has no materiality check. | An unrequested Columbus Circle item was shown. |
+| **N4** | The status qualifier checks each sentence's claim **statuses**, not its content against the claims' cited text. | "where Massachusetts Avenue NE meets First Street NE" was shown unqualified, although no cited text supports it. |
+
+The proposed fixes are in the report (§5).
+
+---
+
+# M4 answer-grounding pass: N3, N4, R-C review and R-N(b) harness, 2026-10-24
+
+Approved after the third R-N(a) live run. Every new case was first run on `ddf6b44`: 11 of 15 failed there. The 4 that passed are guards the fix must keep: a relevant exception, a safety warning, a supported paraphrase and qualified uncertainty. No paid call was made in this pass. All three historical R-N(a) scorecards and their sanitized JSON are unchanged.
+
+## N3: objective relevance
+
+**Root cause.** `AnswerComposer.compose()` showed every WORTH_KNOWING item whose claims were current. The prompt asked for materiality, but nothing enforced it.
+
+**Fix (`Relevance`).**
+- The contract (prompt v6) asks each item to state how it bears on the answer: `bears=risk|exception|limitation|prerequisite`, with `on=cN` naming the answer claim it qualifies.
+- A risk is always kept: omitting a warning could do harm.
+- An exception, limitation or prerequisite is kept only when it is tied to the answer (`on=` names an answer claim, or the item states a load-bearing claim) and its words actually restrict it ("only", "closed", "unless", "must", "not" and similar).
+- Anything else is omitted, not disclaimed.
+- For a narrow fact ask, a main-answer sentence that states only claims the reply marked `load=no`, and neither restricts nor warns, is background and is also left out.
+- No topic, category or template is consulted.
+
+## N4: complete factual grounding
+
+**Root cause.** The composer judged a sentence only by its claims' *statuses*. Nothing compared the sentence, or the claim's own wording, with the cited page text.
+
+**Design.**
+1. **Atomic attribution.** Prompt v6 says a sentence may state only what its cited claims state, and a claim only what its cited text says. Any further detail needs its own claim and evidence, or is left out.
+2. **Lexical grounding (`Grounding`, every objective, free).**
+   - **Corpus.** Each sentence is checked against the corpus of the claims it names: verbatim cited text, page title, page address and site name. A judgment uses its premises. The claims' own wording, the reply's evidence summaries and the reply's labels never count.
+   - **Checkable details** must appear in the corpus: numbers with the unit that follows them ("1000 IU" is not supported by "1000 mcg"), names, places and dates.
+   - **Normalization** covers abbreviations (Ave, D.C., NE/Northeast), ISO dates, leading zeros, decimals and number words.
+   - **Certainty and universality words** ("prevents", "always", "for every", "at any scale") must be the source's own.
+   - **Hedges.** Hedged research evidence (study or review: "may", "limited", "associated with") must not be stated flatly.
+   - **Claims.** A fact claim whose own wording adds a detail its cited text does not show is only indicated: "The cited text does not show 500 mg".
+3. **What happens to an unsupported part.**
+   - A separable clause (", where …", ", which …", ", also …", a parenthesis) holding the unsupported detail is removed.
+   - Contrastive clauses (", but …", ", unless …") are never removed.
+   - Otherwise the sentence is kept and the unsupported part is named: "(the cited sources do not show: 18:00)". A sentence whose claims are already weak keeps its status label instead.
+   - In optional material, an item that still says something unsupported is omitted, except a risk, which is kept and qualified.
+4. **Model-assisted check (`WordingCheck`, consequential objectives only).**
+   - **Why it is needed.** String matching cannot tell whether a paraphrase means the same thing: "increased lean mass" is not "builds muscle strength". For health, legal, financial and safety answers, an overstated sentence is a Document F §6 serious failure.
+   - **How it runs.** The authorization includes one extra call, without search (`CHECK_WORDING`), and the estimate includes it. The card says so.
+   - **What it sees.** The verifier sees only the sentences and their verbatim cited text.
+   - **How its findings are used.** Findings only remove or qualify. A span that is not the sentence's own words is not trusted: the whole sentence is then named as not shown. A "supported" verdict never overrides the lexical checks. Claim statuses never change because of it.
+   - **If it cannot run** (failure, refusal or spending limit), the answer says so and the lexical checks still apply.
+   - **R-N(a)** is not consequential, so it stays one call.
+   - **Limits.** It is still a model's judgment, not proof.
+
+**Tests:**
+- `ObjectiveRelevanceTest` (6);
+- `AnswerGroundingTest` (10, including steps and comparison cells);
+- `WordingCheckServiceTest` (6, Robolectric, scripted replies);
+- run-3 replay: the Columbus Circle item is omitted and the address answer is unchanged.
+
+Five existing tests were updated:
+- three because a non-load-bearing side sentence is now omitted rather than shown qualified, which is the N3 decision;
+- two whose fixtures cited pages without a title, which real citations always carry.
+
+## R-C price freshness: review
+
+**Question.** Can R-C ("Answered only with fresh seller-sourced prices; Partially if some unverifiable") be satisfied when a current seller listing has no explicit date?
+
+**Finding.** Web search returns the index's copy of a page, captured at a time the engine is not told. So none of the following dates a price:
+- the time of the search (`retrievedAtMs`);
+- the result's page age (search metadata, often a page-modified time that can be newer than the indexed text);
+- a date the reply works out (`DateBasis.STATED`).
+
+An undated seller listing is therefore only indicated. The status reason now says why: the cited text is the search index's copy, shows no date, and the price was not seen on the live page. A seller page that shows its date (for example "Price as of 23 October 2026") within the claim's window establishes the price.
+
+**Consequence.**
+- R-C is not impossible to pass: when listings are undated, *Partially* is the state Document F says is justified.
+- *Answered* is reachable only when seller pages show their date.
+
+**Not implemented (needs approval).** An *observed* current price would need a live page fetch whose retrieval time the provider reports, for example Anthropic's web fetch tool. That time would be recorded as an observation ("seen on the seller's page at T"), never as the price's effective date for undated index text. It adds a new outbound capability with its own consent, cost and injection considerations, so it is left for a separately approved slice.
+
+Tests: `PriceFreshnessTest` (4).
+
+**Risk noted, not changed.** A price from an aggregator can still be established if the reply labels it `needs=direct`. The prompt defines the seller as the primary source for its own price, but that labelling is the model's.
+
+## R-N(b) clarification recording
+
+The live harness now takes `-PliveEvalScenario=R-N-a|R-A|R-N-b`. R-N-a is the default; each paid scenario has its own guard.
+
+R-N-b records the clarification flow through the real service. It needs no key and has a provider that refuses every call. The report records:
+- that "address of Union Station" is prepared locally as not established and asks which place;
+- that no authorization exists before the answer;
+- that no provider call and no ledger row exists;
+- that after "Washington, DC" the objective is established and an authorization can be built, but is never authorized.

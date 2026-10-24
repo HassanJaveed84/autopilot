@@ -49,6 +49,14 @@ data class AppSettings(
     val researchQuickModel: String = "",
     val researchThoroughModel: String = "",
     val researchDeepModel: String = "",
+    /** M4 (R48): model override for the new Standard depth; blank = the preset's model. Existing overrides above keep their meaning. */
+    val researchStandardModel: String = "",
+    /** M4: saved default depth (a [com.lifeadmin.autopilot.ai.investigation.ResearchDepth] name); blank = the recommended depth for each objective. */
+    val researchDefaultDepth: String = "",
+    /** M4: saved default search budget; 0 = follows the depth's suggestion (OD-3). */
+    val researchDefaultSearches: Int = 0,
+    /** M4: saved default reasoning effort (low/medium/high); blank = the provider's default. Applied only where the model supports it (RES-135). */
+    val researchEffort: String = "",
     val lastReconcileAt: Instant? = null,
     val lastReconcileSummary: String? = null,
     /** Light/dark preference for the UI; SYSTEM follows the phone. Presentation only. */
