@@ -1,0 +1,315 @@
+{
+ "sanitization": {
+  "rawSha256": "d37a3d1936282dbf69065248c958b815e4a34fbea6b16bee9b2e64542e7c8c9d",
+  "removed": {
+   "emails": 0,
+   "phones": 0
+  },
+  "note": "Compact summary: request bodies and full reply segments omitted; cited text kept verbatim apart from emails/phones; no credential."
+ },
+ "scenario": "D-snowflake-postgres",
+ "engine": "m4",
+ "model": "claude-sonnet-5-5",
+ "ranAtUtc": "2026-10-24T07:56:21.018974474Z",
+ "searchBudget": 6,
+ "spendLimitCents": 500,
+ "totalUsd": 0.184205,
+ "turns": [
+  {
+   "question": "Should a customer-facing reporting API query Snowflake directly or serve precomputed reporting data from Postgres?",
+   "status": "PARTIALLY_ANSWERED",
+   "outcome": "Saved(turnState=DONE, resultState=PARTIALLY_ANSWERED, ending=COMPLETE)",
+   "objective": "Find out: Should a customer-facing reporting API query Snowflake directly or serve precomputed reporting data from Postgres",
+   "config": "searchBudget=6 spendLimit=500¢ stages=[GATHER, FILL_GAPS] outputTokens=8000 wordingCheck=false",
+   "elapsedMs": 43842,
+   "shown": "Snowflake direct vs Postgres for a customer-facing reporting API — Partly answered: 3 things it rests on aren't established.\nNo source I found answers this either-or question directly, because it is an architecture choice and not a single published fact. Rests on findings that are not established: Taking your constraint to mean the API should read from Postgres, I'd serve precomputed reporting data from Postgres. That follows from three facts: - A standard Snowflake warehouse queues statements once its concurrency limit is reached, unless it is a multi-cluster warehouse that scales out. Only indicated, not established: Spiky customer traffic therefore has to be sized for. [1] [2] - Snowflake's own pattern for Postgres-backed apps is to compute in Snowflake and serve the results back to the app. [28] [29] [30] [7] [8] - Snowflake now sells interactive warehouses for data-powered APIs, so querying Snowflake directly is a real alternative (the cited sources do not show: APIs). Only indicated, not established: Its limits are always-on cost and a short query-time ceiling. [3] [4] [5] [6] I found no source with measured Postgres latency or cost for your workload. Rests on findings that are not established: The pick is therefore my judgment, not a measured result.\nCaveat: Only indicated, not established: On a standard Snowflake warehouse, statements queue when the concurrency limit is reached, and multi-cluster auto-scale warehouses start more clusters instead. The default limit is 8 per cluster.\nCaveat: Only indicated, not established: Snowflake offers interactive tables and interactive warehouses for low-latency, high-concurrency workloads such as data-powered APIs. They became generally available on 2025-12-11.\nCaveat: Only indicated, not established: Serve precomputed reporting data from Postgres, with Snowflake as the compute and aggregation layer behind it.\n\nDepends on you\n- If the reports are ad-hoc or highly flexible and cannot be precomputed, the Postgres approach loses its advantage, and an interactive warehouse becomes the more natural fit .\n- Expected peak concurrent customers, the latency target and how fresh the data must be. The answer depends on these, and the sources I found do not set them.\n\nWhat I couldn't establish\n- Measured latency and cost of Postgres versus Snowflake interactive warehouses for a reporting API — I found no independent benchmark. Only Snowflake's own marketing figures and a third-party benchmark appeared, and I did not review the latter.\n- Whether the \"from Postgres\" constraint means \"serve from Postgres\" or something else — I assumed it means serving from Postgres.\n- c1, the default concurrency limit of 8 per cluster and the queuing behavior — I ran no new search for this. The held pages show no date, so I could not tell when the behavior applied or whether it still applies. Check the current ALTER WAREHOUSE and MAX_CONCURRENCY_LEVEL documentation before relying on the number.\n- c2, interactive tables and interactive warehouses — I found nothing new. The held pages already give the general availability date of 2025-12-11 and a later 2026 Snowflake page. The release notes I retrieved do not say whether those features have changed since.\n- c4, the serve-back and reverse-ETL part — I searched for the Snowflake Postgres announcement and release notes. They date the product and the Postgres-to-Snowflake mirroring, but I found no Snowflake text on serving insights back to apps. I also found none on reverse ETL into Postgres being a common variant. The \"common variant\" statement r\n\nSources\n[1] ALTER WAREHOUSE — https://docs.snowflake.com/en/sql-reference/sql/alter-warehouse (search result age: 1405 days ago)\n[2] How to Optimize Query Concurrency in Snowflake — https://www.dataexpert.io/blog/optimize-query-concurrency-snowflake (search result age: 267 days ago)\n[3] Dec 11, 2025: Interactive tables and interactive warehouses (*General availability*) — https://docs.snowflake.com/en/release-notes/2025/other/2025-12-11-interactive-tables-ga (search result age: 317 days ago)\n[4] Zero-Copy Interactive Analytics in Snowflake — https://www.snowflake.com/en/blog/engineering/zero-copy-interactive-analytics/ (search result age: 39 days ago)\n[5] Snowflake interactive tables and interactive warehouses — https://docs.snowflake.cn/en/user-guide/interactive (search result age: 365 days ago)\n[6] Getting Started with Snowflake Interactive Tables — https://www.snowflake.com/en/developers/guides/getting-started-with-interactive-tables/ (search result age: 354 days ago)\n[7] Snowflake Postgres: Unify Postgres and Analytics on One Platform — https://www.snowflake.com/en/blog/streamline-data-movement-snowflake-postgres/ (search result age: 130 days ago)\n[8] Snowflake vs PostgreSQL in 2026: Data Warehouse vs General-Purpose Database — Mako — https://mako.ai/guides/snowflake-vs-postgresql (search result age: 213 days ago)\n[28] Feb 24, 2026: Snowflake Postgres (*General availability*) — https://docs.snowflake.com/en/release-notes/2026/other/2026-02-24-snowflake-postgres-ga (search result age: 242 days ago)\n[29] Snowflake Postgres Mirroring: Modernize CDC Data Pipelines — https://www.snowflake.com/en/blog/engineering/postgres-data-mirroring-cdc/ (search result age: 3 days ago)\n[30] Server releases and feature updates earlier in 2026 — https://docs.snowflake.com/en/release-notes/new-features-2026",
+   "claims": [
+    "c1 INDICATIVE load=true :: On a standard Snowflake warehouse, statements queue when the concurrency limit is reached, and multi-cluster auto-scale warehouses start more clusters instead. The default limit is 8 per cluster. :: sources=[1, 2]",
+    "c2 INDICATIVE load=true :: Snowflake offers interactive tables and interactive warehouses for low-latency, high-concurrency workloads such as data-powered APIs. They became generally available on 2025-12-11. :: sources=[3, 4]",
+    "c3 INDICATIVE load=false :: Interactive warehouses have cost and query-shape constraints: they are meant to stay running, and the minimum auto-suspend is 24 hours. Snowflake's getting-started guide (the version I saw, which pre-dates zero-copy interactive) says interactive tables don't support queries longer than 5 seconds or DML. :: sources=[5, 6]",
+    "c4 ESTABLISHED load=true :: Snowflake describes a pattern where Postgres feeds Snowflake for analytics and insights are served back to apps. Reverse ETL into Postgres for in-app analytics is a common variant. :: sources=[28, 29, 30, 7, 8]",
+    "c5 INDICATIVE load=true :: Serve precomputed reporting data from Postgres, with Snowflake as the compute and aggregation layer behind it. :: sources=[]",
+    "m4-00000001-cond6 DEPENDS_ON_INPUT load=true :: If the reports are ad-hoc or highly flexible and cannot be precomputed, the Postgres approach loses its advantage, and an interactive warehouse becomes the more natural fit . :: sources=[]",
+    "m4-00000001-need7 DEPENDS_ON_INPUT load=true :: Expected peak concurrent customers, the latency target and how fresh the data must be. The answer depends on these, and the sources I found do not set them. :: sources=[]"
+   ],
+   "ledger": [
+    {
+     "stage": "GATHER",
+     "model": "claude-sonnet-5-5",
+     "outcome": "COMPLETE",
+     "usageStatus": "COMPLETE",
+     "inputTokens": 418,
+     "outputTokens": 3809,
+     "cacheReadTokens": 9798,
+     "cacheWriteTokens": 23758,
+     "webSearches": 3,
+     "estimatedMicros": 129301,
+     "durationMs": 29324
+    },
+    {
+     "stage": "FILL_GAPS",
+     "model": "claude-sonnet-5-5",
+     "outcome": "COMPLETE",
+     "usageStatus": "COMPLETE",
+     "inputTokens": 1377,
+     "outputTokens": 1751,
+     "cacheReadTokens": 9798,
+     "cacheWriteTokens": 9464,
+     "webSearches": 1,
+     "estimatedMicros": 54904,
+     "durationMs": 13955
+    }
+   ],
+   "calls": [
+    {
+     "maxSearches": 3,
+     "stop": "END",
+     "elapsedMs": 29324,
+     "continuesPausedTurn": false,
+     "searches": [
+      {
+       "query": "Snowflake interactive tables interactive warehouses low-latency high-concurrency customer-facing",
+       "error": "",
+       "results": [
+        {
+         "url": "https://docs.snowflake.cn/en/user-guide/interactive",
+         "pageAge": "365 days ago"
+        },
+        {
+         "url": "https://www.snowflake.com/en/product/analytics/interactive-analytics/",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.snowflake.com/en/blog/introducing-interactive-analytics/",
+         "pageAge": "25 days ago"
+        },
+        {
+         "url": "https://medium.com/towards-data-engineering/snowflake-interactive-tables-warehouses-an-end-to-end-implementation-guide-for-real-time-4318bf134224",
+         "pageAge": "237 days ago"
+        },
+        {
+         "url": "https://docs.snowflake.com/en/release-notes/2025/other/2025-12-11-interactive-tables-ga",
+         "pageAge": "317 days ago"
+        },
+        {
+         "url": "https://www.greybeam.ai/blog/snowflake-interactive-tables",
+         "pageAge": "98 days ago"
+        },
+        {
+         "url": "https://www.snowflake.com/en/developers/guides/getting-started-with-interactive-tables/",
+         "pageAge": "354 days ago"
+        },
+        {
+         "url": "https://www.snowflake.com/en/developers/guides/getting-started-with-interactive-analytics/",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.snowflake.com/en/blog/engineering/zero-copy-interactive-analytics/",
+         "pageAge": "39 days ago"
+        }
+       ]
+      },
+      {
+       "query": "Snowflake documentation warehouse concurrency MAX_CONCURRENCY_LEVEL queuing",
+       "error": "",
+       "results": [
+        {
+         "url": "https://docs.snowflake.com/en/sql-reference/parameters",
+         "pageAge": "2460 days ago"
+        },
+        {
+         "url": "https://www.dataexpert.io/blog/optimize-query-concurrency-snowflake",
+         "pageAge": "267 days ago"
+        },
+        {
+         "url": "https://docs.snowflake.com/en/developer-guide/snowflake-python-api/reference/1.7.0/_autosummary/snowflake.core.warehouse.Warehouse",
+         "pageAge": ""
+        },
+        {
+         "url": "https://docs.snowflake.com/en/sql-reference/sql/alter-warehouse",
+         "pageAge": "1405 days ago"
+        },
+        {
+         "url": "https://sonra.io/optimal-usage-of-snowflake-virtual-warehouses-breaking-down-parallelism-concurrency/",
+         "pageAge": "152 days ago"
+        },
+        {
+         "url": "https://www.flexera.com/blog/finops/snowflake-performance-tuning/",
+         "pageAge": "148 days ago"
+        },
+        {
+         "url": "https://medium.com/snowflake/snowflake-parameters-a-centralized-cockpit-control-part-3-4d1867a87013",
+         "pageAge": "1585 days ago"
+        },
+        {
+         "url": "https://datageek.blog/2026/04/21/performance-impacts-of-concurrency/",
+         "pageAge": "186 days ago"
+        },
+        {
+         "url": "https://www.data-flakes.dev/posts/understanding-concurrency-in-snowflake/",
+         "pageAge": "665 days ago"
+        }
+       ]
+      },
+      {
+       "query": "Snowflake Postgres serve analytics results to applications pg_lake reverse ETL",
+       "error": "",
+       "results": [
+        {
+         "url": "https://medium.com/snowflake/snowflake-postgres-zero-etl-from-oltp-to-analytics-1d9117c9f8c8",
+         "pageAge": "53 days ago"
+        },
+        {
+         "url": "https://www.snowflake.com/en/blog/streamline-data-movement-snowflake-postgres/",
+         "pageAge": "130 days ago"
+        },
+        {
+         "url": "https://www.snowflake.com/en/webinars/virtual-hands-on-lab/ditch-the-pipeline-postgres-to-snowflake-analytics-with-pglake-2026-07-16/",
+         "pageAge": "100 days ago"
+        },
+        {
+         "url": "https://www.kpipartners.com/blogs/snowflake-postgres-for-modern-enterprise-data-architecture",
+         "pageAge": "63 days ago"
+        },
+        {
+         "url": "https://www.snowflake.com/en/developers/guides/sync-data-from-postgres-to-snowflake-with-iceberg-and-pg-lake/",
+         "pageAge": "186 days ago"
+        },
+        {
+         "url": "https://medium.com/@riyukhandelwal/snowflake-postgres-a-deep-dive-into-managed-postgresql-on-the-snowflake-ai-data-cloud-6cff8f19012f",
+         "pageAge": "44 days ago"
+        },
+        {
+         "url": "https://www.snowflake.com/en/developers/postgres/snowflake-postgres-getting-started/",
+         "pageAge": "103 days ago"
+        },
+        {
+         "url": "https://aytac.dev/en/news/snowflake-postgres-mirroring-pg_lake/",
+         "pageAge": "121 days ago"
+        },
+        {
+         "url": "https://mako.ai/guides/snowflake-vs-postgresql",
+         "pageAge": "213 days ago"
+        }
+       ]
+      }
+     ],
+     "citations": [
+      {
+       "url": "https://docs.snowflake.com/en/sql-reference/sql/alter-warehouse",
+       "citedText": "When the level is reached:\n- For a single-cluster warehouse or a multi-cluster warehouse (in Maximized mode), additional statements are queued until r..."
+      },
+      {
+       "url": "https://www.dataexpert.io/blog/optimize-query-concurrency-snowflake",
+       "citedText": "By default, Snowflake limits **concurrent queries to 8 per warehouse**, controlled by the MAX_CONCURRENCY_LEVEL parameter. "
+      },
+      {
+       "url": "https://docs.snowflake.com/en/release-notes/2025/other/2025-12-11-interactive-tables-ga",
+       "citedText": "Interactive tables and interactive warehouses are now generally available. "
+      },
+      {
+       "url": "https://docs.snowflake.com/en/release-notes/2025/other/2025-12-11-interactive-tables-ga",
+       "citedText": "Together, interactive tables and interactive warehouses deliver low-latency query performance for high-concurrency, interactive workloads such as real..."
+      },
+      {
+       "url": "https://www.snowflake.com/en/blog/engineering/zero-copy-interactive-analytics/",
+       "citedText": "## Zero-Copy Interactive\nZero-Copy Interactive lets an Interactive warehouse query standard Snowflake tables and Apache Iceberg™ tables directly. "
+      },
+      {
+       "url": "https://docs.snowflake.cn/en/user-guide/interactive",
+       "citedText": "## Working with interactive tables and interactive warehouses\n### Resuming and suspending an interactive warehouse\n#### Auto-suspend and auto-resume f..."
+      },
+      {
+       "url": "https://www.snowflake.com/en/developers/guides/getting-started-with-interactive-tables/",
+       "citedText": "### Limitations\n- An interactive warehouse is always up and running by design. "
+      },
+      {
+       "url": "https://www.snowflake.com/en/developers/guides/getting-started-with-interactive-tables/",
+       "citedText": "- Snowflake interactive tables don't support ETL, long-running queries (more than 5 seconds), or data manipulation language (DML) commands such as UPD..."
+      },
+      {
+       "url": "https://www.snowflake.com/en/blog/streamline-data-movement-snowflake-postgres/",
+       "citedText": "- **Streamlined data movement:** Powered by our open-source pg\\_lake extension, Snowflake Postgres enables you to move data more seamlessly to Snowfla..."
+      },
+      {
+       "url": "https://mako.ai/guides/snowflake-vs-postgresql",
+       "citedText": "Results can flow back to PostgreSQL (reverse ETL) for in-app analytics"
+      }
+     ]
+    },
+    {
+     "maxSearches": 1,
+     "stop": "END",
+     "elapsedMs": 13955,
+     "continuesPausedTurn": false,
+     "searches": [
+      {
+       "query": "Snowflake Postgres generally available announcement",
+       "error": "",
+       "results": [
+        {
+         "url": "https://www.snowflake.com/en/blog/streamline-data-movement-snowflake-postgres/",
+         "pageAge": "130 days ago"
+        },
+        {
+         "url": "https://docs.snowflake.com/en/release-notes/2026/other/2026-02-24-snowflake-postgres-ga",
+         "pageAge": "242 days ago"
+        },
+        {
+         "url": "https://www.snowflake.com/en/blog/engineering/postgres-public-preview/",
+         "pageAge": "129 days ago"
+        },
+        {
+         "url": "https://www.runtime.news/databricks-has-bad-news-for-saas/",
+         "pageAge": "262 days ago"
+        },
+        {
+         "url": "https://medium.com/@riyukhandelwal/snowflake-postgres-a-deep-dive-into-managed-postgresql-on-the-snowflake-ai-data-cloud-6cff8f19012f",
+         "pageAge": "44 days ago"
+        },
+        {
+         "url": "https://docs.snowflake.com/en/release-notes/feature-releases-2026",
+         "pageAge": ""
+        },
+        {
+         "url": "https://tradersunion.com/news/companies/show/3833200-snowflake-stock-falls-1-9percent-today/",
+         "pageAge": "8 days ago"
+        },
+        {
+         "url": "https://docs.snowflake.com/en/release-notes/new-features-2026",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.snowflake.com/en/blog/engineering/postgres-data-mirroring-cdc/",
+         "pageAge": "3 days ago"
+        },
+        {
+         "url": "https://itbrief.ca/story/snowflake-unveils-postgres-to-make-enterprise-data-ai-ready",
+         "pageAge": "159 days ago"
+        }
+       ]
+      }
+     ],
+     "citations": [
+      {
+       "url": "https://docs.snowflake.com/en/release-notes/2026/other/2026-02-24-snowflake-postgres-ga",
+       "citedText": "# Feb 24, 2026: Snowflake Postgres (General availability)\nSnowflake Postgres is now generally available. "
+      },
+      {
+       "url": "https://docs.snowflake.com/en/release-notes/2026/other/2026-02-24-snowflake-postgres-ga",
+       "citedText": "Snowflake Postgres lets you create, manage, and use Postgres instances directly from Snowflake. "
+      },
+      {
+       "url": "https://www.snowflake.com/en/blog/engineering/postgres-data-mirroring-cdc/",
+       "citedText": "I’m happy to announce that Postgres mirroring, which automatically connects data from Postgres to Snowflake, is now generally available.\n\n"
+      },
+      {
+       "url": "https://docs.snowflake.com/en/release-notes/new-features-2026",
+       "citedText": "Oct 15, 2026: Data mirroring for Snowflake Postgres (General availability). "
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

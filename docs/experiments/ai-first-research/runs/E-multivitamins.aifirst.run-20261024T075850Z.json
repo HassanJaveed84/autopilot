@@ -1,0 +1,507 @@
+{
+ "sanitization": {
+  "rawSha256": "1fbcdecc6bf829e5d5f2b0d0fe36f6891f9c08982d538c5a63ce006c814d4699",
+  "removed": {
+   "emails": 0,
+   "phones": 0
+  },
+  "note": "Compact summary: request bodies and full reply segments omitted; cited text kept verbatim apart from emails/phones; no credential."
+ },
+ "scenario": "E-multivitamins",
+ "engine": "aifirst",
+ "model": "claude-sonnet-5-5",
+ "ranAtUtc": "2026-10-24T07:59:34.354799338Z",
+ "searchBudget": 6,
+ "spendLimitCents": 500,
+ "totalUsd": 0.336002,
+ "turns": [
+  {
+   "question": "Compare Thorne and Pure Encapsulations multivitamins",
+   "status": "COMPLETE",
+   "outcome": null,
+   "objective": null,
+   "config": "searchBudget=6 spendLimit=500¢ maxOutputTokens=16000 prompt=v1",
+   "elapsedMs": 29324,
+   "shown": "**Short answer:** Both are well-regarded practitioner-grade brands, and neither is clearly \"better.\" They suit different people. I compared the two flagship daily formulas: Thorne Basic Nutrients 2/Day and Pure Encapsulations O.N.E.\n\n**Where they differ**\n\n| | Thorne Basic Nutrients 2/Day | Pure Encapsulations O.N.E. |\n|---|---|---|\n| Dose | 2 capsules [1], 30 servings per bottle [2] | 1 capsule daily, with a meal [3] |\n| Folate and B12 | L-5-MTHF folate and methylcobalamin B12 [4] | Metafolin folate (667 mcg DFE) and methylcobalamin B12 (500 mcg) [5] |\n| Minerals | Albion chelated (bisglycinate) forms of zinc, copper, manganese, chromium and others [6], zinc 15 mg, selenium 200 mcg [6] | Fully chelated minerals [3] |\n| B vitamins | High doses (B1 50 mg, B6 20 mg, niacinamide 80 mg) [2] | Much lower doses (B6 about 4 mg as pyridoxine, B1 3 mg) [5] |\n| Vitamin D | 2,000 IU [2] | 2,000 IU [7] |\n| Vitamin K | K1 and K2, 400 mcg total [2] | None on the US labels I saw (the UK sheet lists it) |\n| Extras | Boron, lutein (140 mcg) [2] | CoQ10 50 mg, alpha-lipoic acid 50 mg, lutein, lycopene, zeaxanthin, choline, inositol [5] |\n\nNeither product contains iron, according to the sources I found.\n\n**Quality and testing**\n- Thorne's formula is sold as NSF Certified for Sport [4]. That matters mainly if you are a tested athlete.\n- Pure says NSF inspects its products and manufacturing and testing procedures twice a year for FDA GMP compliance [8]. It also says its ingredients are tested by independent certified laboratories [8].\n- Pure positions itself as hypoallergenic. Its products are free from wheat, gluten, egg, peanuts, magnesium stearate, titanium dioxide, artificial colors and more [9].\n- ConsumerLab, an independent tester, reviewed both brands in its multivitamin report. 19 of 22 Pure Encapsulations products tested were Approved. [10] I couldn't see the paywalled results for these two specific products.\n\n**Cost.** One comparison site listed $42 for Thorne (about $1.40 per serving) and $39 for Pure (about $0.65 per serving) [11]. That page is about 7 months old and isn't from either seller, so check current prices.\n\n**My judgment (not from a single source)**\n- Choose Thorne if you want sport certification, higher B-vitamin doses, vitamin K, and more minerals.\n- Choose Pure if you want one capsule a day, lower cost per day, a hypoallergenic label, or CoQ10 and carotenoids.\n- This rests on label comparison. I found no head-to-head trial showing either gives better health outcomes.\n\n**Before you buy**\n- Thorne's vitamin K and high B-vitamin doses are worth raising with a clinician or pharmacist if you take warfarin or other medications, or are pregnant.\n- Retailer listings for Thorne show slightly different calcium and vitamin A amounts. Check the current label on Thorne's own page.\n- Many comparison articles are affiliate or seller content. Treat their rankings with caution.\n\nSources\n[1] Basic Nutrients 2/Day - NSF Certified for Sport - 60 Capsules - Thorne — https://www.pureformulas.com/product/basic-nutrients-2-day-nsf-certified-for-sport-by-thorne/1000047642 (search result age: 1956 days ago)\n[2] Thorne Basic Nutrients 2/Day — Recovery For Athletes — https://www.recoveryforathletes.com/products/thorne-basic-nutrients-2-day\n[3] What Is It? O.N.E.™ Multivitamin is a once-daily multivitamin/mineral formula, — https://www.pureencapsulationspro.com/media/O.N.E.%20Multivitamin.pdf\n[4] Basic Nutrients 2/Day - NSF Certified for Sport & Reviews — https://www.thorne.com/products/dp/basic-nutrients-2-day (search result age: 2285 days ago)\n[5] O.N.E. Multivitamin by Pure Encapsulations — https://instalab.com/supplements/pure-encapsulations-one-multivitamin-120-capsule (search result age: 48 days ago)\n[6] Thorne, Basic Nutrients 2/Day, NSF Certified, 60 Capsules — https://www.iherb.com/pr/thorne-basic-nutrients-2-day-nsf-certified-60-capsules/52954\n[7] Pure Encapsulations O.N.E. Multivitamin — https://www.vitacost.com/pure-encapsulations-o-n-e-multivitamin-120-capsules\n[8] FAQs — https://pureforyou.com/pages/faqs\n[9] O.N.E. MULTIVITAMIN — https://www.pure-encapsulations.co.uk/media/pdf/product/ONE_Multivitamin_Product_Information.pdf\n[10] Pure Encapsulations Reviews by ConsumerLab.com with Ratings from Quality Tests - ConsumerLab.com — https://www.consumerlab.com/pure-encapsulations/\n[11] Thorne vs Pure Encapsulations: Which Premium Supplement Brand Is Worth It in 2026? — https://thorne-supplements.com/thorne-vs-pure-encapsulations/ (search result age: 205 days ago)",
+   "claims": [],
+   "ledger": [
+    {
+     "stage": "AI_FIRST",
+     "model": "claude-sonnet-5-5",
+     "outcome": "COMPLETE",
+     "usageStatus": "COMPLETE",
+     "inputTokens": 78588,
+     "outputTokens": 3346,
+     "cacheReadTokens": 0,
+     "cacheWriteTokens": 0,
+     "webSearches": 5,
+     "estimatedMicros": 240636,
+     "durationMs": 29278
+    }
+   ],
+   "calls": [
+    {
+     "maxSearches": 6,
+     "stop": "END",
+     "elapsedMs": 29278,
+     "continuesPausedTurn": false,
+     "searches": [
+      {
+       "query": "Thorne vs Pure Encapsulations multivitamin comparison",
+       "error": "",
+       "results": [
+        {
+         "url": "https://thorne-supplements.com/thorne-vs-pure-encapsulations/",
+         "pageAge": "205 days ago"
+        },
+        {
+         "url": "https://supplementfactsrank.com/compare/pure-encapsulations-one-60c-vs-thorne-basic-nutrients-2day-60c",
+         "pageAge": ""
+        },
+        {
+         "url": "https://drbellhealth.com/thorne-vs-pure-encapsulations/",
+         "pageAge": "25 days ago"
+        },
+        {
+         "url": "https://alverstonehealth.com/blog-thorne-vs-pure-encapsulations",
+         "pageAge": "158 days ago"
+        },
+        {
+         "url": "https://preferredsupplements.com/blogs/health-articles/thorne-vs-pure-encapsulations-a-detailed-comparison",
+         "pageAge": "951 days ago"
+        },
+        {
+         "url": "https://remedysnutrition.com/blogs/letter-vitamins/thorne-vs-pure-encapsulations-b-complex-in-depth-review",
+         "pageAge": "214 days ago"
+        },
+        {
+         "url": "https://thebodyblueprint.com/thorne-vs-pure-encapsulations/",
+         "pageAge": "148 days ago"
+        },
+        {
+         "url": "https://usefulvitamins.com/thorne-vs-pure-encapsulations-comparison/",
+         "pageAge": "92 days ago"
+        },
+        {
+         "url": "https://www.cbinsights.com/company/pure-encapsulations/alternatives-competitors",
+         "pageAge": ""
+        }
+       ]
+      },
+      {
+       "query": "Thorne Basic Nutrients 2/Day NSF Certified for Sport ingredients",
+       "error": "",
+       "results": [
+        {
+         "url": "https://store.mayoclinic.com/thorne-basic-nutrients-2-day.html",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.thorne.com/products/dp/basic-nutrients-2-day",
+         "pageAge": "2285 days ago"
+        },
+        {
+         "url": "https://www.iherb.com/pr/thorne-basic-nutrients-2-day-nsf-certified-60-capsules/52954",
+         "pageAge": ""
+        },
+        {
+         "url": "https://findyourhealthyplace.com/products/thorne-research-basic-nutrients-2-day-nsf-certified-for-sport",
+         "pageAge": "1807 days ago"
+        },
+        {
+         "url": "https://www.pureformulas.com/product/basic-nutrients-2-day-nsf-certified-for-sport-by-thorne/1000047642",
+         "pageAge": "1956 days ago"
+        },
+        {
+         "url": "https://www.recoveryforathletes.com/products/thorne-basic-nutrients-2-day",
+         "pageAge": ""
+        },
+        {
+         "url": "https://store.iprogressivemed.com/product/basic-nutrients-2-day-nsf-certified-60-caps-by-thorne/",
+         "pageAge": "995 days ago"
+        },
+        {
+         "url": "https://mdnutritionalsupplements.com/products/basic-nutrients-2-day",
+         "pageAge": ""
+        },
+        {
+         "url": "https://rockridgepharmacyshop.com/products/basic-nutrients-2-day-nsf-certified-multivitamin",
+         "pageAge": ""
+        }
+       ]
+      },
+      {
+       "query": "Pure Encapsulations Nutrient 950 third-party testing quality",
+       "error": "",
+       "results": [
+        {
+         "url": "https://www.healthline.com/health/pure-vitamins",
+         "pageAge": "890 days ago"
+        },
+        {
+         "url": "https://www.nhc.com/products/nutrient-950-by-pure-encapsulations",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.professionalsupplementcenter.com/products/nutrient-950-by-pure-encapsulations",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.walmart.com/ip/Pure-Encapsulations-Nutrient-950-Multivitamin-Mineral-Supplement-to-Support-Physiological-Functions-and-a-Healthy-Lifestyle-90-Capsules/129234231",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.vitacost.com/products/pure-encapsulations-nutrient-950-without-iron-360-capsules-18813",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.innerbuddies.com/blogs/gut-health/most-trustworthy-vitamin-company",
+         "pageAge": "5 days ago"
+        },
+        {
+         "url": "https://pureforyou.com/pages/faqs",
+         "pageAge": ""
+        },
+        {
+         "url": "https://store.eunatural.com/blogs/learn/best-vitamin-brands-consumer-reports",
+         "pageAge": "135 days ago"
+        },
+        {
+         "url": "https://www.walmart.com/ip/169382607",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.walmart.com/ip/124416896",
+         "pageAge": ""
+        }
+       ]
+      },
+      {
+       "query": "Pure Encapsulations O.N.E. Multivitamin supplement facts vitamin D folate CoQ10",
+       "error": "",
+       "results": [
+        {
+         "url": "https://www.amazon.com/Pure-Encapsulations-N-Multivitamin-Hypoallergenic/dp/B00CBYG1L0",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.pureencapsulationspro.com/media/O.N.E.%20Multivitamin.pdf",
+         "pageAge": ""
+        },
+        {
+         "url": "https://martinswellness.com/o-n-e-multivitamin-60-caps.html",
+         "pageAge": ""
+        },
+        {
+         "url": "https://pureprescriptions.com/product/one-multivitamin-pure-encapsulations/",
+         "pageAge": "31 days ago"
+        },
+        {
+         "url": "https://www.vitaminshoppe.com/p/pure-encapsulations-o-n-e-multivitamin-30-capsules/pue-12264",
+         "pageAge": "912 days ago"
+        },
+        {
+         "url": "https://www.vitacost.com/pure-encapsulations-o-n-e-multivitamin-120-capsules",
+         "pageAge": ""
+        },
+        {
+         "url": "https://instalab.com/supplements/pure-encapsulations-one-multivitamin-120-capsule",
+         "pageAge": "48 days ago"
+        },
+        {
+         "url": "https://www.pure-encapsulations.co.uk/media/pdf/product/ONE_Multivitamin_Product_Information.pdf",
+         "pageAge": ""
+        },
+        {
+         "url": "https://sunridgemedical.com/vitamin-store/products/pure-encapsulations-o-n-e-multivitamin/",
+         "pageAge": "22 days ago"
+        }
+       ]
+      },
+      {
+       "query": "ConsumerLab multivitamin review Thorne Pure Encapsulations tested",
+       "error": "",
+       "results": [
+        {
+         "url": "https://www.consumerlab.com/pure-encapsulations/",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.consumerlab.com/reviews/multivitamin-review-comparisons/multivitamins/",
+         "pageAge": "44 days ago"
+        },
+        {
+         "url": "https://www.consumerlab.com/news/vitamind-supplement-findings-2024/08-12-2024/",
+         "pageAge": "348 days ago"
+        },
+        {
+         "url": "https://en.wikipedia.org/wiki/One_A_Day",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.topvitamine.com/blogs/news/best-supplement-company-reputation",
+         "pageAge": "73 days ago"
+        },
+        {
+         "url": "https://www.consumerlab.com/reviews/vitamin-d-supplements-review/vitamin-d/",
+         "pageAge": "2 days ago"
+        },
+        {
+         "url": "https://www.vitaminbrands.org/best-vitamin-brands-consumer-reports/",
+         "pageAge": "104 days ago"
+        },
+        {
+         "url": "https://thetestedhub.com/articles/best-consumerlab-multivitamin/",
+         "pageAge": "162 days ago"
+        },
+        {
+         "url": "https://healthrx.com/brands-thorne/real-reviews",
+         "pageAge": "152 days ago"
+        }
+       ]
+      }
+     ],
+     "citations": [
+      {
+       "url": "https://www.pureformulas.com/product/basic-nutrients-2-day-nsf-certified-for-sport-by-thorne/1000047642",
+       "citedText": "# Basic Nutrients 2/Day - NSF Certified for Sport - 60 Capsules\n## $40.00\n### Product Description\n• Vitamin A to promote eye health‚ healthy skin‚ and..."
+      },
+      {
+       "url": "https://www.recoveryforathletes.com/products/thorne-basic-nutrients-2-day",
+       "citedText": "# Thorne Basic Nutrients 2/Day\n## Basic Nutrients 2/Day\n### Key Ingredients\n#### Ingredient Amounts\n- **Biotin:** 500mcg\n- **Boron (Glycinate Complex)..."
+      },
+      {
+       "url": "https://www.pureencapsulationspro.com/media/O.N.E.%20Multivitamin.pdf",
+       "citedText": "Pure Encapsulations® recommends 1 capsule daily, with a meal. "
+      },
+      {
+       "url": "https://www.thorne.com/products/dp/basic-nutrients-2-day",
+       "citedText": "Basic Nutrients 2/Day is a comprehensive daily supplement formulated for individuals ...\n\n# Basic Nutrients 2/Day - NSF Certified for Sport\n#### Ingre..."
+      },
+      {
+       "url": "https://instalab.com/supplements/pure-encapsulations-one-multivitamin-120-capsule",
+       "citedText": "The label lists folate as Metafolin (L-5-MTHF), 667 mcg DFE (400 mcg L-5-MTHF), and vitamin B12 as methylcobalamin, 500 mcg.\n\n"
+      },
+      {
+       "url": "https://www.iherb.com/pr/thorne-basic-nutrients-2-day-nsf-certified-60-capsules/52954",
+       "citedText": "††This product uses Albion's TRAACS® Calcium Bisglycinate Chelate, Chromium Nicotinate Glycinate Chelate, Copper Bisglycinate Chelate, Manganese Bisgl..."
+      },
+      {
+       "url": "https://www.iherb.com/pr/thorne-basic-nutrients-2-day-nsf-certified-60-capsules/52954",
+       "citedText": "# Thorne, Basic Nutrients 2/Day, NSF Certified, 60 Capsules\n## Product information\n### Warnings\n- Two Capsules Contain: · %DV\n- Vitamin A (450 mcg fro..."
+      },
+      {
+       "url": "https://www.pureencapsulationspro.com/media/O.N.E.%20Multivitamin.pdf",
+       "citedText": "It\n\nprovides a comprehensive profile of highly bioavailable vitamins,\n\nfully-chelated minerals and antioxidants to support optimal health."
+      },
+      {
+       "url": "https://www.recoveryforathletes.com/products/thorne-basic-nutrients-2-day",
+       "citedText": "# Thorne Basic Nutrients 2/Day\n## Basic Nutrients 2/Day\n### Key Ingredients\n#### Ingredient Amounts\n- **Biotin:** 500mcg\n- **Boron (Glycinate Complex)..."
+      },
+      {
+       "url": "https://instalab.com/supplements/pure-encapsulations-one-multivitamin-120-capsule",
+       "citedText": "Active ingredients\n\n1 capsule per serving · 120 servings\n\nVitamin A Vitamin A acetate, beta-carotene\n\n2381.45 IU, 1125 mcg\n\nVitamin C Ascorbic acid\n\n1..."
+      },
+      {
+       "url": "https://www.recoveryforathletes.com/products/thorne-basic-nutrients-2-day",
+       "citedText": "# Thorne Basic Nutrients 2/Day\n## Basic Nutrients 2/Day\n### Key Ingredients\n#### Ingredient Amounts\n- **Biotin:** 500mcg\n- **Boron (Glycinate Complex)..."
+      },
+      {
+       "url": "https://www.vitacost.com/pure-encapsulations-o-n-e-multivitamin-120-capsules",
+       "citedText": "Supplement Facts Serving Size: 1 capsule Servings Per Container: 120   Amount Per Serving %DV Vitamin A (as vitamin A acetateand 73% beta carotene) 1,..."
+      },
+      {
+       "url": "https://www.recoveryforathletes.com/products/thorne-basic-nutrients-2-day",
+       "citedText": "# Thorne Basic Nutrients 2/Day\n## Basic Nutrients 2/Day\n### Key Ingredients\n#### Ingredient Amounts\n- **Biotin:** 500mcg\n- **Boron (Glycinate Complex)..."
+      },
+      {
+       "url": "https://www.recoveryforathletes.com/products/thorne-basic-nutrients-2-day",
+       "citedText": "# Thorne Basic Nutrients 2/Day\n## Basic Nutrients 2/Day\n### Key Ingredients\n#### Ingredient Amounts\n- **Biotin:** 500mcg\n- **Boron (Glycinate Complex)..."
+      },
+      {
+       "url": "https://instalab.com/supplements/pure-encapsulations-one-multivitamin-120-capsule",
+       "citedText": "It also lists the minerals iodine, zinc, selenium, manganese, chromium, molybdenum, boron, and choline, plus inositol, 50 mg of CoQ10 (including the s..."
+      },
+      {
+       "url": "https://www.thorne.com/products/dp/basic-nutrients-2-day",
+       "citedText": "Basic Nutrients 2/Day - NSF Certified for Sport. "
+      },
+      {
+       "url": "https://pureforyou.com/pages/faqs",
+       "citedText": "Our products, as well as our manufacturing and testing procedures, are thoroughly inspected twice annually by the NSF (an organization that inspects p..."
+      },
+      {
+       "url": "https://pureforyou.com/pages/faqs",
+       "citedText": "Ingredients are tested for purity and potency by independent certified laboratories.\n\n"
+      },
+      {
+       "url": "https://www.pure-encapsulations.co.uk/media/pdf/product/ONE_Multivitamin_Product_Information.pdf",
+       "citedText": "All Pure Encapsulations® products are free-from: Wheat. and gluten, Egg, Peanuts, Trans fats and hydrogenated oils,. GMOs, Magnesium stearate, Titaniu..."
+      },
+      {
+       "url": "https://www.consumerlab.com/pure-encapsulations/",
+       "citedText": "# Reviews and Information for Pure Encapsulations\n## Pure Encapsulations Testing Report Card\n^ⓘ\n\n- **22** products from *Pure Encapsulations* were tes..."
+      },
+      {
+       "url": "https://thorne-supplements.com/thorne-vs-pure-encapsulations/",
+       "citedText": "Multivitamin |\n| --- | --- | --- |\n| Serving Size | 2 capsules/day | 1 capsule/day |\n| Servings Per Container | 30 | 60 |\n| Price | $42 | $39 |\n| Cost..."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "question": "Which would you pick for someone who doesn't want iron?",
+   "status": "COMPLETE",
+   "outcome": null,
+   "objective": null,
+   "config": "searchBudget=6 spendLimit=500¢ maxOutputTokens=16000 prompt=v1",
+   "elapsedMs": 14576,
+   "shown": "**Iron doesn't separate these two, because both are iron-free.** You'd have to choose on other grounds.\n\n**What I found**\n- **Thorne Basic Nutrients 2/Day:** A dietitian's product page says it does not contain iron. [1] The mineral list on the label I saw also omits iron.\n- **Pure Encapsulations O.N.E.:** One retailer's page describes it as hypoallergenic, gluten-free, non-GMO and vegetarian, and says it contains no iron. [2] A review calls it \"iron-free by design.\" [3]\n- **Caveat on sources:** Most of these are retailer or review pages, not the manufacturers' own pages. The label lists I saw also don't include iron. Check the \"Supplement Facts\" panel on the bottle or the brand's own page before buying.\n\n**My pick (my judgment, not a sourced finding)**\n- If your only requirement is no iron and you have no other needs, I'd lean toward **Pure O.N.E.** for its simplicity. It's one capsule a day and, going by the comparison site I found earlier, a lower cost per day. That price evidence is weak, so check current prices.\n- I'd switch to **Thorne** in these cases:\n  - You want vitamin K in the formula. Thorne has 400 mcg of K1 and K2. [4] One label review says O.N.E. has no vitamin K. [5] Pure's UK sheet lists vitamin K, so check the US label.\n  - You want higher B-vitamin doses.\n  - You need NSF Certified for Sport.\n- Thorne's page lists some cautions. It says not to use it with anticoagulant drugs such as Coumadin, and not during methotrexate cancer therapy. [6] If that applies to you, check with a clinician or pharmacist first.\n\n**Why you might want to avoid iron**\n- If you're avoiding iron for a medical reason, such as a condition where iron builds up, confirm the choice with your clinician. A multivitamin with no iron isn't necessarily low in everything else.\n- Reviewers say iron-free formulas suit most men and postmenopausal women. They are not appropriate for people with iron-deficiency anemia. [3] Menstruating people may also need iron from another source.\n\nIf you tell me why you're avoiding iron, and whether you take any medications, I can narrow this down further.\n\nSources\n[1] Basic Nutrients 2/Day - Multivitamin/Multimineral - The Nutrition Supplement Dietitian — https://mysupplementrd.com/product/basic-nutrients-2-day-essential-multivitamin-multimineral/ (search result age: 289 days ago)\n[2] O.N.E. Multivitamin by Pure Encapsulations — https://instalab.com/supplements/pure-encapsulations-o.n.e.-multivitamin-30-capsule (search result age: 136 days ago)\n[3] Pure Encapsulations Multivitamin Review 2026 — athleticinsight — https://shop.athleticinsight.com/blogs/reviews/pure-encapsulations-multivitamin-review (search result age: 138 days ago)\n[4] Basic Nutrients 2/Day — https://www.swansonvitamins.com/p/thorne-basic-nutrients-2-day-60-caps\n[5] Pure Encapsulations O.N.E. Multivitamin Supplement Facts Review — https://supplementfactsrank.com/product/pure-encapsulations-one-60c\n[6] Thorne Basic Nutrients 2/Day Supplement — https://store.mayoclinic.com/thorne-basic-nutrients-2-day.html",
+   "claims": [],
+   "ledger": [
+    {
+     "stage": "AI_FIRST",
+     "model": "claude-sonnet-5-5",
+     "outcome": "COMPLETE",
+     "usageStatus": "COMPLETE",
+     "inputTokens": 29703,
+     "outputTokens": 1596,
+     "cacheReadTokens": 0,
+     "cacheWriteTokens": 0,
+     "webSearches": 2,
+     "estimatedMicros": 95366,
+     "durationMs": 14558
+    }
+   ],
+   "calls": [
+    {
+     "maxSearches": 6,
+     "stop": "END",
+     "elapsedMs": 14558,
+     "continuesPausedTurn": false,
+     "searches": [
+      {
+       "query": "Thorne Basic Nutrients 2/Day iron free supplement facts",
+       "error": "",
+       "results": [
+        {
+         "url": "https://store.mayoclinic.com/thorne-basic-nutrients-2-day.html",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.carewell.com/product/thorne-basic-nutrients-2day-dietary-supplement/?sku=VM2NC-EA60",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.thorne.com/products/dp/basic-nutrients-2-day",
+         "pageAge": "2285 days ago"
+        },
+        {
+         "url": "https://myvillagegreen.com/products/thorne-basic-nutrients-2-day-60-capsules",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.swansonvitamins.com/p/thorne-basic-nutrients-2-day-60-caps",
+         "pageAge": ""
+        },
+        {
+         "url": "https://instalab.com/supplements/thorne-basic-nutrients-2day-60-capsule",
+         "pageAge": "171 days ago"
+        },
+        {
+         "url": "https://www.recoveryforathletes.com/products/thorne-basic-nutrients-2-day",
+         "pageAge": ""
+        },
+        {
+         "url": "https://mysupplementrd.com/product/basic-nutrients-2-day-essential-multivitamin-multimineral/",
+         "pageAge": "289 days ago"
+        },
+        {
+         "url": "https://shop.athleticinsight.com/blogs/reviews/thorne-multivitamin-review",
+         "pageAge": "144 days ago"
+        },
+        {
+         "url": "https://www.organicbasicfood.com/product/thorne-research-basic-nutrients-2-day-nsf-certified-for-sportr-60-capsules-1126",
+         "pageAge": ""
+        }
+       ]
+      },
+      {
+       "query": "Pure Encapsulations O.N.E. Multivitamin iron-free supplement facts",
+       "error": "",
+       "results": [
+        {
+         "url": "https://hanoverhealth.co.uk/O.N.E.-Multivitamin-without-Ir-766298022802-68489/",
+         "pageAge": "1719 days ago"
+        },
+        {
+         "url": "https://www.vitacost.com/pure-encapsulations-o-n-e-multivitamin-120-capsules",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.vitaminshoppe.com/p/pure-encapsulations-o-n-e-multivitamin-30-capsules/pue-12264",
+         "pageAge": "912 days ago"
+        },
+        {
+         "url": "https://pureprescriptions.com/product/one-multivitamin-pure-encapsulations/",
+         "pageAge": "31 days ago"
+        },
+        {
+         "url": "https://instalab.com/supplements/pure-encapsulations-o.n.e.-multivitamin-30-capsule",
+         "pageAge": "136 days ago"
+        },
+        {
+         "url": "https://supplementfirst.com/products/pure-encapsulations-o-n-e-multivitamin",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.pure-encapsulations.co.uk/media/pdf/product/ONE_Multivitamin_Product_Information.pdf",
+         "pageAge": ""
+        },
+        {
+         "url": "https://supplementfactsrank.com/product/pure-encapsulations-one-60c",
+         "pageAge": ""
+        },
+        {
+         "url": "https://shop.athleticinsight.com/blogs/reviews/pure-encapsulations-multivitamin-review",
+         "pageAge": "138 days ago"
+        }
+       ]
+      }
+     ],
+     "citations": [
+      {
+       "url": "https://mysupplementrd.com/product/basic-nutrients-2-day-essential-multivitamin-multimineral/",
+       "citedText": "Basic Nutrients 2/Day does not contain iron, and only minimal amounts of calcium (3% DV) and magnesium (5% DV). "
+      },
+      {
+       "url": "https://instalab.com/supplements/pure-encapsulations-o.n.e.-multivitamin-30-capsule",
+       "citedText": "It is hypoallergenic, gluten-free, non-GMO, vegetarian, and contains no iron.\n\n"
+      },
+      {
+       "url": "https://shop.athleticinsight.com/blogs/reviews/pure-encapsulations-multivitamin-review",
+       "citedText": "No iron: The formula is iron-free by design, which is appropriate for most adults but not for those with iron-deficiency anemia.\n\n"
+      },
+      {
+       "url": "https://www.swansonvitamins.com/p/thorne-basic-nutrients-2-day-60-caps",
+       "citedText": "# Basic Nutrients 2/Day\nTRN015 | Back label of supplement bottle showing suggested use: Take 2 capsules daily; gluten free; made in USA\n\nBasic Nutrien..."
+      },
+      {
+       "url": "https://supplementfactsrank.com/product/pure-encapsulations-one-60c",
+       "citedText": "It uses **Metafolin® L-5-MTHF folate**, **methylcobalamin B12**, vitamin D3 and **50 mg CoQ10**, but the formula also has clear one-capsule tradeoffs:..."
+      },
+      {
+       "url": "https://store.mayoclinic.com/thorne-basic-nutrients-2-day.html",
+       "citedText": "**Benefits**\n\n\n\n- Promotes eye health, healthy skin, and immune function\n- Supports heart, blood vessel, and nerve health\n- Contributes to strong bone..."
+      },
+      {
+       "url": "https://shop.athleticinsight.com/blogs/reviews/pure-encapsulations-multivitamin-review",
+       "citedText": "No iron: The formula is iron-free by design, which is appropriate for most adults but not for those with iron-deficiency anemia.\n\n"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

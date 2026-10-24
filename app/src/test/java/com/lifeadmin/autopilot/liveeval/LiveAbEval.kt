@@ -86,6 +86,8 @@ class LiveAbEval {
         Scenario("B-supplements", listOf("Which supplements have good scientific evidence of benefit for generally healthy men around age 40?"), 6, 500),
         Scenario("C-thorne-price", listOf("Where can I buy Thorne Basic Nutrients 2/Day at the best price from a reputable US retailer?"), 6, 500),
         Scenario("D-snowflake-postgres", listOf("Should a customer-facing reporting API query Snowflake directly or serve precomputed reporting data from Postgres?"), 6, 500),
+        // Document F R-N(b): no city named. M4 clarifies locally before any authorization; the AI-first engine has no such step.
+        Scenario("Nb-union-station-ambiguous", listOf("What is the address of Union Station?"), 3, 300),
         Scenario("E-multivitamins", listOf("Compare Thorne and Pure Encapsulations multivitamins", "Which would you pick for someone who doesn't want iron?"), 6, 500),
     ).associateBy { it.id }
 
@@ -206,9 +208,10 @@ class LiveAbEval {
             rec.assumptions.forEach { appendLine("Assumes: $it") }
             rec.flipConditions.forEach { appendLine("Changes if: $it") }
         }
-        if (r.sources.isNotEmpty()) {
+        // The thread screen lists only sources a finding cites (citedCount > 0); the rest of the registry is not shown.
+        if (r.sources.any { it.citedCount > 0 }) {
             appendLine("\nSources")
-            r.sources.forEach { appendLine("[${it.n}] ${it.title} — ${it.url}" + (it.pageAge?.let { a -> " (search result age: $a)" } ?: "")) }
+            r.sources.filter { it.citedCount > 0 }.forEach { appendLine("[${it.n}] ${it.title} — ${it.url}" + (it.pageAge?.let { a -> " (search result age: $a)" } ?: "")) }
         }
         r.failure?.let { appendLine("\nFailure: $it") }
     }.trimEnd()

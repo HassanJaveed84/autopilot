@@ -1,0 +1,330 @@
+{
+ "sanitization": {
+  "rawSha256": "df89ec3e799304b473f30827adbc080fe2e21c8968442cc6cedbf43f0300965c",
+  "removed": {
+   "emails": 0,
+   "phones": 0
+  },
+  "note": "Compact summary: request bodies and full reply segments omitted; cited text kept verbatim apart from emails/phones; no credential."
+ },
+ "scenario": "B-supplements",
+ "engine": "aifirst",
+ "model": "claude-sonnet-5-5",
+ "ranAtUtc": "2026-10-24T07:53:38.992839863Z",
+ "searchBudget": 6,
+ "spendLimitCents": 500,
+ "totalUsd": 0.229118,
+ "turns": [
+  {
+   "question": "Which supplements have good scientific evidence of benefit for generally healthy men around age 40?",
+   "status": "COMPLETE",
+   "outcome": null,
+   "objective": null,
+   "config": "searchBudget=6 spendLimit=500¢ maxOutputTokens=16000 prompt=v1",
+   "elapsedMs": 20510,
+   "shown": "**For generally healthy men around 40, almost no supplement has strong evidence of benefit.** Creatine, if you lift weights or want a performance edge, has the best support. Vitamin D helps if you are low. Everything else has weak, mixed or mostly older-adult evidence. This is a summary of research, not medical advice.\n\n**What has reasonable evidence**\n- **Creatine monohydrate (for strength and muscle).** Reviews describe predominantly positive effects on exercise performance, with minimal to no side effects [1]. One review found the gains in strength, muscle mass and sport performance seemed to be found only in healthy young adults [2]. Men around 40 are closer to that group than to the older adults in the studies where the results were weaker. That is my inference.\n- **Creatine (for memory).** A 2024 meta-analysis rated the evidence for memory as moderate certainty [3]. It rated processing speed, attention and overall cognition as low certainty [3]. A separate review found no change in cognitive task performance in young people [4]. Treat this as a possible bonus, not a reason to take it.\n- **Vitamin D (only if you're deficient or get little sun).** In the large VITAL trial, 2,000 IU a day did not lower the risk of major cardiovascular events or cancer [5]. The investigators said the results do not strongly support starting high-dose vitamin D in healthy people who already meet requirements for bone health [6]. The recommended intake is 600 IU per day for adults up to age 70 [6]. A blood test can show whether you're low.\n\n**Popular supplements with weak or unproven benefit**\n- **Multivitamin.**\n  - The US Preventive Services Task Force (USPSTF) concludes the evidence is insufficient to assess the balance of benefits and harms of multivitamins for preventing cardiovascular disease or cancer [7].\n  - The Physicians' Health Study II followed men for over a decade. It found a daily multivitamin did not reduce major cardiovascular events, heart attack, stroke or cardiovascular death [8]. It did find a modest but statistically significant reduction in total cancer [9], though the effect was small and has been questioned.\n  - The COSMOS trial found cognitive benefits, but its participants were men aged 60 or older and women aged 65 or older [10]. Its authors say the finding requires confirmation in future research [10].\n  - These trials were in men aged 50 and over, so how well they apply at 40 is unknown.\n- **Omega-3 (fish oil).** In VITAL, fish oil did not significantly reduce the main cardiovascular or cancer outcomes. There was a possible heart attack benefit, especially in people who ate little fish, but that needs confirmation [5].\n\n**What to avoid**\n- **Beta-carotene and vitamin E.** The USPSTF recommends against using beta carotene or vitamin E supplements to prevent cardiovascular disease or cancer [7]. It found harms of beta carotene outweigh the benefits [11].\n\n**Limits of this answer**\n- The trials above mostly enrolled people 50 and older, so few directly test men at 40.\n- I didn't search for evidence on testosterone boosters, ashwagandha, magnesium, probiotics or protein powders, so I can't say whether they work.\n- I didn't check creatine's safety in detail. Ask a clinician first if you have kidney disease or take regular medications.\n- Supplements can't replace diet, exercise, sleep and routine screening. Those matter more at your age.\n\nSources\n[1] Creatine for Exercise and Sports Performance, with Recovery Considerations for Healthy Populations - PMC — https://pmc.ncbi.nlm.nih.gov/articles/PMC8228369/ (search result age: 1970 days ago)\n[2] Creatine Supplementation for Muscle Growth: A Scoping Review of Randomized Clinical Trials from 2012 to 2021 - PMC — https://pmc.ncbi.nlm.nih.gov/articles/PMC8949037/ (search result age: 1683 days ago)\n[3] Frontiers — https://www.frontiersin.org/journals/nutrition/articles/10.3389/fnut.2024.1424972/full (search result age: 1 days ago)\n[4] Effects of creatine supplementation on cognitive function of healthy individuals: A systematic review of randomized controlled trials - PMC — https://pmc.ncbi.nlm.nih.gov/articles/PMC6093191/ (search result age: 3104 days ago)\n[5] The VITAL trial's findings on fish oil & vitamin D — https://www.cspi.org/article/vital-trials-findings-fish-oil-vitamin-d (search result age: 703 days ago)\n[6] Findings about the Vital Study — https://www.vitalstudy.org/findings.html (search result age: 2905 days ago)\n[7] Recommendation: Vitamin, Mineral, and Multivitamin Supplementation to Prevent Cardiovascular Disease and Cancer: Preventive Medication — https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/vitamin-supplementation-to-prevent-cvd-and-cancer-preventive-medication (search result age: 1586 days ago)\n[8] Multivitamins in the prevention of cardiovascular disease in men: the Physicians' Health Study II randomized controlled trial - PubMed — https://pubmed.ncbi.nlm.nih.gov/23117775/ (search result age: 5099 days ago)\n[9] Multivitamins in the Prevention of Cancer in Men: The Physicians' Health Study II Randomized Controlled Trial — https://chiro.org/nutrition/ABSTRACTS/Multivitamins_in_the_Prevention_of_Cancer.shtml\n[10] Results — https://cosmostrial.org/results/\n[11] Vitamin, Mineral, and Multivitamin Supplementation to Prevent — https://www.uspreventiveservicestaskforce.org/home/getfilebytoken/umGzAGWUVDPcnmbdYnHf_a (search result age: 1586 days ago)",
+   "claims": [],
+   "ledger": [
+    {
+     "stage": "AI_FIRST",
+     "model": "claude-sonnet-5-5",
+     "outcome": "COMPLETE",
+     "usageStatus": "COMPLETE",
+     "inputTokens": 77659,
+     "outputTokens": 2380,
+     "cacheReadTokens": 0,
+     "cacheWriteTokens": 0,
+     "webSearches": 5,
+     "estimatedMicros": 229118,
+     "durationMs": 20454
+    }
+   ],
+   "calls": [
+    {
+     "maxSearches": 6,
+     "stop": "END",
+     "elapsedMs": 20454,
+     "continuesPausedTurn": false,
+     "searches": [
+      {
+       "query": "USPSTF vitamin mineral supplements prevent cardiovascular disease cancer recommendation",
+       "error": "",
+       "results": [
+        {
+         "url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/vitamin-supplementation-to-prevent-cvd-and-cancer-preventive-medication",
+         "pageAge": "1586 days ago"
+        },
+        {
+         "url": "https://jamanetwork.com/journals/jama/fullarticle/2797424",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.uspreventiveservicestaskforce.org/home/getfilebytoken/umGzAGWUVDPcnmbdYnHf_a",
+         "pageAge": "1586 days ago"
+        },
+        {
+         "url": "https://www.acc.org/Latest-in-Cardiology/Articles/2022/06/21/21/45/USPSTF-Recommends-Against-Use-of-Beta-Carotene",
+         "pageAge": "1586 days ago"
+        },
+        {
+         "url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/vitamin-supplementation-to-prevent-cancer-and-cvd-counseling-february-2014",
+         "pageAge": "4634 days ago"
+        },
+        {
+         "url": "https://www.aafp.org/afp/2022/1100/uspstf-supplementation-cardiovascular-disease-cancer.pdf",
+         "pageAge": ""
+        },
+        {
+         "url": "https://jamanetwork.com/journals/jama/fullarticle/2793447",
+         "pageAge": "1586 days ago"
+        },
+        {
+         "url": "https://www.uspreventiveservicestaskforce.org/uspstf/document/final-evidence-summary/vitamin-supplementation-to-prevent-cvd-and-cancer-preventive-medication",
+         "pageAge": "1586 days ago"
+        },
+        {
+         "url": "https://www.pharmacist.com/Blogs/CEO-Blog/Article/uspstf-taking-vitamin-mineral-and-multivitamin-supplements-doesnt-prevent-cvd-and-cancer",
+         "pageAge": "518 days ago"
+        }
+       ]
+      },
+      {
+       "query": "creatine supplementation healthy adults evidence review benefits",
+       "error": "",
+       "results": [
+        {
+         "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6093191/",
+         "pageAge": "3104 days ago"
+        },
+        {
+         "url": "https://www.frontiersin.org/journals/nutrition/articles/10.3389/fnut.2024.1424972/full",
+         "pageAge": "1 days ago"
+        },
+        {
+         "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7922146/",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7996960/",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6518405/",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7916590/",
+         "pageAge": ""
+        },
+        {
+         "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8228369/",
+         "pageAge": "1970 days ago"
+        },
+        {
+         "url": "https://link.springer.com/article/10.1186/s12970-021-00412-w",
+         "pageAge": "2084 days ago"
+        },
+        {
+         "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8949037/",
+         "pageAge": "1683 days ago"
+        }
+       ]
+      },
+      {
+       "query": "VITAL trial vitamin D omega-3 healthy adults results no reduction cancer cardiovascular",
+       "error": "",
+       "results": [
+        {
+         "url": "https://www.ahajournals.org/doi/10.1161/CIRCRESAHA.119.314541",
+         "pageAge": "2487 days ago"
+        },
+        {
+         "url": "https://www.hcplive.com/view/vital-study-supplements-of-omega3s-or-vitamin-d-do-not-reduce-cvd-or-cancers",
+         "pageAge": "152 days ago"
+        },
+        {
+         "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10574231/",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.sciencedirect.com/science/article/abs/pii/S0960076019305424",
+         "pageAge": "2537 days ago"
+        },
+        {
+         "url": "https://www.vitalstudy.org/findings.html",
+         "pageAge": "2905 days ago"
+        },
+        {
+         "url": "https://www.cspi.org/article/vital-trials-findings-fish-oil-vitamin-d",
+         "pageAge": "703 days ago"
+        },
+        {
+         "url": "https://www.cardiosmart.org/news/2018/11/study-questions-the-benefits-of-vitamin-d-and-omega-3-supplements",
+         "pageAge": "2902 days ago"
+        },
+        {
+         "url": "https://pace-cme.org/news/neither-omega-3s-nor-vitamin-d-reduce-major-cvd-events-in-primary-prevention-cohort/2455289/",
+         "pageAge": "2903 days ago"
+        },
+        {
+         "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6425757/",
+         "pageAge": ""
+        }
+       ]
+      },
+      {
+       "query": "COSMOS trial multivitamin cognition men results",
+       "error": "",
+       "results": [
+        {
+         "url": "https://cosmostrial.org/results/",
+         "pageAge": ""
+        },
+        {
+         "url": "https://clinicaltrials.gov/study/NCT04582617",
+         "pageAge": ""
+        },
+        {
+         "url": "https://alzheimersnewstoday.com/news/cosmos-mind-daily-multivitamin-improves-cognition-older-adults/",
+         "pageAge": "1494 days ago"
+        },
+        {
+         "url": "https://cdn.clinicaltrials.gov/large-docs/45/NCT02422745/Prot_000.pdf",
+         "pageAge": ""
+        },
+        {
+         "url": "https://ajcn.nutrition.org/article/S0002-9165(23)48904-6/fulltext",
+         "pageAge": "1249 days ago"
+        },
+        {
+         "url": "https://www.sciencedaily.com/releases/2024/01/240118122110.htm",
+         "pageAge": "59 days ago"
+        },
+        {
+         "url": "https://ajcn.nutrition.org/article/S0002-9165(23)66342-7/pdf",
+         "pageAge": ""
+        },
+        {
+         "url": "https://pubmed.ncbi.nlm.nih.gov/36102337/",
+         "pageAge": "1302 days ago"
+        },
+        {
+         "url": "https://www.crnusa.org/newsroom/cosmos-mind-study-shows-promise-multivitamins-cognition",
+         "pageAge": "1501 days ago"
+        }
+       ]
+      },
+      {
+       "query": "Physicians' Health Study II multivitamin men cancer cardiovascular results",
+       "error": "",
+       "results": [
+        {
+         "url": "https://www.acc.org/latest-in-cardiology/clinical-trials/2012/11/05/11/43/phs-ii-cancer",
+         "pageAge": "5101 days ago"
+        },
+        {
+         "url": "https://jamanetwork.com/journals/jama/fullarticle/1389615",
+         "pageAge": "5099 days ago"
+        },
+        {
+         "url": "https://clinicaltrials.gov/study/NCT00270647",
+         "pageAge": ""
+        },
+        {
+         "url": "https://chiro.org/nutrition/ABSTRACTS/Multivitamins_in_the_Prevention_of_Cancer.shtml",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.researchgate.net/publication/233540048_Multivitamins_in_the_Prevention_of_Cancer_in_Men_The_Physicians'_Health_Study_II_Randomized_Controlled_Trial",
+         "pageAge": "5092 days ago"
+        },
+        {
+         "url": "https://pubmed.ncbi.nlm.nih.gov/23117775/",
+         "pageAge": "5099 days ago"
+        },
+        {
+         "url": "https://en.wikipedia.org/wiki/Centrum_(multivitamin)",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.crnusa.org/newsroom/physicians-health-study-ii-finds-no-cardiovascular-benefit-middle-aged-and-older-healthy",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.studocu.com/en-us/document/drexel-university/applications-in-biology-2/sesso-dfdfd/118489282",
+         "pageAge": "612 days ago"
+        }
+       ]
+      }
+     ],
+     "citations": [
+      {
+       "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8228369/",
+       "citedText": "Introduction\nIn this regard, creatine has yielded predominantly positive effects regarding exercise performance measures with no ergolytic effects and..."
+      },
+      {
+       "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8949037/",
+       "citedText": "Dosage Strategies of Creatine Supplementation\nThe positive effects of creatine supplementation on muscle strength, muscle mass, and sport performance ..."
+      },
+      {
+       "url": "https://www.frontiersin.org/journals/nutrition/articles/10.3389/fnut.2024.1424972/full",
+       "citedText": "The GRADE assessment indicates that the certainty of evidence for memory function is moderate, suggesting a reasonable level of confidence in the posi..."
+      },
+      {
+       "url": "https://www.frontiersin.org/journals/nutrition/articles/10.3389/fnut.2024.1424972/full",
+       "citedText": "However, the evidence for processing speed, overall cognitive function, executive function, and attention is of low certainty, indicating that further..."
+      },
+      {
+       "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6093191/",
+       "citedText": "Performance on cognitive tasks stayed unchanged in young individuals.\n\n"
+      },
+      {
+       "url": "https://www.cspi.org/article/vital-trials-findings-fish-oil-vitamin-d",
+       "citedText": "#### Vitamin D\n- In the VITAL trial, 2,000 IU a day of vitamin D did not lower the risk of major cardiovascular events or of cancer.\n"
+      },
+      {
+       "url": "https://www.vitalstudy.org/findings.html",
+       "citedText": "\"Although our study shows that a vitamin D dose of 2000 IU per day is well tolerated, with few if any side effects, the results do not strongly suppor..."
+      },
+      {
+       "url": "https://www.vitalstudy.org/findings.html",
+       "citedText": "National guidelines for vitamin D intake from food and/or supplements recommend 600 IU per day for adults up to age 70 and 800 IU per day for those ag..."
+      },
+      {
+       "url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/vitamin-supplementation-to-prevent-cvd-and-cancer-preventive-medication",
+       "citedText": "| D |\n| Community-dwelling, nonpregnant adults | The USPSTF concludes that the current evidence is insufficient to assess the balance of benefits and ..."
+      },
+      {
+       "url": "https://pubmed.ncbi.nlm.nih.gov/23117775/",
+       "citedText": "**Conclusion:** Among this population of US male physicians, taking a daily multivitamin did not reduce major cardiovascular events, MI, stroke, and C..."
+      },
+      {
+       "url": "https://chiro.org/nutrition/ABSTRACTS/Multivitamins_in_the_Prevention_of_Cancer.shtml",
+       "citedText": "Discussion In this large-scale, randomized, placebo-controlled trial among middle-aged and older men, long-term daily multivitamin use had a modest bu..."
+      },
+      {
+       "url": "https://cosmostrial.org/results/",
+       "citedText": "COSMOS includes 21,442 participants –12,666 women aged 65 or older and 8,776 men aged 60 or older – who were followed for an ...\n\n# Results\n## Study F..."
+      },
+      {
+       "url": "https://cosmostrial.org/results/",
+       "citedText": "The investigators estimated that taking the daily multivitamin slowed cognitive aging by approximately 60%, or the equivalent of 1.8 years over the 3 ..."
+      },
+      {
+       "url": "https://www.cspi.org/article/vital-trials-findings-fish-oil-vitamin-d",
+       "citedText": "- EPA + DHA did lower the risk of heart attacks, especially in people who ate less than 1½ servings of fish per week and in African-Americans, but tho..."
+      },
+      {
+       "url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/vitamin-supplementation-to-prevent-cvd-and-cancer-preventive-medication",
+       "citedText": "The USPSTF again concludes that the evidence is insufficient to assess the balance ...\n\n# Vitamin, Mineral, and Multivitamin Supplementation to Preven..."
+      },
+      {
+       "url": "https://www.uspreventiveservicestaskforce.org/home/getfilebytoken/umGzAGWUVDPcnmbdYnHf_a",
+       "citedText": "USPSTF Assessment of Magnitude of Net Benefit\n\nThe US Preventive Services Task Force (USPSTF) concludes with themethodstheUSPSTFusestodeterminethenetb..."
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,321 @@
+{
+ "sanitization": {
+  "rawSha256": "e0fb72f0f24beea2c1d4f451c3bb5cfd7d54b993f53e060eb5e95e97a8c3e939",
+  "removed": {
+   "emails": 0,
+   "phones": 0
+  },
+  "note": "Compact summary: request bodies and full reply segments omitted; cited text kept verbatim apart from emails/phones; no credential."
+ },
+ "scenario": "D-snowflake-postgres",
+ "engine": "m4",
+ "model": "claude-sonnet-5-5",
+ "ranAtUtc": "2026-10-24T07:43:34.605229768Z",
+ "searchBudget": 6,
+ "spendLimitCents": 500,
+ "totalUsd": 0.184057,
+ "turns": [
+  {
+   "question": "Should a customer-facing reporting API query Snowflake directly or serve precomputed reporting data from Postgres?",
+   "status": "NOT_ESTABLISHED",
+   "outcome": "Saved(turnState=DONE, resultState=NOT_ESTABLISHED, ending=COMPLETE)",
+   "objective": "Find out: Should a customer-facing reporting API query Snowflake directly or serve precomputed reporting data from Postgres",
+   "config": "searchBudget=6 spendLimit=500¢ stages=[GATHER, FILL_GAPS] outputTokens=8000 wordingCheck=false",
+   "elapsedMs": 39247,
+   "shown": "Snowflake direct vs precomputed Postgres for a reporting API — Not established: no source supported what this rests on.\nNo source states a single correct answer, because this is a design trade-off. Given your constraint to serve from Postgres, the evidence supports that choice, with a caveat about newer Snowflake options. Only indicated, not established: - Standard warehouses: The default maximum concurrency on a Snowflake warehouse is 8 queries. Only indicated, not established: One secondary source says queries beyond that limit are queued. That is a poor fit for many simultaneous customer requests unless you add warehouses or clusters. [1] [3] [20] [2] - Newer Snowflake option: Snowflake made interactive tables and interactive warehouses generally available on Dec 11, 2025 (the cited sources do not show: Newer Snowflake). Only indicated, not established: It describes them as delivering low-latency performance for high-concurrency workloads such as data-powered APIs. So \"Snowflake can't serve an API\" is no longer a safe assumption. I did not find independent benchmarks or cost comparisons. [4] I found no source on the Snowflake-to-Postgres load step, which you would have to build. Rests on findings that are not established: - Pick: Precomputing into Postgres is the sensible choice given your constraint.\nCaveat: Only indicated, not established: A standard Snowflake warehouse defaults to a maximum concurrency level of 8, and queries beyond its capacity are queued.\nCaveat: Only indicated, not established: Snowflake's interactive tables and interactive warehouses have been generally available since Dec 11, 2025. Snowflake positions them for low-latency, high-concurrency workloads such as data-powered APIs.\nCaveat: Only indicated, not established: Under the stated constraint, serve precomputed reporting data from Postgres and refresh it from Snowflake on a schedule. Assumes: Reports are predictable, such as fixed aggregates per customer. Data a few minutes or hours old is acceptable. Changes if: Customers need ad hoc queries over large or fresh data. In that case, benchmark Snowflake interactive warehouses (c2) against your load.\n\nWhat I couldn't establish\n- Latency and cost of Snowflake interactive warehouses versus a Postgres read path — I searched Snowflake's own material and found vendor claims, but no independent benchmark I could use.\n- Best method to sync precomputed results from Snowflake into Postgres — my searches did not surface an authoritative source on this.\n- When the c1 default was set — The documentation page is the primary source for the default of 8. Its search copy shows no date, and the search tool reports its age as about 1,300 days. A re-check on the live parameter reference page is still needed to confirm it is current. Other pages, including a 2026 tuning guide, also say th\n- c2 currency — I found no new evidence this round. The held release note carries its own date, 2025-12-11. I did not look for any later change to the interactive tables feature.\n\nSources\n[1] Limiting concurrently running queries — https://docs.snowflake.com/en/user-guide/performance-query-warehouse-max-concurrency (search result age: 1300 days ago)\n[2] How to Optimize Query Concurrency in Snowflake — https://www.dataexpert.io/blog/optimize-query-concurrency-snowflake (search result age: 267 days ago)\n[3] Snowflake Concurrency Fundamentals — https://medium.com/snowflake/snowflake-concurrency-fundamentals-7a2279dd4c51 (search result age: 588 days ago)\n[4] Dec 11, 2025: Interactive tables and interactive warehouses (*General availability*) — https://docs.snowflake.com/en/release-notes/2025/other/2025-12-11-interactive-tables-ga (search result age: 317 days ago)\n[5] Feb 24, 2026: Snowflake Postgres (*General availability*) — https://docs.snowflake.com/en/release-notes/2026/other/2026-02-24-snowflake-postgres-ga (search result age: 242 days ago)\n[6] Oct 15, 2026: Data mirroring for Snowflake Postgres (*General availability*) — https://docs.snowflake.com/en/release-notes/2026/other/2026-10-15-postgres-data-mirroring-ga (search result age: 8 days ago)\n[16] Snowflake Concurrency and Parallel Processing — https://www.linkedin.com/pulse/snowflake-concurrency-parallel-processing-subhrajit-bandyopadhyay (search result age: 1943 days ago)\n[20] Snowflake Admin Series:Snowflake Parameters- a centralized cockpit control-Part 3 — https://medium.com/snowflake/snowflake-parameters-a-centralized-cockpit-control-part-3-4d1867a87013 (search result age: 1585 days ago)",
+   "claims": [
+    "c1 INDICATIVE load=true :: A standard Snowflake warehouse defaults to a maximum concurrency level of 8, and queries beyond its capacity are queued. :: sources=[1, 3, 20, 2]",
+    "c2 INDICATIVE load=true :: Snowflake's interactive tables and interactive warehouses have been generally available since Dec 11, 2025. Snowflake positions them for low-latency, high-concurrency workloads such as data-powered APIs. :: sources=[4]",
+    "c3 ESTABLISHED load=false :: Snowflake Postgres has been generally available since Feb 24, 2026. You connect to its instances with any Postgres client. :: sources=[5]",
+    "c4 INDICATIVE load=true :: Under the stated constraint, serve precomputed reporting data from Postgres and refresh it from Snowflake on a schedule. Assumes: Reports are predictable, such as fixed aggregates per customer. Data a few minutes or hours old is acceptable. Changes if: Customers need ad hoc queries over large or fresh data. In that case, benchmark Snowflake interactive warehouses (c2) against your load. :: sources=[]",
+    "c5 INDICATIVE load=false :: Data mirroring for Snowflake Postgres replicates tables from a Postgres instance into Snowflake. It is supported on AWS and Azure. :: sources=[6]"
+   ],
+   "ledger": [
+    {
+     "stage": "GATHER",
+     "model": "claude-sonnet-5-5",
+     "outcome": "COMPLETE",
+     "usageStatus": "COMPLETE",
+     "inputTokens": 420,
+     "outputTokens": 3249,
+     "cacheReadTokens": 31579,
+     "cacheWriteTokens": 25517,
+     "webSearches": 3,
+     "estimatedMicros": 130280,
+     "durationMs": 26495
+    },
+    {
+     "stage": "FILL_GAPS",
+     "model": "claude-sonnet-5-5",
+     "outcome": "COMPLETE",
+     "usageStatus": "COMPLETE",
+     "inputTokens": 1091,
+     "outputTokens": 1648,
+     "cacheReadTokens": 9798,
+     "cacheWriteTokens": 9654,
+     "webSearches": 1,
+     "estimatedMicros": 53777,
+     "durationMs": 12398
+    }
+   ],
+   "calls": [
+    {
+     "maxSearches": 3,
+     "stop": "END",
+     "elapsedMs": 26495,
+     "continuesPausedTurn": false,
+     "searches": [
+      {
+       "query": "Snowflake interactive tables low-latency high concurrency customer-facing applications",
+       "error": "",
+       "results": [
+        {
+         "url": "https://www.snowflake.com/en/product/analytics/interactive-analytics/",
+         "pageAge": ""
+        },
+        {
+         "url": "https://medium.com/@wondts/snowflake-interactive-tables-and-interactive-warehouses-f9a13547bcef",
+         "pageAge": "313 days ago"
+        },
+        {
+         "url": "https://www.snowflake.com/en/developers/guides/getting-started-with-interactive-analytics/",
+         "pageAge": ""
+        },
+        {
+         "url": "https://medium.com/towards-data-engineering/snowflake-interactive-tables-warehouses-an-end-to-end-implementation-guide-for-real-time-4318bf134224",
+         "pageAge": "237 days ago"
+        },
+        {
+         "url": "https://www.greybeam.ai/blog/snowflake-interactive-tables",
+         "pageAge": "98 days ago"
+        },
+        {
+         "url": "https://www.snowflake.com/en/developers/guides/getting-started-with-interactive-tables/",
+         "pageAge": "354 days ago"
+        },
+        {
+         "url": "https://docs.snowflake.com/en/release-notes/2025/other/2025-12-11-interactive-tables-ga",
+         "pageAge": "317 days ago"
+        },
+        {
+         "url": "https://www.snowflake.com/en/blog/engineering/Interactive-analytics-tables-warehouses/",
+         "pageAge": "129 days ago"
+        },
+        {
+         "url": "https://nicolauroca.com/snowflake-interactive-tables-and-interactive-warehouses-the-future-of-sub-second-analytics/",
+         "pageAge": "347 days ago"
+        }
+       ]
+      },
+      {
+       "query": "Snowflake warehouse concurrency limit queries per warehouse MAX_CONCURRENCY_LEVEL documentation",
+       "error": "",
+       "results": [
+        {
+         "url": "https://medium.com/snowflake/snowflake-concurrency-fundamentals-7a2279dd4c51",
+         "pageAge": "588 days ago"
+        },
+        {
+         "url": "https://www.dataexpert.io/blog/optimize-query-concurrency-snowflake",
+         "pageAge": "267 days ago"
+        },
+        {
+         "url": "https://medium.com/@sandip.pani.no1/unveiling-the-power-of-max-concurrency-level-a-deep-dive-into-snowflakes-performance-optimization-4e2ffc7da9bf",
+         "pageAge": "1018 days ago"
+        },
+        {
+         "url": "https://docs.snowflake.com/en/user-guide/performance-query-warehouse-max-concurrency",
+         "pageAge": "1300 days ago"
+        },
+        {
+         "url": "https://www.linkedin.com/pulse/snowflake-concurrency-parallel-processing-subhrajit-bandyopadhyay",
+         "pageAge": "1943 days ago"
+        },
+        {
+         "url": "https://sonra.io/optimal-usage-of-snowflake-virtual-warehouses-breaking-down-parallelism-concurrency/",
+         "pageAge": "152 days ago"
+        },
+        {
+         "url": "https://datageek.blog/2026/04/21/performance-impacts-of-concurrency/",
+         "pageAge": "186 days ago"
+        },
+        {
+         "url": "https://www.flexera.com/blog/finops/snowflake-performance-tuning/",
+         "pageAge": "148 days ago"
+        },
+        {
+         "url": "https://medium.com/snowflake/snowflake-parameters-a-centralized-cockpit-control-part-3-4d1867a87013",
+         "pageAge": "1585 days ago"
+        }
+       ]
+      },
+      {
+       "query": "Snowflake Postgres generally available release notes",
+       "error": "",
+       "results": [
+        {
+         "url": "https://docs.snowflake.com/en/release-notes/all-release-notes",
+         "pageAge": "162 days ago"
+        },
+        {
+         "url": "https://docs.snowflake.com/en/release-notes/2026/other/2026-10-15-postgres-data-mirroring-ga",
+         "pageAge": "8 days ago"
+        },
+        {
+         "url": "https://docs.snowflake.com/en/release-notes/2026/other/2026-02-24-snowflake-postgres-ga",
+         "pageAge": "242 days ago"
+        },
+        {
+         "url": "https://docs.snowflake.com/en/release-notes/2026/other/2026-07-14-snowflake-postgres-catalog-integration-ga",
+         "pageAge": "102 days ago"
+        },
+        {
+         "url": "https://docs.snowflake.com/en/release-notes/feature-releases-2026",
+         "pageAge": ""
+        },
+        {
+         "url": "https://docs.snowflake.com/en/release-notes/2025/other/2025-12-17-snowflake-postgres",
+         "pageAge": "311 days ago"
+        },
+        {
+         "url": "https://docs.snowflake.com/en/release-notes/new-features",
+         "pageAge": "70 days ago"
+        },
+        {
+         "url": "https://docs.snowflake.com/en/release-notes/connectors/postgres6",
+         "pageAge": ""
+        },
+        {
+         "url": "https://docs.snowflake.com/en/release-notes/new-features-2026",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.snowflake.com/en/developers/postgres/upgrades-version-management/",
+         "pageAge": ""
+        }
+       ]
+      }
+     ],
+     "citations": [
+      {
+       "url": "https://docs.snowflake.com/en/user-guide/performance-query-warehouse-max-concurrency",
+       "citedText": "## How to lower MAX\\_CONCURRENCY\\_LEVEL\nThe default maximum concurrency level is 8. "
+      },
+      {
+       "url": "https://www.dataexpert.io/blog/optimize-query-concurrency-snowflake",
+       "citedText": "When a warehouse runs out of compute resources or hits its concurrency limit, Snowflake places additional queries in a queue. "
+      },
+      {
+       "url": "https://medium.com/snowflake/snowflake-concurrency-fundamentals-7a2279dd4c51",
+       "citedText": "The parameter defines a soft limit for the maximum number of concurrent query slots for a virtual warehouse. “Soft” means the actual limit can be eith..."
+      },
+      {
+       "url": "https://docs.snowflake.com/en/release-notes/2025/other/2025-12-11-interactive-tables-ga",
+       "citedText": "Interactive tables and interactive warehouses are now generally available. "
+      },
+      {
+       "url": "https://docs.snowflake.com/en/release-notes/2025/other/2025-12-11-interactive-tables-ga",
+       "citedText": "Together, interactive tables and interactive warehouses deliver low-latency query performance for high-concurrency, interactive workloads such as real..."
+      },
+      {
+       "url": "https://docs.snowflake.com/en/release-notes/2026/other/2026-02-24-snowflake-postgres-ga",
+       "citedText": "# Feb 24, 2026: Snowflake Postgres (General availability)\nSnowflake Postgres is now generally available. "
+      },
+      {
+       "url": "https://docs.snowflake.com/en/release-notes/2026/other/2026-02-24-snowflake-postgres-ga",
+       "citedText": "You connect directly to your instances using any Postgres client. "
+      },
+      {
+       "url": "https://docs.snowflake.com/en/release-notes/2026/other/2026-10-15-postgres-data-mirroring-ga",
+       "citedText": "Data mirroring continuously replicates tables from a Snowflake Postgres instance into a Snowflake database with minimal lag. "
+      },
+      {
+       "url": "https://docs.snowflake.com/en/release-notes/2026/other/2026-10-15-postgres-data-mirroring-ga",
+       "citedText": "This feature is currently supported on AWS and Azure.\n\n"
+      }
+     ]
+    },
+    {
+     "maxSearches": 1,
+     "stop": "END",
+     "elapsedMs": 12398,
+     "continuesPausedTurn": false,
+     "searches": [
+      {
+       "query": "MAX_CONCURRENCY_LEVEL parameter default 8 Snowflake ALTER WAREHOUSE",
+       "error": "",
+       "results": [
+        {
+         "url": "https://medium.com/snowflake/snowflake-concurrency-fundamentals-7a2279dd4c51",
+         "pageAge": "588 days ago"
+        },
+        {
+         "url": "https://www.linkedin.com/pulse/snowflake-concurrency-parallel-processing-subhrajit-bandyopadhyay",
+         "pageAge": "1943 days ago"
+        },
+        {
+         "url": "https://docs.snowflake.com/en/user-guide/performance-query-warehouse-max-concurrency",
+         "pageAge": "1300 days ago"
+        },
+        {
+         "url": "https://www.dataexpert.io/blog/optimize-query-concurrency-snowflake",
+         "pageAge": "267 days ago"
+        },
+        {
+         "url": "https://www.linkedin.com/posts/ulibethke_optimal-usage-of-snowflake-virtual-warehouses-activity-7112455354239614977-2nm1",
+         "pageAge": "1123 days ago"
+        },
+        {
+         "url": "https://medium.com/snowflake/multiclustering-in-snowflake-f99f4367a3b5",
+         "pageAge": "1557 days ago"
+        },
+        {
+         "url": "https://medium.com/snowflake/snowflake-parameters-a-centralized-cockpit-control-part-3-4d1867a87013",
+         "pageAge": "1585 days ago"
+        },
+        {
+         "url": "https://www.flexera.com/blog/finops/snowflake-performance-tuning/",
+         "pageAge": "148 days ago"
+        },
+        {
+         "url": "https://yukidata.com/snowflake-snowpark-optimized-warehouse-guide/",
+         "pageAge": "327 days ago"
+        }
+       ]
+      }
+     ],
+     "citations": [
+      {
+       "url": "https://docs.snowflake.com/en/user-guide/performance-query-warehouse-max-concurrency",
+       "citedText": "## How to lower MAX\\_CONCURRENCY\\_LEVEL\nThe default maximum concurrency level is 8. "
+      },
+      {
+       "url": "https://docs.snowflake.com/en/user-guide/performance-query-warehouse-max-concurrency",
+       "citedText": "Be aware that lowering the MAX_CONCURRENCY_LEVEL for a warehouse can lead to more queries being placed in a queue, which has a performance implication..."
+      },
+      {
+       "url": "https://medium.com/snowflake/snowflake-concurrency-fundamentals-7a2279dd4c51",
+       "citedText": "The default value is 8 with the maximum at 32. "
+      },
+      {
+       "url": "https://medium.com/snowflake/snowflake-concurrency-fundamentals-7a2279dd4c51",
+       "citedText": "The parameter defines a soft limit for the maximum number of concurrent query slots for a virtual warehouse. “Soft” means the actual limit can be eith..."
+      },
+      {
+       "url": "https://medium.com/snowflake/snowflake-parameters-a-centralized-cockpit-control-part-3-4d1867a87013",
+       "citedText": "**If this is a single cluster warehouse or multi cluster warehouse in maximized mode**, all SQL statement are queued unless previously allocated resou..."
+      },
+      {
+       "url": "https://www.dataexpert.io/blog/optimize-query-concurrency-snowflake",
+       "citedText": "## What is Query Concurrency in Snowflake\n### Query Concurrency Defined\nBy default, Snowflake limits **concurrent queries to 8 per warehouse**, contro..."
+      },
+      {
+       "url": "https://www.linkedin.com/pulse/snowflake-concurrency-parallel-processing-subhrajit-bandyopadhyay",
+       "citedText": "Probably the misconception comes from the warehouse level parameter named MAX_CONCURRENCY_LEVEL which has a default value of 8. But this is not a limi..."
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
