@@ -709,3 +709,21 @@ This was one owner-approved paid rerun on the fixed engine (`41dc471`, prompt co
 | **N2** | The GATHER prompt shows only "searches allowed on this call". | The unresolved section described that per-call allowance as the investigation's limit. |
 
 The proposed fixes are in the report (§6).
+
+---
+
+# M4 fix pass for N1, N2 and source dates, 2026-10-24
+
+This pass was approved after the second R-N(a) live run. Each defect was first reproduced on `0d4b900` from that run's own sanitized reply (`fixtures/live/R-N-a-2026-10-24-rerun.replies.json`): 9 new cases failed there, and 3 characterization cases passed. No paid call was made in this pass. Both historical scorecards and their sanitized JSON are unchanged.
+
+| Defect | Root cause | Fix |
+|---|---|---|
+| **N1:** a label block containing parentheses was ignored, and the raw block was shown as Claude's summary | `^\(([^()]*)\)` cannot match nested parentheses. A block that failed to match was silently treated as having no labels, so evidence counted as in scope. | A balanced-parenthesis reader splits fields only outside parentheses. Anything it cannot read safely marks the evidence "labels unreadable": the citation and quote are kept, but it is not counted as support (an unreadable AGAINST still counts). The displayed summary never carries labels. |
+| **N2:** the per-call allowance was described as the investigation's limit | The prompt gave only "searches allowed on this call". The model's remark reached the unresolved section. A run that used its whole budget with a gap open ended as "Finished". | The prompt gives each call's share against the authorized budget. Allowance remarks are removed from the answer and from unresolved items. The turn log states searches used against authorized, and the engine's stop reason. That case now ends as "Search budget reached". |
+| **Dates:** `asof=` came from search-result page age | Any `asof=` counted as the fact's date | `EvidenceRef.asOfBasis` (QUOTED or STATED) and `asOfNote`. Only a date the cited text shows dates the fact; a stated date can only make evidence older. |
+
+Prompt contract **version 5**: `asof=` must be a date the page states, attribute values must be plain words, and each call is told its share of the budget.
+
+**Fixture changes:** four fixtures with volatile prices whose cited text gave no date (fragrance seller pages, an X9 retailer and museum tickets) now carry the date in the cited text. Their tests are about conflict and continuation, not dating. `ClaimAssessorTest` constructs dates the page shows.
+
+**Consequence for live price scenarios (R-C, R-K):** a seller page that shows no date can no longer have its price called current on the strength of a date the model supplies. Such prices will be "only indicated" unless the page dates them. This is intended: the search index can serve old page content.
