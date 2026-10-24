@@ -66,6 +66,8 @@ import com.lifeadmin.autopilot.ai.investigation.Claim
 import com.lifeadmin.autopilot.ai.investigation.ClaimAssessor
 import com.lifeadmin.autopilot.ai.investigation.ClaimStatus
 import com.lifeadmin.autopilot.ai.investigation.EffortSupport
+import com.lifeadmin.autopilot.ai.investigation.EvidenceDisplay
+import com.lifeadmin.autopilot.ai.investigation.EvidenceRef
 import com.lifeadmin.autopilot.ai.investigation.ResearchDepth
 import com.lifeadmin.autopilot.ai.investigation.ResearchPresets
 import com.lifeadmin.autopilot.ai.investigation.SectionKind
@@ -724,11 +726,11 @@ private fun EvidenceSheet(claim: Claim, r: TurnResult, onSource: (Int) -> Unit, 
             }
             if (claim.support.isNotEmpty()) {
                 Text("SUPPORTING", style = MaterialTheme.typography.labelSmall, color = c.ink2, modifier = Modifier.padding(top = 6.dp))
-                claim.support.forEach { e -> EvidenceRow(e.excerpt, title(e.sourceN), e.sourceN, if (e.pointerOnly) "Points to a source cited elsewhere; it doesn't verify this." else e.scopeNote.ifBlank { e.asOf?.let { d -> "As of $d" } }, onSource) }
+                claim.support.forEach { e -> EvidenceRow(e, title(e.sourceN), if (e.pointerOnly) "Points to a source cited elsewhere; it doesn't verify this." else e.scopeNote.ifBlank { e.asOf?.let { d -> "As of $d" } }, onSource) }
             }
             if (claim.against.isNotEmpty()) {
                 Text("POINTING THE OTHER WAY", style = MaterialTheme.typography.labelSmall, color = c.ink2, modifier = Modifier.padding(top = 6.dp))
-                claim.against.forEach { e -> EvidenceRow(e.excerpt, title(e.sourceN), e.sourceN, e.scopeNote.ifBlank { e.asOf?.let { d -> "As of $d" } }, onSource) }
+                claim.against.forEach { e -> EvidenceRow(e, title(e.sourceN), e.scopeNote.ifBlank { e.asOf?.let { d -> "As of $d" } }, onSource) }
             }
             if (claim.support.isEmpty() && claim.against.isEmpty() && !claim.type.derived) Text(if (claim.dependsOnUser) "This depends on your situation or choice; no source can settle it." else "No source was found for this. That doesn't make it false.", style = MaterialTheme.typography.bodyMedium, color = c.ink2)
         }
@@ -736,12 +738,15 @@ private fun EvidenceSheet(claim: Claim, r: TurnResult, onSource: (Int) -> Unit, 
 }
 
 @Composable
-private fun EvidenceRow(excerpt: String, source: String, n: Int, note: String?, onSource: (Int) -> Unit) {
+private fun EvidenceRow(e: EvidenceRef, source: String, note: String?, onSource: (Int) -> Unit) {
     val c = AutopilotTheme.colors
+    val n = e.sourceN
     Row(Modifier.fillMaxWidth().clickable(role = Role.Button) { onSource(n) }.heightIn(min = 48.dp).padding(vertical = 4.dp).testTag("evidence_source_$n"), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         CitationChip(n, onClick = { onSource(n) }, title = source)
         Column(Modifier.weight(1f)) {
-            Text("“${excerpt.take(240)}”", style = MaterialTheme.typography.bodyMedium, color = c.ink)
+            // Only the page's own cited words go in quotation marks; the reply's line is labelled as a summary.
+            EvidenceDisplay.quoted(e)?.let { Text("“$it”", style = MaterialTheme.typography.bodyMedium, color = c.ink, modifier = Modifier.testTag("evidence_quote_$n")) }
+            EvidenceDisplay.summary(e)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = if (e.quote == null) c.ink else c.ink2, modifier = Modifier.testTag("evidence_summary_$n")) }
             Text(source, style = MaterialTheme.typography.bodySmall, color = c.ink2)
             note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = c.onSignalSoft) }
         }

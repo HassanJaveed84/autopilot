@@ -43,9 +43,13 @@ class TurnWork(
     fun openClaims(): List<Claim> = current().filter { it.loadBearing && !it.superseded && !it.dependsOnUser && it.status != ClaimStatus.ESTABLISHED }
     fun contested(): List<Claim> = current().filter { it.status == ClaimStatus.CONTESTED && !it.superseded }
 
+    /** Calls merged so far; a call after the first answers for the whole turn, not for its own searches. */
+    private var callsMerged = 0
+
     /** Merges one call's output; returns true when it changed anything. */
     fun merge(out: TurnOutput, nowMs: Long): Boolean {
         var changed = false
+        val laterCall = ++callsMerged > 1
         if (out.injectionNoticed) injectionNoticed = true
         for (c in out.claims) {
             if (c.id in excluded) continue
@@ -58,10 +62,17 @@ class TurnWork(
             if (prior != null && fresh && prior.against.isNotEmpty() && c.against.isEmpty() && changes.none { it.earlierClaimId == c.id && it.kind == ChangeKind.CONFIRMED }) {
                 changes += ClaimChange(c.id, null, ChangeKind.CONFIRMED, "Re-checked with new evidence; the earlier disagreement about this is resolved.")
             }
+            // Verified evidence this turn already gathered for the same statement is kept: a later call can cite only its own
+            // search results, so leaving a held page out of its block is not evidence against it. A restatement it does make
+            // (for example with a scope note) replaces the earlier line. Inherited evidence still gives way to a re-check (RES-106),
+            // and a changed value is a different statement, so its earlier evidence is not carried over.
+            val support = if (prior != null && !prior.reused && prior.turnId == turnId && EvidenceText.sameStatement(prior.text, c.text)) {
+                c.support + prior.support.filter { p -> !p.pointerOnly && c.support.none { it.sourceN == p.sourceN } }
+            } else c.support
             val merged = c.copy(
                 reused = false, checked = true,
                 inheritedFromTurnId = prior?.inheritedFromTurnId ?: prior?.turnId?.takeIf { it != turnId } ?: c.inheritedFromTurnId ?: lineage[c.id]?.takeIf { it != turnId },
-                against = against,
+                support = support, against = against,
             )
             if (prior == null || prior != merged) changed = true
             claims[c.id] = merged
@@ -73,13 +84,19 @@ class TurnWork(
             }
         }
         if (out.title != null && out.title != title) { title = out.title; changed = true }
-        if (out.answer.isNotEmpty()) { answer = out.answer; changed = true }
+        // A later call sees only its own search results; what it says about "this search" is not a fact about the investigation.
+        val answerText = if (laterCall) CallNarration.strip(out.answer) else out.answer
+        if (answerText.isNotEmpty()) { answer = answerText; changed = true }
         if (out.steps.isNotEmpty()) { steps = out.steps; changed = true }
         if (out.compareRows.isNotEmpty()) { compareRows = out.compareRows; compareOptions = out.compareOptions; changed = true }
         if (out.options.isNotEmpty()) { options = out.options; changed = true }
         if (out.recommendation != null) { recommendation = out.recommendation; changed = true }
         if (out.worthKnowing.isNotEmpty()) { worthKnowing = out.worthKnowing; changed = true }
-        for (u in out.unresolved) if (unresolved.none { it.topic.equals(u.topic, true) }) { unresolved += u; changed = true }
+        for (u in out.unresolved) {
+            // A later call's note that it could not re-cite a page the investigation already holds is about the call, not an open question.
+            if (laterCall && CallNarration.aboutHeldSource("${u.topic} ${u.why}")) continue
+            if (unresolved.none { it.topic.equals(u.topic, true) }) { unresolved += u; changed = true }
+        }
         for (p in out.proposals) if (!proposals.containsKey(p.id)) { proposals[p.id] = p; changed = true }
         for (q in out.queries) if (q !in queries) queries += q
         if (changed) merged = true

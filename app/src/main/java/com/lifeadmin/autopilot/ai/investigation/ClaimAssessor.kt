@@ -45,7 +45,8 @@ object ClaimAssessor {
             usable.isNotEmpty() -> c.copy(status = ClaimStatus.INDICATIVE, statusReason = "This needs ${standard.label}; what was found falls short (${describe(usable)})")
             inScope.isNotEmpty() -> c.copy(status = ClaimStatus.INDICATIVE, statusReason = staleReason(c, inScope, nowMs))
             pointers.isNotEmpty() -> c.copy(status = ClaimStatus.INDICATIVE, statusReason = "Restated from earlier evidence, not checked here")
-            offScope.isNotEmpty() -> c.copy(status = ClaimStatus.NOT_ESTABLISHED, statusReason = "The source found is about ${offScope.first().scopeNote.removePrefix("About ").trimEnd('.')}, not ${c.scope.ifBlank { "this claim" }}")
+            // The note is the reply's own label for what the page covers; the reason reports it as a label, never as a verified mismatch.
+            offScope.isNotEmpty() -> c.copy(status = ClaimStatus.NOT_ESTABLISHED, statusReason = "Its only ${if (offScope.size == 1) "source was" else "sources were"} marked as being about something else (${offScope.first().scopeNote.removePrefix("About ").trimEnd('.')}), so ${if (offScope.size == 1) "it does" else "they do"} not count for ${c.scope.ifBlank { "this claim" }}")
             c.against.any { !it.pointerOnly } -> c.copy(status = ClaimStatus.NOT_ESTABLISHED, statusReason = "No support found; the sources found point the other way")
             else -> c.copy(status = ClaimStatus.NOT_ESTABLISHED, statusReason = "No source supports this")
         }
@@ -62,7 +63,8 @@ object ClaimAssessor {
         standard == EvidenceStandard.REVIEW -> "Review-level evidence, in scope"
         usable.any { it.kind == EvidenceKind.PRIMARY } && origins == 1 -> "The issuing source, in scope"
         origins == 1 -> "One source, in scope"
-        else -> "$origins independent sources, in scope"
+        // Origins are told apart by host only; two sites run by one publisher still count twice, so the reason claims no more than that.
+        else -> "$origins sources on different sites, in scope"
     }
 
     /** Plain words for what was found, e.g. "one study and one secondary source". */
@@ -82,10 +84,14 @@ object ClaimAssessor {
      * RES-046. The age that counts is the fact's own date (the evidence's, else the claim's), never the
      * fetch time alone. The window is the claim's own; a volatile claim without one gets [VOLATILE_FRESH_FOR];
      * a stable fact without one stays current unless its evidence says otherwise.
+     *
+     * Undated evidence for a stable (non-volatile) claim is current while it was read within the window: a
+     * page stating a fact that does not change is evidence it holds when read. Only a volatile claim needs
+     * the fact's own date, because there an undated page may report a value that has since moved.
      */
     fun fresh(c: Claim, e: EvidenceRef, nowMs: Long): Boolean {
         val window = window(c) ?: return true
-        val factEnd = endOfPeriodMs(e.asOf ?: c.asOf) ?: return false
+        val factEnd = endOfPeriodMs(e.asOf ?: c.asOf) ?: return !c.volatile && nowMs - e.retrievedAtMs <= window.toMillis()
         return nowMs - factEnd <= window.toMillis() && nowMs - e.retrievedAtMs <= window.toMillis()
     }
 
@@ -94,9 +100,11 @@ object ClaimAssessor {
     private fun staleReason(c: Claim, inScope: List<EvidenceRef>, nowMs: Long): String {
         val dated = inScope.mapNotNull { it.asOf ?: c.asOf }.maxByOrNull { endOfPeriodMs(it) ?: Long.MIN_VALUE }
         val days = window(c)?.toDays() ?: 0
-        return if (dated == null || endOfPeriodMs(dated) == null) "This changes within about $days days, and no source dates it"
+        val readDaysAgo = Duration.ofMillis(nowMs - inScope.maxOf { it.retrievedAtMs }).toDays()
+        return if ((dated == null || endOfPeriodMs(dated) == null) && !c.volatile) "No source dates it, and it was last read $readDaysAgo days ago; it needs re-checking every $days days or so"
+        else if (dated == null || endOfPeriodMs(dated) == null) "This changes within about $days days, and no source dates it"
         else {
-            val fetchedDaysAgo = Duration.ofMillis(nowMs - inScope.maxOf { it.retrievedAtMs }).toDays()
+            val fetchedDaysAgo = readDaysAgo
             if (fetchedDaysAgo > days) "Changes within about $days days; the evidence is $fetchedDaysAgo days old"
             else "As of $dated; this changes within about $days days, so it may no longer be current"
         }

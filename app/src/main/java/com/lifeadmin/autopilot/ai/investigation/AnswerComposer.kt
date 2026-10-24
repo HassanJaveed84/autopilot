@@ -14,6 +14,8 @@ object LeakageScan {
         Regex("""#{1,4}\s*(?:TITLE|ANSWER|CLAIM|REQ|CAND|ATTR|PICK|STEPS?|COMPARE|RECOMMEND|CHANGED|CONFIRMED|PROPOSE|UNRESOLVED|CONDITION|NEEDS_INPUT|WORTH_KNOWING|CALLOUT|EXCLUDED|CONFLICT)\b""") to "contract heading",
         Regex("""\b(?:status|load|asof|volatile|needs_input|needs|fresh|about|type|claims|req|tag|kind)=\S+""") to "heading attribute",
         Regex("""\bsrc\s*=\s*s\d+""") to "source pointer",
+        // A held source's registry number ("held as s1"), with the "as"/"source" that introduces it, so "held as s1, but" reads "held, but".
+        Regex("""\s?\b(?:as\s+|source\s+)?(?<![=\w])s\d{1,3}\b""") to "source number",
     )
 
     /** Each finding names the kind of residue and the text that matched. */
@@ -26,6 +28,30 @@ object LeakageScan {
         t = t.replace(Regex("""\(\s*\)|\[\s*]"""), "")
         t = t.replace(Regex("""\s+([.,;:!?])"""), "$1")
         return t.replace(Regex("[ \t]{2,}"), " ").trim()
+    }
+}
+
+/**
+ * A call after the first in a turn can cite only what its own searches returned, while the answer speaks for
+ * everything the turn holds. Sentences in which such a call describes its own search ("I did not retrieve the
+ * issuer's page in this search") are statements about the call, and can be false about the investigation, so they
+ * are left out of the answer. Real gaps still reach the person: every load-bearing claim that is not established
+ * becomes a caveat from the evidence, and unresolved items are kept.
+ */
+object CallNarration {
+    private val CALL = Regex("""\b(?:this|that|the (?:latest|last|current|second|follow-up)) (?:search|searches|call|pass|stage|round|lookup)\b|\bthese (?:search )?results\b""", RegexOption.IGNORE_CASE)
+    private val HELD = listOf(Regex("""\bsrc\s*=\s*s\d+|\bs\d{1,3}\b"""), Regex("""\balready (?:held|cited|have)\b""", RegexOption.IGNORE_CASE))
+    private val SENTENCE = Regex("""(?<=[.!?])\s+(?=[A-Z0-9"'(“])""")
+
+    fun narrates(text: String): Boolean = CALL.containsMatchIn(text)
+
+    /** True for a note about re-citing a page the investigation already holds. */
+    fun aboutHeldSource(text: String): Boolean = narrates(text) && HELD.any { it.containsMatchIn(text) }
+
+    /** Drops the narrating sentences; a segment left empty is dropped. Claim markers stay on what remains. */
+    fun strip(segments: List<AnswerSegment>): List<AnswerSegment> = segments.mapNotNull { seg ->
+        val kept = seg.text.split(SENTENCE).filterNot(::narrates)
+        if (kept.isEmpty()) null else seg.copy(text = kept.joinToString(" ").trim())
     }
 }
 
@@ -90,7 +116,7 @@ object AnswerComposer {
         val confirmed = out.changes.filter { it.kind == ChangeKind.CONFIRMED }
         if (confirmed.isNotEmpty()) sections += AnswerSection(SectionKind.CONFIRMED, confirmed.map { AnswerSegment(it.note, listOf(it.earlierClaimId)) })
         if (derivation.notChecked.isNotEmpty()) sections += AnswerSection(SectionKind.NOT_CHECKED, derivation.notChecked.map { AnswerSegment(it.text, listOf(it.id)) })
-        if (out.unresolved.isNotEmpty()) sections += AnswerSection(SectionKind.UNRESOLVED, out.unresolved.map { AnswerSegment("${it.topic} — ${it.why}") })
+        if (out.unresolved.isNotEmpty()) sections += AnswerSection(SectionKind.UNRESOLVED, out.unresolved.map { AnswerSegment(LeakageScan.clean("${it.topic} — ${it.why}")) })
         val rec = out.recommendation?.let { r ->
             // A recommendation is given when asked for; on a neutral comparison it is a clearly separate, optional addition (RES-050).
             val cleaned = r.copy(text = LeakageScan.clean(r.text), reasons = r.reasons.map { scrub(it, byId) }, assumptions = r.assumptions.map(LeakageScan::clean), flipConditions = r.flipConditions.map(LeakageScan::clean))

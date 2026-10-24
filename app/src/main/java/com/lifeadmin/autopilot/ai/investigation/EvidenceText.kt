@@ -134,6 +134,9 @@ object EvidenceText {
         return LineRefs((provider + validated).distinct(), pointers.filter { it !in validated })
     }
 
+    /** Two claim texts state the same thing: equal once normalized, or a restatement with every value unchanged. */
+    fun sameStatement(a: String, b: String): Boolean = canon(a).let { it.isNotEmpty() && it == canon(b) } || restates(a, b)
+
     /** The same statement, allowing trimming and small rewording; every value must match exactly. */
     fun restates(line: String, evidence: String): Boolean {
         val a = canon(line); val b = canon(evidence)
@@ -191,4 +194,22 @@ object EvidenceText {
     fun kv(head: String): Map<String, String> = Regex("""(\w+)\s*=\s*([^·]+?)\s*(?=·|$)""").findAll(head).associate { it.groupValues[1].lowercase(Locale.ROOT) to it.groupValues[2].trim() }
 
     fun yes(v: String?): Boolean = v?.trim()?.lowercase(Locale.ROOT) in setOf("yes", "true", "y", "1")
+}
+
+/**
+ * What an evidence row shows. The page's own cited words are the only text presented as a quotation; the
+ * reply's line is the model's summary and is labelled as such, so a paraphrase never reads as the page's words.
+ */
+object EvidenceDisplay {
+    /** The verbatim cited text, or null when the provider gave none for this line. */
+    fun quoted(e: EvidenceRef): String? = e.quote?.trim()?.takeIf { it.isNotEmpty() }?.take(240)
+
+    /** The model's line, labelled; omitted when it only repeats the quoted words. */
+    fun summary(e: EvidenceRef): String? {
+        val line = e.excerpt.trim().takeIf { it.isNotEmpty() } ?: return null
+        val quote = quoted(e) ?: return "Claude's summary (not the page's words): ${line.take(240)}"
+        return if (norm(quote).contains(norm(line))) null else "Claude's summary: ${line.take(240)}"
+    }
+
+    private fun norm(s: String) = s.lowercase(Locale.ROOT).replace(Regex("""[^\p{L}\p{N}]+"""), " ").trim()
 }

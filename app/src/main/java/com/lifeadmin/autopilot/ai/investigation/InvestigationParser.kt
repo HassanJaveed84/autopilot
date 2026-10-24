@@ -1,5 +1,6 @@
 package com.lifeadmin.autopilot.ai.investigation
 
+import com.lifeadmin.autopilot.ai.research.RawCitation
 import com.lifeadmin.autopilot.ai.research.RawSearch
 import com.lifeadmin.autopilot.ai.research.RawSegment
 import java.util.Locale
@@ -55,9 +56,11 @@ object InvestigationParser {
         fun refsOfLine(line: Pair<String, IntRange>): LineRefs = EvidenceText.settle(EvidenceText.providerRefsOf(spans, line.second, registry), EvidenceText.srcTokens(line.first, registry), EvidenceText.clean(line.first), knownEvidence)
         fun evidence(line: Pair<String, IntRange>, excerpt: String, attrs: EvidenceAttrs = EvidenceAttrs()): List<EvidenceRef> {
             val r = refsOfLine(line)
+            val quotes = quotesOf(EvidenceText.citationsOf(spans, line.second), registry)
             fun ref(n: Int, pointer: Boolean) = EvidenceRef(
                 n, excerpt.take(300), scopeNote = attrs.scopeNote, asOf = attrs.asOf,
                 kind = attrs.kind ?: EvidenceKind.PRIMARY.takeIf { registry.official(n) }, retrievedAtMs = nowMs, originKey = registry.originKey(n), pointerOnly = pointer,
+                quote = if (pointer) null else quotes[n],
             )
             return r.verified.map { ref(it, false) } + r.reused.map { ref(it, true) }
         }
@@ -105,7 +108,8 @@ object InvestigationParser {
                             if (sp.citations.isEmpty() || sp.start >= line.second.last + 1 || sp.end <= line.second.first) continue
                             val target = markerAt.firstOrNull { it.second >= sp.start }?.first ?: markerAt.last().first
                             val excerpt = EvidenceText.clean(full.substring(maxOf(sp.start, line.second.first), minOf(sp.end, line.second.last + 1))).take(300)
-                            answerEvidence.getOrPut(target) { ArrayList() } += registry.register(sp.citations).map { n -> EvidenceRef(n, excerpt, retrievedAtMs = nowMs, originKey = registry.originKey(n)) }
+                            val quotes = quotesOf(sp.citations, registry)
+                            answerEvidence.getOrPut(target) { ArrayList() } += registry.register(sp.citations).map { n -> EvidenceRef(n, excerpt, retrievedAtMs = nowMs, originKey = registry.originKey(n), quote = quotes[n]) }
                         }
                     }
                     segment(line.first, line.second, extra).takeIf { it.text.isNotBlank() }?.let { answer += it }
@@ -232,16 +236,28 @@ object InvestigationParser {
             val piece = full.substring(sp.start, sp.end)
             if (piece.isBlank()) continue
             val refs = registry.register(sp.citations)
+            val quotes = quotesOf(sp.citations, registry)
             if (refs.isEmpty()) {
                 answer += AnswerSegment(EvidenceText.clean(piece, keepTrailingSpace = true).replace(Regex("\\s+"), " "))
                 continue
             }
             val id = "${turnId}-x${++n}"
             val text = EvidenceText.clean(piece).replace(Regex("\\s+"), " ")
-            claims += Claim(id, text.take(300), ClaimType.FACT, loadBearing = true, support = refs.map { EvidenceRef(it, text.take(300), retrievedAtMs = nowMs, originKey = registry.originKey(it)) }, turnId = turnId)
+            claims += Claim(id, text.take(300), ClaimType.FACT, loadBearing = true, support = refs.map { EvidenceRef(it, text.take(300), retrievedAtMs = nowMs, originKey = registry.originKey(it), quote = quotes[it]) }, turnId = turnId)
             answer += AnswerSegment(text, listOf(id))
         }
         return TurnOutput(answer = answer.filter { it.text.isNotBlank() }, claims = claims, queries = queries, freeForm = true)
+    }
+
+    /** The provider's cited text per source, verbatim: what the page itself says, kept apart from the reply's own words. */
+    private fun quotesOf(citations: List<RawCitation>, registry: SourceRegistry): Map<Int, String> {
+        val out = LinkedHashMap<Int, String>()
+        for (c in citations) {
+            val text = c.citedText.trim().takeIf { it.isNotEmpty() } ?: continue
+            val n = registry.register(listOf(c)).firstOrNull() ?: continue
+            out[n] = out[n]?.let { if (text in it) it else "$it … $text" }?.take(300) ?: text.take(300)
+        }
+        return out
     }
 
     fun defaultProposalId(kind: ProposedKind, text: String): String {

@@ -78,5 +78,9 @@ class AnswerComposerTest {
         val found = LeakageScan.scan("See r-i0 and [c1] and NOT_ESTABLISHED and ## ANSWER and status=answered and src=s3")
         assertEquals(6, found.size)
         assertTrue(LeakageScan.scan("Vitamin C and $130 by Friday are fine.").isEmpty())
+        // R-N(a) live run: a held source's registry number reached the UNRESOLVED section.
+        assertEquals(listOf("source number:  as s1"), LeakageScan.scan("The page is already held as s1, but it was not in the results."))
+        assertEquals("The page is already held, but it was not in the results.", LeakageScan.clean("The page is already held as s1, but it was not in the results."))
+        assertTrue("model numbers and plain words are not source numbers", LeakageScan.scan("The S23 and series 5 models ship in 2026s.").isEmpty())
     }
 }

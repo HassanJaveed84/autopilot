@@ -11,7 +11,7 @@ import kotlinx.serialization.json.Json
  * model can never see more than the person approved (RES-021/161).
  */
 object InvestigationPrompt {
-    const val VERSION = 2
+    const val VERSION = 3
     private val json = Json { ignoreUnknownKeys = true }
 
     val SYSTEM: String = """
@@ -19,7 +19,7 @@ object InvestigationPrompt {
 
         How to work
         - Investigate the objective you are given, not its topic. Work out which claims the answer rests on (mark them load=yes), find evidence for each, and stop as soon as those claims are adequately supported. Never pad, and never keep searching once the answer is settled. Use at most the searches allowed.
-        - Evidence must be about the claim's own scope: the same variant, jurisdiction, population, seller and period. A source about something else does not support it; if you cite one anyway, say what it is about with about=. One origin counts once even when several pages repeat it.
+        - Evidence must be about the claim's own scope: the same variant, jurisdiction, population, seller and period. A source about something else does not support it; if you cite one anyway, say what it is about with about=. about= names only that other scope (another variant, place, population, seller or period); never use it to describe the page itself, its publisher or its format. One origin counts once even when several pages repeat it.
         - Judge each claim's evidence by the claim and its consequences, never by a fixed number of sources. needs=direct when one source that issues or directly measures the fact settles it; needs=corroborated when it should come from the issuer itself, a review, or independent sources that agree; needs=review when only a systematic review, meta-analysis or guideline can settle it, for example whether a treatment or supplement has a health effect.
         - Date facts, not fetches: asof is when the fact held according to the page, not when you read it. For a fact that changes, give fresh= for how long such a fact stays true (7d, 3m, 1y); an old page for a rule that has not changed is still current.
         - For each EVIDENCE or AGAINST line say what kind of source it is for this claim: kind=primary (the body that issues or measures the fact: the regulator for a rule, the operator for a timetable, the seller for its own price, the maker for its own specification), review (systematic review, meta-analysis, guideline), study (one study, test or measurement) or secondary (news, blogs, aggregators, forums, anyone reporting what someone else said).
@@ -38,7 +38,7 @@ object InvestigationPrompt {
         <the answer first: as many sentences as the objective's ask needs; put [cN] after each factual statement; say every important limitation here in words>
         ## CLAIM cN · type=fact|calculation|inference|judgment|recommendation · load=yes|no · scope=<what it is about> · asof=<YYYY-MM-DD, YYYY-MM or -> · volatile=yes|no · fresh=<7d, 3m, 1y or -> · needs=direct|corroborated|review · needs_input=yes|no
         <the claim in one sentence>
-        EVIDENCE: (kind=primary|review|study|secondary · asof=<date the page gives, or -> · about=<only when the page is about another scope>) <what a cited page says, cited>
+        EVIDENCE: (kind=primary|review|study|secondary · asof=<date the page gives, or -> · about=<only when the page is about another scope; never a description of the page>) <what a cited page says, cited>
         AGAINST: (kind=… · asof=… · about=…) <what a cited page that disagrees says, cited>
         PREMISES: cN, cM
         ## CONDITION
@@ -95,11 +95,15 @@ object InvestigationPrompt {
     fun verify(payload: TurnPayload, open: List<Claim>, sources: List<SourceRef2>, queries: List<String>, allowedSearches: Int, nextClaimNumber: Int): String = buildString {
         appendLine("Continue the same investigation. Objective: ${payload.objective}")
         appendLine("These load-bearing claims are still open; find evidence about each one's own scope, or report what you searched under UNRESOLVED (keep the ids):")
-        open.forEach { appendLine("- ${it.id} · ${it.text} · currently ${ClaimAssessor.label(it.status)}${it.scope.takeIf { s -> s.isNotBlank() }?.let { s -> " · scope $s" } ?: ""}") }
+        open.forEach { c ->
+            appendLine("- ${c.id} · ${c.text} · currently ${ClaimAssessor.label(c.status)}${c.statusReason.takeIf { it.isNotBlank() }?.let { " (${it.trimEnd('.')})" } ?: ""}${c.scope.takeIf { s -> s.isNotBlank() }?.let { s -> " · scope $s" } ?: ""}")
+            heldEvidence(c, sources)?.let { appendLine("  evidence already held for it: $it") }
+        }
+        appendLine("Evidence already held stays with its claim even if you do not cite those pages again. Add only what the reason above says is missing. Never write that a held source was not retrieved, found or cited.")
         knownSources(sources)
         if (queries.isNotEmpty()) appendLine("Searches already run (do not repeat): " + queries.joinToString(" | "))
         appendLine("New claims start at c$nextClaimNumber.")
-        append("Searches allowed on this call: $allowedSearches. Write CLAIM blocks for the claims you checked (same ids, fresh EVIDENCE lines), plus UNRESOLVED. Do not rewrite the ANSWER unless a claim's status changed; then write a new ANSWER.")
+        append("Searches allowed on this call: $allowedSearches. Write CLAIM blocks for the claims you checked (same ids, fresh EVIDENCE lines), plus UNRESOLVED. Do not rewrite the ANSWER unless a claim's status changed; then write a new ANSWER for the whole investigation, held evidence included, never about this call's searches.")
     }
 
     /** Deep only: contested claims and conflicting evidence. */
@@ -120,6 +124,14 @@ object InvestigationPrompt {
         claims.filter { !it.superseded }.forEach { appendLine("- ${it.id} · ${it.type.label} · ${it.text} · ${ClaimAssessor.label(it.status)}") }
         knownSources(sources)
         append("Write TITLE and ANSWER, then CONDITION / STEPS / COMPARE / RECOMMEND / WORTH_KNOWING only where the ask calls for them, and PROPOSE only where a claim improves the task. Every limitation goes into the ANSWER in words.")
+    }
+
+    /** One claim's held, verified evidence as source number and kind: what the next call must not describe as missing. */
+    private fun heldEvidence(c: Claim, sources: List<SourceRef2>): String? {
+        val byN = sources.associateBy { it.n }
+        val held = c.support.filter { !it.pointerOnly && byN.containsKey(it.sourceN) }.distinctBy { it.sourceN }
+        if (held.isEmpty()) return null
+        return held.joinToString("; ") { e -> "s${e.sourceN} (${e.kind?.name?.lowercase() ?: "kind not stated"}${if (e.scopeNote.isNotBlank()) ", marked as about another scope" else ""}${e.asOf?.let { d -> ", as of $d" } ?: ", undated"})" }
     }
 
     private fun StringBuilder.knownSources(sources: List<SourceRef2>) {

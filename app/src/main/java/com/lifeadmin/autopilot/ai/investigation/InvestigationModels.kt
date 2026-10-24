@@ -118,6 +118,7 @@ enum class ClaimStatus {
 data class EvidenceRef(
     /** Registry number of the source. */
     val sourceN: Int,
+    /** The reply's own line for this evidence: the model's summary, never shown as the page's words. */
     val excerpt: String,
     /** Set when the source is about another variant, jurisdiction, population, seller or period than the claim: it then supports nothing (RES-044). */
     val scopeNote: String = "",
@@ -130,6 +131,11 @@ data class EvidenceRef(
     val originKey: String,
     /** The model pointed at a source the provider cited elsewhere; a pointer, never verification. */
     val pointerOnly: Boolean = false,
+    /**
+     * The page's own words: the provider's structured cited text for this source on this line, verbatim. Null for a
+     * pointer, for a restatement validated against held evidence, and for records stored before it was kept.
+     */
+    val quote: String? = null,
 )
 
 /** RES-043/047: the standing of one source for one claim. General, not a domain list. */
