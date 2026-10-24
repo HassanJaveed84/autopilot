@@ -99,7 +99,10 @@ class LiveResearchEval {
         assumeTrue("pick a scenario with -PliveEvalScenario=<id>: ${scenarios.keys}", sc != null)
         sc!!
         val key = EnvApiKeyStore().get() ?: error("$LIVE_EVAL_KEY_VARIABLE is not set; nothing was sent.")
-        check(LiveEvalSafety.modelStatus(ResearchOnlineService.DEFAULT_MODEL, key) == 200) { "The key cannot use ${ResearchOnlineService.DEFAULT_MODEL}; nothing paid was sent." }
+        // Free preflight for both models the path uses: the research model and the clarification/suggestion model.
+        for (model in listOf(ResearchOnlineService.DEFAULT_MODEL, com.lifeadmin.autopilot.ai.aifirst.SmallCall.MODEL)) {
+            check(LiveEvalSafety.modelStatus(model, key) == 200) { "The key cannot use $model; nothing paid was sent." }
+        }
         val dir = File(root, sc.id)
         check(System.getProperty("liveEval.rerun") == "true" || dir.listFiles()?.any { File(it, "result.json").exists() } != true) { "$dir already has a run; a rerun needs -PliveEvalRerun=true. Nothing was sent." }
         val spent = spentCents()
