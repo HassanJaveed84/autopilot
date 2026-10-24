@@ -68,8 +68,9 @@ import java.util.Locale
  *
  * Guards: refuses without the key, without the model, when a report for the scenario already exists
  * (pass -PliveEvalRerun=true to override), or when the estimate exceeds the cap; sets the per-turn
- * spending limit; never retries. The report is written to app/build/live-eval/<scenario>/ and holds
- * no credential.
+ * spending limit; never retries. Each run writes its report to its own new directory,
+ * app/build/live-eval/<scenario>/run-<UTC time>/, with its own database, and refuses before any call if
+ * that directory exists, so no earlier report is ever overwritten. The report holds no credential.
  */
 @RunWith(AndroidJUnit4::class)
 class LiveInvestigationEval {
@@ -80,15 +81,21 @@ class LiveInvestigationEval {
 
     @Test fun runOneInvestigation() {
         assumeTrue("live evaluation runs only with -PliveEval=true", System.getProperty("liveEval.enabled") == "true")
-        val out = File(System.getProperty("liveEval.outDir") ?: "build/live-eval", scenario).apply { mkdirs() }
+        val scenarioDir = File(System.getProperty("liveEval.outDir") ?: "build/live-eval", scenario).apply { mkdirs() }
         val keys = EnvApiKeyStore()
         val key = keys.get()
         check(key != null) { "$LIVE_EVAL_KEY_VARIABLE is not set in this process's environment; nothing was sent." }
-        check(System.getProperty("liveEval.rerun") == "true" || !File(out, "result.json").exists()) {
-            "A report for $scenario already exists in $out; a second paid run needs -PliveEvalRerun=true. Nothing was sent."
+        // The first run wrote scenarioDir/result.json; later runs write scenarioDir/run-*/result.json.
+        val earlier = File(scenarioDir, "result.json").exists() || scenarioDir.listFiles()?.any { it.isDirectory && File(it, "result.json").exists() } == true
+        check(System.getProperty("liveEval.rerun") == "true" || !earlier) {
+            "A report for $scenario already exists in $scenarioDir; a second paid run needs -PliveEvalRerun=true. Nothing was sent."
         }
+        val runId = "run-" + java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC).format(Instant.now())
+        val out = File(scenarioDir, runId)
+        check(!out.exists()) { "$out already exists; a run never overwrites an earlier report. Nothing was sent." }
+        out.mkdirs()
 
-        val db = fileDatabase("live-eval.db")
+        val db = fileDatabase("live-eval-$scenario-$runId.db")
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val clock = AppClock.system()
         val zone = ZoneProvider { ZoneOffset.UTC }
@@ -136,6 +143,7 @@ class LiveInvestigationEval {
                 val rows = ledger.getAll().filter { it.sessionId == finished.investigationId || it.runId == finished.turnId }
                 val report = buildJsonObject {
                     put("scenario", scenario)
+                    put("runId", runId)
                     put("question", question)
                     put("ranAtUtc", Instant.ofEpochMilli(provider.exchanges.firstOrNull()?.startedAtMs ?: clock.now().toEpochMilli()).toString())
                     put("promptContractVersion", InvestigationPrompt.VERSION)
