@@ -1,0 +1,612 @@
+{
+  "sanitization": {
+    "rawReport": "app/build/live-eval/R-N-a/run-20261024T033934Z/result.json (untracked, unchanged)",
+    "rawSha256": "62e39f21ee0ec2b4a98921ff86473ec54193da825d90a8f3c96c3f29ffa8d78f",
+    "sourceCommit": "9cc17fea8e6b77fc60321ae28de884adacfb9a4b",
+    "credential": "none present: the harness redacts key-shaped text and the configured key before saving; re-checked when this copy was made",
+    "removed": {
+      "email": 3,
+      "phone": 3,
+      "personName": 0
+    },
+    "note": "Public page text is otherwise verbatim, so the reply, citations and search results can be replayed as fixtures. Email addresses and phone numbers quoted from cited pages are replaced (no named person appeared). Thinking content was never recorded. The system prompt is recorded by version and SHA-256 only.",
+    "engineCommit": "41dc4717fe754e565ab52285d55167f5f7bd6b15 (app/src/main identical in 9cc17fe, which changes only the development-only harness)"
+  },
+  "scenario": "R-N-a",
+  "runId": "run-20261024T033934Z",
+  "question": "What is the address of Union Station in Washington, DC?",
+  "ranAtUtc": "2026-10-24T03:39:35.665Z",
+  "promptContractVersion": 4,
+  "systemPromptSha256": "1fbdd0eee9026812a781f7f82ea6a5e7dba361db1d672e98ed0dd755191a4c6a",
+  "requested": {
+    "preset": "Custom",
+    "depth": "STANDARD",
+    "model": "claude-sonnet-5-5",
+    "searchBudget": 3,
+    "outputTokens": 8000,
+    "stages": [
+      "GATHER",
+      "FILL_GAPS"
+    ],
+    "spendLimitCents": 300,
+    "effort": null,
+    "estimateLowUsd": 0.1316,
+    "estimateHighUsd": 0.2444
+  },
+  "outcome": "Saved(turnState=DONE, resultState=ANSWERED, ending=COMPLETE)",
+  "preflight": [
+    "Models API preflight for claude-sonnet-5-5: HTTP 200"
+  ],
+  "events": [
+    {
+      "at": "2026-10-24T03:39:35.658Z",
+      "kind": "SENT",
+      "text": "Searching and gathering evidence: request sent (up to 1 search; waiting up to 4 min 35 s)"
+    },
+    {
+      "at": "2026-10-24T03:39:44.637Z",
+      "kind": "CHECKPOINT",
+      "text": "Evidence saved: 1 claim, 1 established"
+    },
+    {
+      "at": "2026-10-24T03:39:44.639Z",
+      "kind": "STAGE_DONE",
+      "text": "Searching and gathering evidence: done · 1 search · 10 sources so far"
+    },
+    {
+      "at": "2026-10-24T03:39:44.639Z",
+      "kind": "STAGE_SKIPPED",
+      "text": "Checking what the answer rests on: skipped — every load-bearing claim is established"
+    }
+  ],
+  "exchanges": [
+    {
+      "index": 1,
+      "startedAtUtc": "2026-10-24T03:39:35.665Z",
+      "request": {
+        "model": "claude-sonnet-5-5",
+        "maxTokens": 8000,
+        "maxSearches": 1,
+        "effort": null,
+        "cacheSystem": true,
+        "timeoutSeconds": 275,
+        "continuesPausedTurn": false,
+        "systemSha256": "1fbdd0eee9026812a781f7f82ea6a5e7dba361db1d672e98ed0dd755191a4c6a",
+        "user": "Objective: Find out: What is the address of Union Station in Washington, DC\nThe person's question, verbatim: What is the address of Union Station in Washington, DC?\nAsk: a fact or figure; one authoritative source may be enough\nWhat would satisfy it: The fact itself, from an authoritative source, with its date\nConstraints that apply: in Washington, DC\nToday's date and language: Sat 24 Oct 2026 · English (United States)\nNew claims start at c1.\nThis investigation is not linked to a task: write no PROPOSE blocks.\nSearches allowed on this call: 1. Answer first, then CLAIM blocks for everything the answer rests on."
+      },
+      "reply": {
+        "status": "done",
+        "stop": "END",
+        "elapsedMs": 8863,
+        "providerMessageId": "msg_011CgLNEYjhPXSxr1dasCc5L",
+        "refusalCategory": "",
+        "shape": "ReplyShape(blocks={server_tool_use=1, web_search_tool_result=1, text=7}, textChars=1655, citedBlocks=3)",
+        "usage": "MeasuredUsage(inputTokens=293, outputTokens=806, cacheWrite5mTokens=12924, cacheWrite1hTokens=0, cacheReadTokens=4601, webSearches=1)",
+        "segments": [
+          {
+            "text": "## TITLE\nAddress of Union Station, Washington, DC\n\n## ANSWER\nUnion Station is at 50 Massachusetts Avenue NE, Washington, DC 20002. [c1] Amtrak's station page gives the same street address with the full ZIP+4, 20002-4214. [c1] The station's own site lists it the same way. [c1] The pages I found carry no explicit date, only retrieval-age hints. The station's contact page was about 168 days old and Amtrak's about 285 days old. A building's street address rarely changes, so I treat this as current. [c1]\n\n## CLAIM c1 · type=fact · load=yes · scope=Washington Union Station (rail and retail complex), Washington, DC · asof=2026 · volatile=no · fresh=1y · needs=direct · needs_input=no\nThe street address of Union Station in Washington, DC is 50 Massachusetts Avenue NE, Washington, DC 20002.\nEVIDENCE: (kind=primary · origin=Union Station D.C. management (Union Station Redevelopment Corp.) · asof=2026 (page about 168 days old at retrieval) · ) The station's contact page lists 50 Massachusetts Ave., NE, Washington, D.C. 20002. ",
+            "citations": []
+          },
+          {
+            "text": "Union Station D.C. Union Station 50 Massachusetts Ave., NE Washington, D.C. 20002",
+            "citations": [
+              {
+                "url": "https://www.unionstationdc.com/contact-us/",
+                "title": "Contact Us",
+                "citedText": "Union Station D.C. Union Station 50 Massachusetts Ave., NE Washington, D.C. 20002 P: [phone removed] E: [email removed].\n\n"
+              }
+            ]
+          },
+          {
+            "text": "\nEVIDENCE: (kind=primary · origin=Amtrak · asof=2025 (page about 285 days old at retrieval) · ) Amtrak's station page gives ",
+            "citations": []
+          },
+          {
+            "text": "50 Massachusetts Avenue NE Washington, DC 20002-4214",
+            "citations": [
+              {
+                "url": "https://www.amtrak.com/stations/was",
+                "title": "Washington, DC - Union Station (WAS)",
+                "citedText": "- 50 Massachusetts Avenue NE Washington, DC 20002-4214\n\n## Arrive In Downtown Washington, DC\nA soaring Beaux-Arts masterpiece designed by famed archit..."
+              }
+            ]
+          },
+          {
+            "text": ".\nEVIDENCE: (kind=secondary · origin=Washington, DC's official tourism organisation (Destination DC) listing · asof=- · ) ",
+            "citations": []
+          },
+          {
+            "text": "50 Massachusetts Ave. NE Washington, DC 20002 United States.",
+            "citations": [
+              {
+                "url": "https://washington.org/find-dc-listings/union-station",
+                "title": "Union Station",
+                "citedText": "50 Massachusetts Ave. NE Washington, DC 20002 United States. "
+              }
+            ]
+          },
+          {
+            "text": "\n\n## UNRESOLVED\n- Exact publication date of the address — the pages give no explicit date, and the search allowance was one search. The address is a stable fact, so this is unlikely to matter.",
+            "citations": []
+          }
+        ],
+        "searches": [
+          {
+            "query": "Union Station Washington DC address 50 Massachusetts Ave NE",
+            "errorCode": "",
+            "results": [
+              {
+                "url": "https://www.taketours.com/busstation/160413.html",
+                "title": "Bus Stop - Union Station - Washington, DC - 160413",
+                "pageAge": ""
+              },
+              {
+                "url": "https://en.wikipedia.org/wiki/Washington_Union_Station",
+                "title": "Washington Union Station",
+                "pageAge": ""
+              },
+              {
+                "url": "https://washington.org/find-dc-listings/union-station",
+                "title": "Union Station",
+                "pageAge": ""
+              },
+              {
+                "url": "https://www.unionstationdc.com/contact-us/",
+                "title": "Contact Us",
+                "pageAge": "168 days ago"
+              },
+              {
+                "url": "https://www.amtrak.com/stations/was",
+                "title": "Washington, DC - Union Station (WAS)",
+                "pageAge": "285 days ago"
+              },
+              {
+                "url": "https://www.unionstationdc.com/visit/",
+                "title": "Visit",
+                "pageAge": "333 days ago"
+              },
+              {
+                "url": "https://en.wikipedia.org/wiki/Union_Station_(Washington_Metro)",
+                "title": "Union Station (Washington Metro)",
+                "pageAge": ""
+              },
+              {
+                "url": "https://en.wikipedia.org/wiki/Columbus_Circle_(Washington,_D.C.)",
+                "title": "Columbus Circle (Washington, D.C.)",
+                "pageAge": ""
+              },
+              {
+                "url": "https://www.yelp.com/biz/union-station-washington?start=320",
+                "title": "UNION STATION - Updated May 2026 - 2079 Photos & 849 Reviews - 50 Massachusetts Ave NE, Washington, District of Columbia - Shopping Centers - Phone Number - Yelp",
+                "pageAge": ""
+              },
+              {
+                "url": "https://www.yelp.com/biz/union-station-washington",
+                "title": "UNION STATION - Updated October 2026 - 856 Reviews - 2238 Photos - 50 Massachusetts Ave NE, Washington, District of Columbia - Shopping Centers - Phone Number - Yelp",
+                "pageAge": "913 days ago"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "ledger": [
+    {
+      "feature": "RESEARCH",
+      "model": "claude-sonnet-5-5",
+      "stage": "GATHER",
+      "outcome": "COMPLETE",
+      "usageStatus": "COMPLETE",
+      "inputTokens": 293,
+      "outputTokens": 806,
+      "cacheReadTokens": 4601,
+      "cacheWriteTokens": 12924,
+      "webSearches": 1,
+      "estimatedUsd": 0.051416,
+      "priceVersion": "2026-10",
+      "durationMs": 8863,
+      "providerMessageId": "msg_011CgLNEYjhPXSxr1dasCc5L",
+      "effort": ""
+    }
+  ],
+  "turn": {
+    "id": "live-00000001",
+    "index": 0,
+    "kind": "INITIAL",
+    "state": "DONE",
+    "createdAtMs": 1792813174764,
+    "objective": {
+      "question": "What is the address of Union Station in Washington, DC?",
+      "text": "Find out: What is the address of Union Station in Washington, DC",
+      "askKind": "FACT",
+      "satisfies": [
+        "The fact itself, from an authoritative source, with its date"
+      ],
+      "constraints": [
+        {
+          "text": "in Washington, DC",
+          "soft": false
+        }
+      ],
+      "evidenceNeeds": [],
+      "unknowns": [],
+      "exclusions": [],
+      "consequential": false,
+      "recommendedDepth": "QUICK",
+      "depthReason": "A single fact usually needs one authoritative source.",
+      "established": true,
+      "clarification": null,
+      "preparedBy": "LOCAL",
+      "preparedWithModel": null
+    },
+    "authorization": {
+      "approvedAtMs": 1792813175577,
+      "objectiveText": "Find out: What is the address of Union Station in Washington, DC",
+      "constraints": [
+        "in Washington, DC"
+      ],
+      "context": [
+        {
+          "id": "today",
+          "label": "Today's date and language",
+          "value": "Sat 24 Oct 2026 · English (United States)",
+          "included": true,
+          "requestOnly": false
+        }
+      ],
+      "inherited": [],
+      "freshChecks": [],
+      "config": {
+        "model": "claude-sonnet-5-5",
+        "effort": null,
+        "depth": "standard",
+        "searchBudget": 3,
+        "spendLimitCents": 300,
+        "auto": false
+      },
+      "presetName": "Custom",
+      "payloadJson": "{\n    \"objective\": \"Find out: What is the address of Union Station in Washington, DC\",\n    \"constraints\": [\n        \"in Washington, DC\"\n    ],\n    \"context\": [\n        {\n            \"label\": \"Today's date and language\",\n            \"value\": \"Sat 24 Oct 2026 · English (United States)\",\n            \"requestOnly\": false\n        }\n    ],\n    \"inherited_findings\": [],\n    \"fresh_checks\": [],\n    \"earlier_findings_not_sent\": 0,\n    \"excluded_by_you\": 0,\n    \"config\": {\n        \"model\": \"claude-sonnet-5-5\",\n        \"effort\": null,\n        \"depth\": \"standard\",\n        \"searchBudget\": 3,\n        \"spendLimitCents\": 300,\n        \"auto\": false\n    }\n}",
+      "payloadSha256": "4b2aa07d74505a182af5465eaf8e93b8176770997aa985a4a95992be14e6cd33",
+      "payloadLines": [
+        "Your objective and 1 constraint(s)",
+        "Today's date and language",
+        "Configuration: claude-sonnet-5-5, standard, up to 3 searches"
+      ],
+      "estimateLowMicros": 131600,
+      "estimateHighMicros": 244400,
+      "warnings": [],
+      "disclosedGaps": []
+    },
+    "result": {
+      "answer": {
+        "title": "Address of Union Station, Washington, DC",
+        "stateLine": "Answered.",
+        "lead": [
+          {
+            "text": "Union Station is at 50 Massachusetts Avenue NE, Washington, DC 20002. Amtrak's station page gives the same street address with the full ZIP+4, 20002-4214. The station's own site lists it the same way. The pages I found carry no explicit date, only retrieval-age hints. The station's contact page was about 168 days old and Amtrak's about 285 days old. A building's street address rarely changes, so I treat this as current.",
+            "claimIds": [
+              "c1"
+            ],
+            "sentences": []
+          }
+        ],
+        "caveats": [],
+        "sections": [
+          {
+            "kind": "UNRESOLVED",
+            "items": [
+              {
+                "text": "Exact publication date of the address — the pages give no explicit date, and the search allowance was one search. The address is a stable fact, so this is unlikely to matter.",
+                "claimIds": [],
+                "sentences": []
+              }
+            ],
+            "rows": [],
+            "options": []
+          }
+        ],
+        "recommendation": null
+      },
+      "state": "ANSWERED",
+      "ending": "COMPLETE",
+      "claims": [
+        {
+          "id": "c1",
+          "text": "The street address of Union Station in Washington, DC is 50 Massachusetts Avenue NE, Washington, DC 20002.",
+          "type": "FACT",
+          "scope": "Washington Union Station (rail and retail complex), Washington, DC",
+          "asOf": "2026",
+          "loadBearing": true,
+          "volatile": false,
+          "freshForDays": 365,
+          "needs": "DIRECT",
+          "dependsOnUser": false,
+          "support": [
+            {
+              "sourceN": 1,
+              "excerpt": "(kind=primary · origin=Union Station D.C. management (Union Station Redevelopment Corp.) · asof=2026 (page about 168 days old at retrieval) · ) The station's contact page lists 50 Massachusetts Ave., NE, Washington, D.C. 20002. Union Station D.C. Union Station 50 Massachusetts Ave., NE Washington, D",
+              "scopeNote": "",
+              "asOf": null,
+              "kind": null,
+              "retrievedAtMs": 1792813184539,
+              "originKey": "unionstationdc.com",
+              "pointerOnly": false,
+              "quote": "Union Station D.C. Union Station 50 Massachusetts Ave., NE Washington, D.C. 20002 P: [phone removed] E: [email removed].",
+              "origin": null
+            },
+            {
+              "sourceN": 2,
+              "excerpt": "(kind=primary · origin=Amtrak · asof=2025 (page about 285 days old at retrieval) · ) Amtrak's station page gives 50 Massachusetts Avenue NE Washington, DC 20002-4214.",
+              "scopeNote": "",
+              "asOf": null,
+              "kind": null,
+              "retrievedAtMs": 1792813184539,
+              "originKey": "amtrak.com",
+              "pointerOnly": false,
+              "quote": "- 50 Massachusetts Avenue NE Washington, DC 20002-4214\n\n## Arrive In Downtown Washington, DC\nA soaring Beaux-Arts masterpiece designed by famed archit...",
+              "origin": null
+            },
+            {
+              "sourceN": 3,
+              "excerpt": "(kind=secondary · origin=Washington, DC's official tourism organisation (Destination DC) listing · asof=- · ) 50 Massachusetts Ave. NE Washington, DC 20002 United States.",
+              "scopeNote": "",
+              "asOf": null,
+              "kind": null,
+              "retrievedAtMs": 1792813184539,
+              "originKey": "washington.org",
+              "pointerOnly": false,
+              "quote": "50 Massachusetts Ave. NE Washington, DC 20002 United States.",
+              "origin": null
+            }
+          ],
+          "against": [],
+          "premises": [],
+          "status": "ESTABLISHED",
+          "statusReason": "3 sources from separate origins, in scope",
+          "turnId": "live-00000001",
+          "inheritedFromTurnId": null,
+          "reused": false,
+          "superseded": false,
+          "supersededByClaimId": null,
+          "checked": true
+        }
+      ],
+      "sources": [
+        {
+          "n": 1,
+          "url": "https://www.unionstationdc.com/contact-us/",
+          "title": "Contact Us",
+          "domain": "unionstationdc.com",
+          "official": false,
+          "pageAge": "168 days ago",
+          "quotes": [
+            "Union Station D.C. Union Station 50 Massachusetts Ave., NE Washington, D.C. 20002 P: [phone removed] E: [email removed]."
+          ],
+          "citedCount": 1,
+          "firstRunId": "live-00000001"
+        },
+        {
+          "n": 2,
+          "url": "https://www.amtrak.com/stations/was",
+          "title": "Washington, DC - Union Station (WAS)",
+          "domain": "amtrak.com",
+          "official": false,
+          "pageAge": "285 days ago",
+          "quotes": [
+            "- 50 Massachusetts Avenue NE Washington, DC 20002-4214\n\n## Arrive In Downtown Washington, DC\nA soaring Beaux-Arts masterpiece designed by famed archit"
+          ],
+          "citedCount": 1,
+          "firstRunId": "live-00000001"
+        },
+        {
+          "n": 3,
+          "url": "https://washington.org/find-dc-listings/union-station",
+          "title": "Union Station",
+          "domain": "washington.org",
+          "official": false,
+          "pageAge": null,
+          "quotes": [
+            "50 Massachusetts Ave. NE Washington, DC 20002 United States."
+          ],
+          "citedCount": 1,
+          "firstRunId": "live-00000001"
+        },
+        {
+          "n": 4,
+          "url": "https://www.taketours.com/busstation/160413.html",
+          "title": "Bus Stop - Union Station - Washington, DC - 160413",
+          "domain": "taketours.com",
+          "official": false,
+          "pageAge": null,
+          "quotes": [],
+          "citedCount": 0,
+          "firstRunId": "live-00000001"
+        },
+        {
+          "n": 5,
+          "url": "https://en.wikipedia.org/wiki/Washington_Union_Station",
+          "title": "Washington Union Station",
+          "domain": "en.wikipedia.org",
+          "official": false,
+          "pageAge": null,
+          "quotes": [],
+          "citedCount": 0,
+          "firstRunId": "live-00000001"
+        },
+        {
+          "n": 6,
+          "url": "https://www.unionstationdc.com/visit/",
+          "title": "Visit",
+          "domain": "unionstationdc.com",
+          "official": false,
+          "pageAge": "333 days ago",
+          "quotes": [],
+          "citedCount": 0,
+          "firstRunId": "live-00000001"
+        },
+        {
+          "n": 7,
+          "url": "https://en.wikipedia.org/wiki/Union_Station_(Washington_Metro)",
+          "title": "Union Station (Washington Metro)",
+          "domain": "en.wikipedia.org",
+          "official": false,
+          "pageAge": null,
+          "quotes": [],
+          "citedCount": 0,
+          "firstRunId": "live-00000001"
+        },
+        {
+          "n": 8,
+          "url": "https://en.wikipedia.org/wiki/Columbus_Circle_(Washington,_D.C.)",
+          "title": "Columbus Circle (Washington, D.C.)",
+          "domain": "en.wikipedia.org",
+          "official": false,
+          "pageAge": null,
+          "quotes": [],
+          "citedCount": 0,
+          "firstRunId": "live-00000001"
+        },
+        {
+          "n": 9,
+          "url": "https://www.yelp.com/biz/union-station-washington?start=320",
+          "title": "UNION STATION - Updated May 2026 - 2079 Photos & 849 Reviews - 50 Massachusetts Ave NE, Washington, District of Columbia - Shopping Centers - Phone Number - Yel",
+          "domain": "yelp.com",
+          "official": false,
+          "pageAge": null,
+          "quotes": [],
+          "citedCount": 0,
+          "firstRunId": "live-00000001"
+        },
+        {
+          "n": 10,
+          "url": "https://www.yelp.com/biz/union-station-washington",
+          "title": "UNION STATION - Updated October 2026 - 856 Reviews - 2238 Photos - 50 Massachusetts Ave NE, Washington, District of Columbia - Shopping Centers - Phone Number -",
+          "domain": "yelp.com",
+          "official": false,
+          "pageAge": "913 days ago",
+          "quotes": [],
+          "citedCount": 0,
+          "firstRunId": "live-00000001"
+        }
+      ],
+      "queries": [
+        "Union Station Washington DC address 50 Massachusetts Ave NE"
+      ],
+      "changes": [],
+      "unresolved": [
+        {
+          "topic": "Exact publication date of the address",
+          "why": "the pages give no explicit date, and the search allowance was one search. The address is a stable fact, so this is unlikely to matter."
+        }
+      ],
+      "proposals": [],
+      "heldBackProposals": 0,
+      "injectionNoticed": false,
+      "stages": [
+        {
+          "kind": "GATHER",
+          "result": "DONE",
+          "searchesAllowed": 1,
+          "searchesRun": 1,
+          "queries": [
+            "Union Station Washington DC address 50 Massachusetts Ave NE"
+          ],
+          "note": null,
+          "calls": 1,
+          "callLog": [
+            {
+              "call": 1,
+              "stage": "GATHER",
+              "model": "claude-sonnet-5-5",
+              "stop": "end_turn",
+              "blocks": {
+                "server_tool_use": 1,
+                "web_search_tool_result": 1,
+                "text": 7
+              },
+              "textChars": 1655,
+              "citedBlocks": 3,
+              "parsed": {
+                "title": 1,
+                "answer": 1,
+                "claim": 1,
+                "unresolved": 1
+              },
+              "inputTokens": 293,
+              "outputTokens": 806,
+              "maxTokens": 8000,
+              "webSearches": 1,
+              "searchesAllowed": 1,
+              "durationMs": 8863,
+              "classification": "STRUCTURED",
+              "error": null
+            }
+          ]
+        },
+        {
+          "kind": "FILL_GAPS",
+          "result": "SKIPPED",
+          "searchesAllowed": 0,
+          "searchesRun": 0,
+          "queries": [],
+          "note": "every load-bearing claim is established",
+          "calls": 0,
+          "callLog": []
+        }
+      ],
+      "diagnostics": [
+        {
+          "call": 1,
+          "stage": "GATHER",
+          "model": "claude-sonnet-5-5",
+          "stop": "end_turn",
+          "blocks": {
+            "server_tool_use": 1,
+            "web_search_tool_result": 1,
+            "text": 7
+          },
+          "textChars": 1655,
+          "citedBlocks": 3,
+          "parsed": {
+            "title": 1,
+            "answer": 1,
+            "claim": 1,
+            "unresolved": 1
+          },
+          "inputTokens": 293,
+          "outputTokens": 806,
+          "maxTokens": 8000,
+          "webSearches": 1,
+          "searchesAllowed": 1,
+          "durationMs": 8863,
+          "classification": "STRUCTURED",
+          "error": null
+        }
+      ],
+      "failure": null,
+      "finishedAtMs": 1792813184643
+    },
+    "usage": {
+      "inputTokens": 293,
+      "outputTokens": 806,
+      "cacheWriteTokens": 12924,
+      "cacheReadTokens": 4601,
+      "webSearches": 1,
+      "elapsedMs": 8863,
+      "spentMicros": 51416,
+      "floor": false,
+      "inFlightUnknown": false,
+      "modelsUsed": [
+        "claude-sonnet-5-5"
+      ],
+      "effortUsed": null
+    },
+    "excludedClaimIds": [],
+    "resumeOf": null,
+    "endingNote": null,
+    "stageAtEnd": "FILL_GAPS",
+    "legacy": null,
+    "suppliedDetails": []
+  }
+}

@@ -687,3 +687,25 @@ A narrow pass requested before the next paid call. It covered three issues raise
 - Registrable sites use a short list of second-level suffixes, not the full public-suffix list.
 - Origin independence still depends on the reply stating publishers. Without that, agreement never corroborates, which can leave a claim only indicated where a careful reader would accept it.
 - The local place rule cannot tell a unique landmark from a common name, so it asks; the optional preparation call can settle it instead.
+
+---
+
+# M4 live rerun R-N(a), 2026-10-24
+
+This was one owner-approved paid rerun on the fixed engine (`41dc471`, prompt contract v4), run through the harness at `9cc17fe`. That commit changes only the development-only harness: each run gets its own directory and database, so nothing is overwritten. Report: `docs/live-eval/R-N-a-2026-10-24-rerun.md`.
+
+**Verdict: fail.**
+- **Gates:** the Leakage gate failed.
+- **Dimensions:** objective fidelity 2, evidence grounding 2, status honesty 2, presentation 0, efficiency 2.
+- **Serious failures:** none.
+
+**What went right:** one billed call, one search of 3, $0.051416. FILL_GAPS was skipped on sufficiency. The single claim rests on the station operator's own page, with all three citations verbatim. There was no side claim and no false process limitation in the answer.
+
+**New defects** (diagnosed, not fixed, no rerun):
+
+| Defect | Cause | Effect |
+|---|---|---|
+| **N1** | `EvidenceAttrs.split` cannot read an attribute block containing parentheses. The model wrote `origin=… (Union Station Redevelopment Corp.)` and `asof=2026 (page about 168 days old …)`. | `kind`, `origin` and `asof` were lost on every line. The raw block reaches the evidence sheet's summary line, which is not leakage-cleaned. |
+| **N2** | The GATHER prompt shows only "searches allowed on this call". | The unresolved section described that per-call allowance as the investigation's limit. |
+
+The proposed fixes are in the report (§6).

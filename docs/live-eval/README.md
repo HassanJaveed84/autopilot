@@ -9,6 +9,7 @@ The harness is a JUnit test in `app/src/test/java/com/lifeadmin/autopilot/liveev
 | Scenario | Date | Source commit | Model | Level | Searches | Cost (from measured usage / estimate shown) | Essential dimensions (OF · EG · SH) | Verdict | Report |
 |---|---|---|---|---|---|---|---|---|---|
 | R-N(a), Stage 1 run 1/2 | 2026-10-23 (00:34Z 10-24) | `6d3a70b` | `claude-sonnet-5-5` | Standard (3 searches, 300¢) | 2 of 3, in 2 billed calls | $0.09611 / $0.13–0.24 | 2 · 1 · 1 | **Fail**: Leakage gate; Efficiency 0; serious failures (misleading completeness, misattributed quotation) | [R-N-a-2026-10-23.md](R-N-a-2026-10-23.md) · [sanitized JSON](R-N-a-2026-10-23.sanitized.json) |
+| R-N(a) rerun on the fixed build (Stage 3 targeted follow-up) | 2026-10-24 (03:39Z) | `9cc17fe` (engine = `41dc471`), prompt v4 | `claude-sonnet-5-5` | Standard (3 searches, 300¢) | 1 of 3, in 1 billed call; FILL_GAPS skipped on sufficiency | $0.051416 / $0.13–0.24 | 2 · 2 · 2 | **Fail**: Leakage gate and Presentation 0 (unparsed attribute block on evidence rows, N1); no serious failure | [R-N-a-2026-10-24-rerun.md](R-N-a-2026-10-24-rerun.md) · [sanitized JSON](R-N-a-2026-10-24-rerun.sanitized.json) |
 
 OF = objective fidelity, EG = evidence grounding, SH = status honesty. Essential dimensions must all score 2.
 
@@ -45,7 +46,7 @@ A cloud session does not pick up an environment variable added after the session
 ./gradlew --no-daemon :app:testDebugUnitTest -PliveEval=true --tests 'com.lifeadmin.autopilot.liveeval.LiveInvestigationEval'
 ```
 
-The output goes to `app/build/live-eval/<scenario>/result.json`, which stays untracked. It holds every request and reply, every search with its results, the ledger rows, the run events and the stored turn. The prompt text is synthetic and public. The system prompt is recorded by version and SHA-256.
+The output goes to a new directory for every run, `app/build/live-eval/<scenario>/run-<UTC time>/result.json`, with its own database. The harness refuses before any call if that directory already exists, so no earlier report is overwritten. The first R-N(a) run predates this layout and stays at `app/build/live-eval/R-N-a/result.json`. Reports stay untracked. It holds every request and reply, every search with its results, the ledger rows, the run events and the stored turn. The prompt text is synthetic and public. The system prompt is recorded by version and SHA-256.
 
 ## After a run: what gets committed
 
@@ -58,8 +59,9 @@ The output goes to `app/build/live-eval/<scenario>/result.json`, which stays unt
 
 These need the owner's authorization. None is scheduled.
 
-1. **Rerun R-N(a)** on the current PR #8 head, once, with the same configuration. This is a Document F §2.3 Stage 3 targeted follow-up. The prompt contract is now **version 4**: version 3 plus `origin=` on each evidence line, from the final M4 correctness pass. It confirms live that the turn stops after GATHER, that `about=` and `origin=` are used correctly, that answers no longer narrate one call, and that unestablished side claims are qualified. Expected cost: one call, about $0.05–0.06.
-2. **R-N(b).** The app now asks which place locally, with no call, so a live run spends nothing. The harness needs a clarification-scenario mode first: today it treats any turn that is not authorizable as a refusal to start.
-3. Then the rest of the Stage 1 subset (R-A, R-D, R-J, …): two runs each, as Document F §2.3 requires.
+1. **Fix N1** (balanced-parenthesis attribute parsing, plus cleaning displayed summaries) and N2 (per-call search allowance described as the investigation's limit), with replay tests from the 2026-10-24 rerun. See `R-N-a-2026-10-24-rerun.md` §6.
+2. **Rerun R-N(a)** on the candidate build once those fixes land: one call, about $0.05.
+3. **R-N(b).** The app asks which place locally, with no call. The harness needs a clarification-scenario mode before this run can be recorded.
+4. Then the rest of the Stage 1 subset (R-A, R-D, R-J, …): two runs each on the candidate, as Document F §2.3 requires.
 
-The R-N(a) report of 2026-10-23 is a historical record. It describes prompt v3 and the R-N(b) gap as they stood then and is not edited. The changes since are in `docs/PRODUCTION_KICKOFF_AUDIT_AND_PLAN.md`, under "M4 final correctness pass".
+Both R-N(a) reports are historical records and are not edited after a fix. The 2026-10-23 report covers the prompt-v2 run and the fixes that followed it. The 2026-10-24 report covers the prompt-v4 rerun. Engine changes are recorded in `docs/PRODUCTION_KICKOFF_AUDIT_AND_PLAN.md`.
