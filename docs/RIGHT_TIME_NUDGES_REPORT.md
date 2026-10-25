@@ -99,8 +99,12 @@ New tests:
 | `data/BackupRepositoryTest` (+1) | 1 | Round trip of routine / exception / finished cycle and its event; a pre-v8 file imports as before |
 | `data/SettingsDefaultsTest` | 2 | New install → Gentle + 21:30; an existing store keeps Persistent across unrelated writes |
 | `androidTest/InstrumentedReminderTest` (+1) | 1 | **Emulator (CI):** with quiet hours covering "now", a routine with the exception posts through the real AlarmManager → receiver → NotificationManager; its first action is "Done for tonight/today"; tapping it keeps the task open with the next cycle planned. The same schedule without the exception is held |
+| `androidTest/CaptureTimingDeviceTest` | 2 | **Emulator (CI):** the timing reader's phrases on Android's ICU regex engine (see CI run #170 below) |
 
-Updated: two `AppUiTest` cases asserted the old Persistent default (09:00 + 18:00). They now assert Gentle.
+Updated:
+
+- Two `AppUiTest` cases asserted the old Persistent default (09:00 + 18:00). They now assert Gentle.
+- `ResearchOnlineUiTest.stopKeepsThePartialAnswer…` now waits for the "This thread's earlier answers" row instead of asserting it right after the card appears (a pre-existing race, see CI run #169). Test-only; Research Online code is unchanged.
 
 ### Commands run (this container: Android SDK 36 installed for the session; no KVM, so no local emulator)
 
@@ -114,9 +118,15 @@ The build ran with `--no-build-cache`. An earlier "baseline" run in a second wor
 
 Maven Central was reached through Google's mirror via a local, uncommitted Gradle init script, because direct downloads from this container returned intermittent 404s.
 
-### Results
+### CI (GitHub Actions, `android-ci.yml`)
 
-CI: see "CI" below.
+| Run | Head | Build job (lint, unit/Robolectric, APKs) | Emulator API 34 | Outcome |
+| --- | --- | --- | --- | --- |
+| [#169](https://github.com/HassanJaveed84/autopilot/actions/runs/40153297354) | `ab1730a` | ✗ 605/606 | skipped | `ResearchOnlineUiTest.stopKeepsThePartialAnswer…` failed: the test asserted the follow-up card's history row before the card's preview had loaded. It reproduced locally 1 of 3 runs on unchanged code. Fixed in `92e97b2` (wait for the row); 5/5 local runs then passed |
+| [#170](https://github.com/HassanJaveed84/autopilot/actions/runs/40155411289) | `92e97b2` | ✓ | ✗ 16/17 | **A real bug, caught only on the device runtime.** `InstrumentedUiTest.captureThenMarkWaitingWithTypedReason` crashed with `ExceptionInInitializerError` from `CaptureTiming`. Android compiles regexes with ICU, where a set starting with `[:` opens a POSIX class, so `[:.]` did not compile, although the JVM (and so every Robolectric test) accepted it. Typing in the capture sheet would have crashed on a phone. Fixed in `1eee16d` (`[.:]`, same set) and guarded by the new `CaptureTimingDeviceTest`. The new routine/quiet-hours emulator test already passed in this run |
+| [#171](https://github.com/HassanJaveed84/autopilot/actions/runs/40156920006) | `1eee16d` | ✓ (lint, 606 tests, debug/release/androidTest APKs) | ✓ **19/19** | Green |
+
+Local, on `1eee16d`: `lintDebug testDebugUnitTest` passes, 606/606. The on-demand screenshot workflow was not run.
 
 ## What remains unsupported (by design, for later milestones)
 
