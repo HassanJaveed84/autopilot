@@ -55,14 +55,17 @@ object CaptureTiming {
     /** Snooze length for bedtime nudges, so a snooze stays in the evening. */
     const val BEDTIME_SNOOZE_MINUTES = 15
 
+    // Android compiles these with ICU, where a set starting with "[:" opens a POSIX class
+    // ("[:alpha:]") and fails to compile: keep ":" out of the first position ("[.:]", not "[:.]").
+    // CaptureTimingDeviceTest runs this reader on the emulator to catch any such difference.
     private const val WEEKDAY = "monday|tuesday|wednesday|thursday|friday|saturday|sunday|tues|thurs"
     private const val DAY = "today|tonight|this evening|tomorrow night|tomorrow evening|tomorrow|tmrw|(?:(?:this|on|next) )?(?:$WEEKDAY)"
-    private const val TIME = """\d{1,2}(?:[:.]\d{2})? ?(?:am|pm)|(?:[01]?\d|2[0-3])[:.][0-5]\d|noon|midday"""
+    private const val TIME = """\d{1,2}(?:[.:]\d{2})? ?(?:am|pm)|(?:[01]?\d|2[0-3])[.:][0-5]\d|noon|midday"""
 
     private val deadlineRx = Regex("""\b(?:due by|due|by) (?:the )?((?:$DAY)(?: (?:at )?(?:$TIME))?|(?:$TIME)(?: (?:on )?(?:$DAY))?)\b""")
     private val dayRx = Regex("""\b($DAY)\b""")
     private val timeRx = Regex("""\b(?:at )?($TIME)(?![\w:])""")
-    private val bareHourRx = Regex("""\bat (\d{1,2})\b(?![:.]?\d| ?(?:am|pm))""")
+    private val bareHourRx = Regex("""\bat (\d{1,2})\b(?![.:]?\d| ?(?:am|pm))""")
     private val bedtimeRx = Regex("""\b(?:before (?:i go to |going to )?bed(?:time)?|at bedtime|bedtime|before sleep(?:ing)?)\b""")
     private val nightlyRx = Regex("""\b(?:(?:every|each) (?:night|evening)|nightly)\b""")
     private val dailyRx = Regex("""\b(?:(?:every|each) day|daily)\b""")
@@ -206,7 +209,7 @@ object CaptureTiming {
     private fun parseExplicitTime(raw: String): LocalTime? {
         val r = raw.replace(" ", "")
         if (r == "noon" || r == "midday") return LocalTime.NOON
-        val m = Regex("""^(\d{1,2})(?:[:.](\d{2}))?(am|pm)?$""").find(r) ?: return null
+        val m = Regex("""^(\d{1,2})(?:[.:](\d{2}))?(am|pm)?$""").find(r) ?: return null
         var h = m.groupValues[1].toInt()
         val min = m.groupValues[2].toIntOrNull() ?: 0
         val ap = m.groupValues[3]

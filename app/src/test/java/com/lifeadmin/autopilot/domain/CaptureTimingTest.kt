@@ -80,6 +80,8 @@ class CaptureTimingTest {
         assertEquals("already passed today → tomorrow", at(zone, 2026, 10, 24, 9), (read("Ring the garage at 9am").nudge as Nudge.Once).at)
         assertEquals(at(zone, 2026, 10, 23, 19, 30), (read("Water plants 19:30").nudge as Nudge.Once).at)
         assertEquals(at(zone, 2026, 10, 24, 12), (read("Lunch with Sam noon").nudge as Nudge.Once).at)
+        assertEquals("a dot as the separator", at(zone, 2026, 10, 23, 19, 30), (read("Water plants 19.30").nudge as Nudge.Once).at)
+        assertEquals("p.m. with dots", at(zone, 2026, 10, 27, 18), (read("Gym Tuesday 6 p.m.").nudge as Nudge.Once).at)
     }
 
     @Test fun tomorrowAndWeekdays() {
