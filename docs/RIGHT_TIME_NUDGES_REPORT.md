@@ -102,14 +102,21 @@ New tests:
 
 Updated: two `AppUiTest` cases asserted the old Persistent default (09:00 + 18:00). They now assert Gentle.
 
-### Commands run (this container, no emulator)
+### Commands run (this container: Android SDK 36 installed for the session; no KVM, so no local emulator)
 
-- Baseline on `7d498b4` (a clean worktree, build cache off): `./gradlew lintDebug testDebugUnitTest` passes, **557 tests, 0 failures**.
-- Branch: see "Results" below.
+| Command | Tree | Result |
+| --- | --- | --- |
+| `./gradlew --no-build-cache lintDebug testDebugUnitTest` | baseline `7d498b4` (clean worktree) | **Pass**: lint clean; **557 tests, 0 failures** |
+| `./gradlew --no-build-cache lintDebug testDebugUnitTest` | this branch (final code) | **Pass**: lint clean; **606 tests, 0 failures, 0 skipped** (557 + 49 new) |
+| `./gradlew --no-build-cache assembleDebug assembleRelease assembleDebugAndroidTest` | this branch | **Pass**: all three APKs build (release signed with the debug key locally; CI uses the personal key secret when present) |
+
+The build ran with `--no-build-cache`. An earlier "baseline" run in a second worktree picked up compiled classes from this branch through the shared Gradle build cache and Kotlin daemon, so it was discarded and rerun clean.
+
+Maven Central was reached through Google's mirror via a local, uncommitted Gradle init script, because direct downloads from this container returned intermittent 404s.
 
 ### Results
 
-_Filled in from the final runs; see the PR / commit for the CI links._
+CI: see "CI" below.
 
 ## What remains unsupported (by design, for later milestones)
 
