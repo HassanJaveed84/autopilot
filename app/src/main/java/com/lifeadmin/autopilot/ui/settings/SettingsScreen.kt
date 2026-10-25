@@ -97,6 +97,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     var pickStart by remember { mutableStateOf(false) }
     var pickEnd by remember { mutableStateOf(false) }
+    var pickBedtime by remember { mutableStateOf(false) }
     var confirmExport by remember { mutableStateOf(false) }
     var confirmImport by remember { mutableStateOf(false) }
     var presetSheet by remember { mutableStateOf(false) }
@@ -143,6 +144,13 @@ fun SettingsScreen(
                         }
                     }
                 }
+                GroupRow(
+                    title = "Bedtime",
+                    subtitle = "${s.bedtime.format(hhmm)} · used when you say “before bed” or “every night”. Nudges you already set keep their times.",
+                    onClick = { pickBedtime = true },
+                    divider = true, minHeight = 68.dp,
+                    modifier = Modifier.testTag("settings_bedtime"),
+                )
                 SwitchRow(
                     title = "Quiet hours",
                     subtitle = if (s.quietHours.enabled) "Nothing rings ${s.quietHours.start.format(hhmm)}–${s.quietHours.end.format(hhmm)}. " +
@@ -290,6 +298,9 @@ fun SettingsScreen(
     }
     if (pickStart) TimeSelectDialog(s.quietHours.start, "Quiet hours start", onDismiss = { pickStart = false }) { t ->
         pickStart = false; viewModel.update { it.copy(quietHours = it.quietHours.copy(start = t)) }
+    }
+    if (pickBedtime) TimeSelectDialog(s.bedtime, "Bedtime", onDismiss = { pickBedtime = false }) { t ->
+        pickBedtime = false; viewModel.update(reschedule = false) { it.copy(bedtime = t) }
     }
     if (pickEnd) TimeSelectDialog(s.quietHours.end, "Quiet hours end", onDismiss = { pickEnd = false }) { t ->
         pickEnd = false; viewModel.update { it.copy(quietHours = it.quietHours.copy(end = t)) }

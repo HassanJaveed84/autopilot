@@ -57,6 +57,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lifeadmin.autopilot.data.repository.TaskSummary
 import com.lifeadmin.autopilot.domain.model.ReminderPolicy
 import com.lifeadmin.autopilot.domain.scheduling.ReminderPresets
+import com.lifeadmin.autopilot.domain.scheduling.RoutineCycle
 import com.lifeadmin.autopilot.ui.components.AutopilotIcons
 import com.lifeadmin.autopilot.ui.components.ChoiceChip
 import com.lifeadmin.autopilot.ui.components.Format
@@ -66,6 +67,7 @@ import com.lifeadmin.autopilot.ui.components.RoundIconButton
 import com.lifeadmin.autopilot.ui.components.ScreenHeader
 import com.lifeadmin.autopilot.ui.components.SurfaceCard
 import com.lifeadmin.autopilot.ui.components.TaskCard
+import com.lifeadmin.autopilot.ui.components.TaskPresentation
 import com.lifeadmin.autopilot.ui.components.showToast
 import com.lifeadmin.autopilot.ui.detail.ConfirmDialog
 import com.lifeadmin.autopilot.ui.detail.FollowUpSheet
@@ -75,6 +77,19 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 internal fun doneWithUndo(scope: CoroutineScope, snackbar: SnackbarHostState, vm: TaskListViewModel, s: TaskSummary, message: String = "Done. Nudges stopped.") {
+    // A routine's check finishes the current cycle only ("Done for tonight"); Mark done lives on the detail screen.
+    val now = vm.now()
+    if (TaskPresentation.isCycleDone(s, now)) { vm.undoFinishCycle(s.task.id); return }
+    if (RoutineCycle.canFinishCycle(s.task, s.policy)) {
+        val label = RoutineCycle.label(now, vm.zone())
+        vm.finishCycle(s.task.id) {
+            scope.launch {
+                val r = snackbar.showToast("$label. The routine continues.", actionLabel = "Undo")
+                if (r == SnackbarResult.ActionPerformed) vm.undoFinishCycle(s.task.id)
+            }
+        }
+        return
+    }
     vm.complete(s.task.id) {
         scope.launch {
             val r = snackbar.showToast(message, actionLabel = "Undo")

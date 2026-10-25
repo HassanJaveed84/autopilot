@@ -96,6 +96,8 @@ class TaskListViewModel(
     fun messageShown() { messages.value = null }
 
     fun complete(taskId: String, onDone: () -> Unit = {}) = viewModelScope.launch { runCatching { repository.complete(taskId) }.onSuccess { onDone() }.onFailure { messages.value = it.userMessage() } }
+    fun finishCycle(taskId: String, onDone: () -> Unit = {}) = viewModelScope.launch { runCatching { repository.finishCycle(taskId) }.onSuccess { onDone() }.onFailure { messages.value = it.userMessage() } }
+    fun undoFinishCycle(taskId: String) = viewModelScope.launch { runCatching { repository.undoFinishCycle(taskId) }.onFailure { messages.value = it.userMessage() } }
     fun reopen(taskId: String) = viewModelScope.launch { runCatching { repository.reopen(taskId) }.onFailure { messages.value = it.userMessage() } }
     fun makeActionable(taskId: String) = viewModelScope.launch { runCatching { repository.changeStatus(taskId, TaskStatus.ACTIONABLE) }.onFailure { messages.value = it.userMessage() } }
 

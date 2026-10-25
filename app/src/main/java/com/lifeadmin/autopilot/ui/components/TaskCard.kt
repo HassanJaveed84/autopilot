@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lifeadmin.autopilot.data.repository.TaskSummary
 import com.lifeadmin.autopilot.domain.model.Priority
+import com.lifeadmin.autopilot.domain.scheduling.RoutineCycle
 import com.lifeadmin.autopilot.ui.theme.AutopilotTheme
 import com.lifeadmin.autopilot.ui.theme.Motion
 import java.time.Instant
@@ -140,9 +141,18 @@ fun TaskCard(
             if (summary.stepsTotal > 0 && !isDone) StepsBar(summary.stepsDone, summary.stepsTotal, Modifier.padding(top = 2.dp))
         }
         if (onToggleDone != null) {
+            // A routine's check answers the current cycle ("Done for tonight"), not the task.
+            val cycleDone = TaskPresentation.isCycleDone(summary, now)
+            val routine = RoutineCycle.canFinishCycle(task, summary.policy)
+            val label = RoutineCycle.label(now, zone)
             CheckCircle(
-                checked = isDone,
-                label = if (isDone) "Mark ${task.title} not done" else "Mark ${task.title} done",
+                checked = isDone || cycleDone,
+                label = when {
+                    isDone -> "Mark ${task.title} not done"
+                    cycleDone -> "Undo $label for ${task.title}"
+                    routine -> "$label: ${task.title}"
+                    else -> "Mark ${task.title} done"
+                },
                 onToggle = onToggleDone,
                 modifier = Modifier.padding(top = 4.dp),
             )

@@ -8,6 +8,7 @@ import com.lifeadmin.autopilot.domain.model.ReminderKind
 import com.lifeadmin.autopilot.domain.model.ReminderPolicy
 import com.lifeadmin.autopilot.domain.model.Task
 import com.lifeadmin.autopilot.domain.model.TaskStatus
+import com.lifeadmin.autopilot.domain.scheduling.RoutineCycle
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -44,6 +45,11 @@ object TaskPresentation {
             t.archivedAt != null -> StatusLine(StatusGlyph.TRAY, "Archived", StatusTone.MUTED)
             t.status == TaskStatus.WAITING -> waitingLine(t, now, zone)
             t.status == TaskStatus.PAUSED -> StatusLine(StatusGlyph.PAUSE, "Paused · no nudges", StatusTone.MUTED)
+            isCycleDone(summary, now) -> StatusLine(
+                StatusGlyph.CHECK,
+                RoutineCycle.label(now, zone) + (next?.let { " · next ${Format.relativeLower(it.plannedAt, now, zone)}" } ?: ""),
+                StatusTone.DONE,
+            )
             t.isSnoozed(now) -> StatusLine(StatusGlyph.MOON, "Snoozed until ${Format.relativeLower(t.snoozedUntil!!, now, zone)}", StatusTone.MUTED)
             t.status == TaskStatus.INBOX && (policy == null || !policy.enabled) -> StatusLine(StatusGlyph.TRAY, "In Inbox · no nudges yet", StatusTone.MUTED)
             next != null && next.kind == OccurrenceKind.POLICY && policy != null && policy.enabled -> when (context) {
@@ -74,11 +80,21 @@ object TaskPresentation {
         val times = policy.times.sorted().joinToString(" & ") { it.format(hhmm) }
         return when (policy.kind) {
             ReminderKind.ONCE -> "once, " + (policy.atInstant?.let { Format.relativeLower(it, now, zone) } ?: "time not set")
-            ReminderKind.DAILY_TIMES -> "$times daily" + if (withUntil) ", until done" else ""
+            ReminderKind.DAILY_TIMES -> "$times daily" + until(policy, withUntil)
             ReminderKind.EVERY_N_DAYS ->
-                (if (policy.dayInterval <= 1) "$times daily" else "every ${policy.dayInterval} days at $times") + if (withUntil) ", until done" else ""
+                (if (policy.dayInterval <= 1) "$times daily" else "every ${policy.dayInterval} days at $times") + until(policy, withUntil)
         }
     }
+
+    private fun until(policy: ReminderPolicy, withUntil: Boolean): String = when {
+        !withUntil -> ""
+        policy.isRoutine -> ", a routine"
+        else -> ", until done"
+    }
+
+    /** A routine whose current cycle the user finished ("Done for tonight"). */
+    fun isCycleDone(summary: TaskSummary, now: Instant): Boolean =
+        RoutineCycle.canFinishCycle(summary.task, summary.policy) && RoutineCycle.isCycleDone(summary.task, now)
 
     /** Short form for the capture row: "09:00 & 18:00 daily" / "every 2 days at 10:00" / "once, tomorrow 09:00". */
     fun scheduleShort(policy: ReminderPolicy, zone: ZoneId, now: Instant): String = scheduleSentence(policy, zone, now, withUntil = false)
@@ -115,6 +131,7 @@ object TaskPresentation {
             t.archivedAt != null -> StatusLine(StatusGlyph.TRAY, "Archived", StatusTone.MUTED)
             t.status == TaskStatus.WAITING -> StatusLine(StatusGlyph.HOURGLASS, "Waiting", StatusTone.MUTED)
             t.status == TaskStatus.PAUSED -> StatusLine(StatusGlyph.PAUSE, "Paused", StatusTone.MUTED)
+            isCycleDone(summary, now) -> StatusLine(StatusGlyph.CHECK, RoutineCycle.label(now, zone), StatusTone.DONE)
             t.isSnoozed(now) -> StatusLine(StatusGlyph.MOON, "Snoozed", StatusTone.MUTED)
             t.status == TaskStatus.INBOX -> StatusLine(StatusGlyph.TRAY, "Inbox", StatusTone.MUTED)
             summary.nextReminder != null && policy?.enabled == true -> StatusLine(StatusGlyph.BELL, "Nudging", StatusTone.SIGNAL)

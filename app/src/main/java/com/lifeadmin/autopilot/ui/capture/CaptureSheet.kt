@@ -145,7 +145,8 @@ fun CaptureSheet(
             value = d.text,
             onValueChange = viewModel::setText,
             modifier = Modifier.fillMaxWidth().focusRequester(focus).testTag("capture_title"),
-            placeholder = { Text("e.g. Renew car insurance before 3 Nov, remind me Friday", color = c.ink3) },
+            // Only phrases the offline reader understands (CaptureTiming), so the example is honest with AI off.
+            placeholder = { Text("e.g. Turn off the fan before bed, or send the report by Monday 5pm", color = c.ink3) },
             minLines = 3, maxLines = 6,
             isError = s.error != null,
             textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 18.sp, lineHeight = 25.sp),
@@ -162,10 +163,19 @@ fun CaptureSheet(
             TimeText("${d.text.length} / ${AiConfig.MAX_INPUT_CHARS}", size = 13, color = c.ink3)
         }
 
+        // What the words say about timing (read offline). It prefills the follow-up row and the
+        // deadline below; the text itself stays exactly as typed.
+        d.activeTiming?.let { reading -> TimingSection(reading, s, policy, now, zone, viewModel) }
+
         // Follow-up row: tap the text to change the schedule, the switch to turn nudges on/off.
         val remTitle = if (d.nudge) "Nudge me " + TaskPresentation.scheduleShort(policy, zone, now) else "No nudges"
         val remSub = if (d.nudge) {
-            (if (policy.kind == ReminderKind.ONCE) "Once · " else "Until it's done · ") + (if (d.policy == null) "your default" else "custom") + " · tap to change"
+            (if (policy.kind == ReminderKind.ONCE) "Once · " else if (policy.isRoutine) "Every day, a routine · " else "Until it's done · ") +
+                when (s.followUpSource()) {
+                    FollowUpSource.WORDS -> "from your words"
+                    FollowUpSource.CUSTOM -> "custom"
+                    FollowUpSource.DEFAULT -> "your default"
+                } + " · tap to change"
         } else "It goes to your Inbox to sort later"
         Row(
             Modifier.fillMaxWidth().padding(top = 14.dp).clip(RoundedCornerShape(20.dp)).background(c.paper).border(1.dp, c.line, RoundedCornerShape(20.dp)),
@@ -198,6 +208,26 @@ fun CaptureSheet(
             ) { InkSwitch(checked = d.nudge) }
         }
 
+        // The per-task quiet-hours exception: only offered when a nudge would fall in quiet hours,
+        // never turned on by itself, and explained before saving.
+        if (s.quietHoursMatter(now, zone)) {
+            Row(
+                Modifier.fillMaxWidth().padding(top = 8.dp).clip(RoundedCornerShape(20.dp)).background(c.paper).border(1.dp, c.line, RoundedCornerShape(20.dp))
+                    .toggleable(value = d.ringInQuietHours, role = Role.Switch, onValueChange = viewModel::setRingInQuietHours)
+                    .testTag("capture_ring_quiet")
+                    .padding(start = 12.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                IconCircle(AutopilotIcons.Moon, tint = c.ink2, background = c.sunken)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Ring during quiet hours", style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp), color = c.ink)
+                    Text(CaptureTimingText.quietHours(s.settings, d.ringInQuietHours), style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.testTag("capture_ring_quiet_text"))
+                }
+                InkSwitch(checked = d.ringInQuietHours)
+            }
+        }
+
         // Disclosure: notes, priority, deadline.
         Row(
             Modifier
@@ -226,7 +256,7 @@ fun CaptureSheet(
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Deadline", style = MaterialTheme.typography.labelMedium, color = c.ink2)
-                    val dl = d.deadline
+                    val dl = s.effectiveDeadline()
                     val tomorrow = today.plusDays(1)
                     val nextWeek = today.plusWeeks(1)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -285,6 +315,59 @@ fun CaptureSheet(
 }
 
 private fun deadlineLabel(d: DeadlineSpec, now: java.time.Instant, zone: java.time.ZoneId): String = Format.deadlineSpec(d, now, zone)
+
+/**
+ * "Understood from your words": the nudge and/or deadline read from the text, each with the words
+ * it came from, notes about timing that was deliberately not used, and Ignore. For a one-off
+ * bedtime nudge, "Every night instead" turns it into a confirmed routine.
+ */
+@Composable
+private fun TimingSection(
+    reading: com.lifeadmin.autopilot.domain.capture.CaptureTiming.Reading,
+    s: CaptureUiState,
+    policy: com.lifeadmin.autopilot.domain.model.ReminderPolicy,
+    now: java.time.Instant,
+    zone: java.time.ZoneId,
+    viewModel: CaptureViewModel,
+) {
+    val c = AutopilotTheme.colors
+    val d = s.draft
+    val nudge = s.inferredNudge(zone)
+    Column(
+        Modifier.fillMaxWidth().padding(top = 10.dp).clip(RoundedCornerShape(16.dp)).background(c.signalSoft).padding(horizontal = 12.dp, vertical = 10.dp).testTag("capture_timing"),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text("Understood from your words", style = MaterialTheme.typography.labelMedium, color = c.onSignalSoft)
+        if (nudge != null && d.nudge && d.policy == null) {
+            TimingRow(AutopilotIcons.Bell, CaptureTimingText.nudge(nudge, policy, s.settings, now, zone), CaptureTimingText.source(nudge.phrase), "capture_timing_nudge")
+        } else if (nudge != null && d.policy != null) {
+            Text("You chose a different follow-up below.", style = MaterialTheme.typography.bodySmall, color = c.onSignalSoft)
+        }
+        reading.deadline?.let { dl ->
+            if (!d.deadlineTouched) TimingRow(AutopilotIcons.Calendar, CaptureTimingText.deadline(dl, now, zone), CaptureTimingText.source(dl.phrase), "capture_timing_deadline")
+        }
+        reading.notes.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = c.onSignalSoft) }
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            val once = reading.nudge as? com.lifeadmin.autopilot.domain.capture.CaptureTiming.Nudge.Once
+            if (once != null && once.bedtime && d.policy == null && d.nudge) {
+                LinkButton(if (d.makeNightly) "Just once" else "Every night instead", onClick = { viewModel.setMakeNightly(!d.makeNightly) }, modifier = Modifier.testTag("capture_timing_nightly"))
+            }
+            if (reading.nudge != null || reading.deadline != null) LinkButton("Ignore", onClick = viewModel::ignoreTiming, modifier = Modifier.testTag("capture_timing_ignore"))
+        }
+    }
+}
+
+@Composable
+private fun TimingRow(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String, source: String, tag: String) {
+    val c = AutopilotTheme.colors
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top, modifier = Modifier.testTag(tag)) {
+        Icon(icon, contentDescription = null, tint = c.onSignalSoft, modifier = Modifier.size(18.dp).padding(top = 1.dp))
+        Column {
+            Text(text, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp), color = c.ink)
+            Text(source, style = MaterialTheme.typography.bodySmall, color = c.onSignalSoft)
+        }
+    }
+}
 
 /**
  * "Turn on AI planning?" in place of the capture sheet: the note is kept, the key can be pasted,

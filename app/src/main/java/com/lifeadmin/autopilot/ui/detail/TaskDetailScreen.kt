@@ -60,6 +60,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.lifeadmin.autopilot.domain.scheduling.RoutineCycle
 import com.lifeadmin.autopilot.ui.components.showToast
 import kotlinx.coroutines.launch
 import com.lifeadmin.autopilot.data.repository.TaskDetails
@@ -158,6 +159,15 @@ fun TaskDetailScreen(
                         if (r == SnackbarResult.ActionPerformed) viewModel.reopen()
                     }
                 },
+                onDoneForNow = {
+                    val label = RoutineCycle.label(viewModel.now(), viewModel.zone())
+                    viewModel.finishCycle {
+                        scope.launch {
+                            val r = snackbar.showToast("$label. The routine continues.", actionLabel = "Undo")
+                            if (r == SnackbarResult.ActionPerformed) viewModel.undoFinishCycle()
+                        }
+                    }
+                },
                 onPause = {
                     viewModel.changeStatus(TaskStatus.PAUSED)
                     scope.launch {
@@ -244,6 +254,7 @@ private fun DetailContent(
     onDone: () -> Unit,
     onPause: () -> Unit,
     onOpenReview: ((String) -> Unit)? = null,
+    onDoneForNow: () -> Unit = {},
 ) {
     val c = AutopilotTheme.colors
     val task = d.task
@@ -290,8 +301,18 @@ private fun DetailContent(
             Column(Modifier.padding(top = 14.dp)) {
                 if (isDone) {
                     PrimaryButton(if (task.status == TaskStatus.DONE) "Mark as not done" else "Reopen", onClick = vm::reopen, icon = AutopilotIcons.Refresh, modifier = Modifier.fillMaxWidth().testTag("action_reopen"))
+                } else if (RoutineCycle.canFinishCycle(task, d.policy)) {
+                    // A routine: the cycle is answered here; Mark done (permanent) stays one tap away.
+                    if (RoutineCycle.isCycleDone(task, now)) {
+                        SecondaryButton("Undo “${RoutineCycle.label(now, zone)}”", onClick = vm::undoFinishCycle, icon = AutopilotIcons.Refresh, modifier = Modifier.fillMaxWidth().testTag("action_undo_done_for_now"))
+                    } else {
+                        PrimaryButton(RoutineCycle.label(now, zone), onClick = onDoneForNow, icon = AutopilotIcons.Check, modifier = Modifier.fillMaxWidth().testTag("action_done_for_now"))
+                    }
+                    SecondaryButton("Mark done · ends the routine", onClick = onDone, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("action_done"))
                 } else {
                     PrimaryButton("Mark done", onClick = onDone, icon = AutopilotIcons.Check, modifier = Modifier.fillMaxWidth().testTag("action_done"))
+                }
+                if (!isDone) {
                     Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (task.isSnoozed(now)) ActionTile(AutopilotIcons.Sun, "Wake", Modifier.weight(1f).testTag("action_unsnooze")) { vm.clearSnooze() }
                         else ActionTile(AutopilotIcons.Moon, "Snooze", Modifier.weight(1f).testTag("action_snooze"), enabled = task.status != TaskStatus.PAUSED) { openDialog(DetailDialog.SNOOZE) }
@@ -380,6 +401,12 @@ private fun FollowUpCard(d: TaskDetails, summary: TaskSummary, now: Instant, zon
             "Edit", { openDialog(DetailDialog.WAITING) },
         )
         task.status == TaskStatus.PAUSED -> Fu(AutopilotIcons.Pause, c.sunken, c.ink, "Paused", "No nudges until you resume.", "Resume", { vm.changeStatus(TaskStatus.ACTIONABLE) })
+        TaskPresentation.isCycleDone(summary, now) -> Fu(
+            AutopilotIcons.Check, c.doneSoft, c.onDoneSoft,
+            RoutineCycle.label(now, zone) + (next?.let { " · next ${Format.relativeLower(it.plannedAt, now, zone)}" } ?: ""),
+            "The routine continues: ${policy?.let { TaskPresentation.scheduleShort(it, zone, now) } ?: "no nudges"}.",
+            "Undo", { vm.undoFinishCycle() },
+        )
         task.isSnoozed(now) -> Fu(
             AutopilotIcons.Moon, c.sunken, c.ink, "Snoozed until ${Format.relativeLower(task.snoozedUntil!!, now, zone)}",
             "Then: " + (policy?.takeIf { it.enabled }?.let { TaskPresentation.scheduleSentence(it, zone, now) } ?: "no nudges") + (if (next?.kind == OccurrenceKind.SNOOZE_END) " · reminder when the snooze ends" else "") + ".",
@@ -389,7 +416,8 @@ private fun FollowUpCard(d: TaskDetails, summary: TaskSummary, now: Instant, zon
         next == null -> Fu(AutopilotIcons.Bell, c.signalSoft, c.onSignalSoft, "Nudging " + TaskPresentation.scheduleShort(policy, zone, now), "No upcoming nudge for this schedule.", "Change", { openDialog(DetailDialog.POLICY) })
         else -> Fu(
             AutopilotIcons.Bell, c.signalSoft, c.onSignalSoft, "Nudging " + TaskPresentation.scheduleShort(policy, zone, now),
-            (if (policy.kind == ReminderKind.ONCE) "Once" else "Until it's done") + " · next ${Format.relativeLower(next.plannedAt, now, zone)}$mode",
+            (if (policy.kind == ReminderKind.ONCE) "Once" else if (policy.isRoutine) "Every day, a routine" else "Until it's done") +
+                " · next ${Format.relativeLower(next.plannedAt, now, zone)}$mode" + if (policy.ringInQuietHours) " · may ring in quiet hours" else "",
             "Change", { openDialog(DetailDialog.POLICY) },
         )
     }

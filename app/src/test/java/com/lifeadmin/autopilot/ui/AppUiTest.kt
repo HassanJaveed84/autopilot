@@ -87,12 +87,14 @@ class AppUiTest {
         compose.onNodeWithTag("capture_save").performClick()
         compose.waitUntil(10_000) { runBlocking { container.database.taskDao().count() == 1 } }
         waitForText("Book train ride")
-        // Shown on the Today rail (09:00 card, 18:00 ghost repeat).
+        // Shown on the Today rail (10:00 card).
         compose.onAllNodesWithText("Book train ride")[0].assertIsDisplayed()
         val task = runBlocking { container.database.taskDao().getAll().single() }
         assertEquals(TaskStatus.ACTIONABLE, task.status)
+        // A new install's default is the lighter Gentle preset: every 2 days at 10:00.
         val policy = runBlocking { container.taskRepository.getPolicy(task.id)!! }
-        assertEquals(listOf("09:00", "18:00"), policy.times.map { it.toString() })
+        assertEquals(listOf("10:00"), policy.times.map { it.toString() })
+        assertEquals(2, policy.dayInterval)
     }
 
     @Test fun completeFromTodayThenReopenFromDetail() {
@@ -132,11 +134,11 @@ class AppUiTest {
         compose.onNodeWithText("Book train ride").performClick()
         waitForTag("policy_summary")
         compose.onNodeWithTag("card_action_reminders").performClick()
-        // The Follow-up sheet pre-fills the editable Persistent preset (09:00 and 18:00) and previews
-        // the next nudges with the engine's own planner.
-        compose.waitUntil(3_000) { compose.onAllNodesWithTextCount("Today 09:00") > 0 }
+        // The Follow-up sheet pre-fills the editable default preset (Gentle on a new install: every
+        // 2 days at 10:00) and previews the next nudges with the engine's own planner.
+        compose.waitUntil(3_000) { compose.onAllNodesWithTextCount("Today 10:00") > 0 }
         compose.onNodeWithTag("policy_save").performClick()
-        compose.waitUntil(5_000) { compose.onAllNodesWithTextCount("Nudging 09:00 & 18:00 daily") > 0 }
+        compose.waitUntil(5_000) { compose.onAllNodesWithTextCount("Nudging every 2 days at 10:00") > 0 }
     }
 
     @Test fun searchFiltersTasks() {

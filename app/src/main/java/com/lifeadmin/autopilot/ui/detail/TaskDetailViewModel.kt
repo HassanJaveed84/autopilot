@@ -130,6 +130,12 @@ class TaskDetailViewModel(
     fun setWaiting(reason: String?, checkIn: Instant?) = run("Marked as waiting") { repository.changeStatus(taskId, TaskStatus.WAITING, reason, checkIn) }
     fun complete() = run("Marked done — future reminders canceled") { repository.complete(taskId) }
     fun reopen() = run("Reopened") { repository.reopen(taskId) }
+
+    /** "Done for tonight" on a routine: this cycle only; the task stays open. */
+    fun finishCycle(onFinished: () -> Unit = {}) = viewModelScope.launch {
+        runCatching { repository.finishCycle(taskId) }.onSuccess { onFinished() }.onFailure { events.send(DetailEvent.Message(it.userMessage())) }
+    }
+    fun undoFinishCycle() = run { repository.undoFinishCycle(taskId) }
     fun snooze(until: Instant, remindAtEnd: Boolean) = run { repository.snooze(taskId, until, remindAtEnd) }
     fun clearSnooze() = run("Snooze cleared") { repository.clearSnooze(taskId) }
     fun archive() = run("Archived") { repository.archive(taskId) }

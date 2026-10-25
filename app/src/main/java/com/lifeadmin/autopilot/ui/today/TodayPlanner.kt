@@ -8,6 +8,7 @@ import com.lifeadmin.autopilot.domain.model.ReminderKind
 import com.lifeadmin.autopilot.domain.model.TaskStatus
 import com.lifeadmin.autopilot.domain.scheduling.ReminderProjection
 import com.lifeadmin.autopilot.ui.components.Format
+import com.lifeadmin.autopilot.ui.components.TaskPresentation
 import com.lifeadmin.autopilot.ui.components.isOverdue
 import com.lifeadmin.autopilot.ui.components.isSnoozed
 import java.time.Instant
@@ -126,10 +127,12 @@ object TodayPlanner {
         val checkIns = sortedTimed.filterIsInstance<RailEntry.CheckIn>()
 
         val waiting = open.filter { it.task.status == TaskStatus.WAITING }.sortedBy { it.task.waitingCheckInAt ?: Instant.MAX }
-        val later = open.filter { it.task.status != TaskStatus.WAITING && it.task.id !in onRail && !(it.task.status == TaskStatus.INBOX && it.policy?.enabled != true) }
+        val later = open.filter { it.task.status != TaskStatus.WAITING && it.task.id !in onRail && !(it.task.status == TaskStatus.INBOX && it.policy?.enabled != true) && !TaskPresentation.isCycleDone(it, now) }
             .sortedWith(compareBy<TaskSummary> { it.task.status == TaskStatus.PAUSED }.thenBy { it.nextReminder?.plannedAt ?: it.task.snoozedUntil ?: Instant.MAX })
         val doneToday = all.filter { it.task.status == TaskStatus.DONE && it.task.archivedAt == null && it.task.completedAt?.atZone(zone)?.toLocalDate() == today }
-            .sortedByDescending { it.task.completedAt }
+            .sortedByDescending { it.task.completedAt } +
+            // Routines answered "Done for tonight" are done for this cycle and stay open.
+            open.filter { TaskPresentation.isCycleDone(it, now) }
 
         val headline: String
         val sub: String

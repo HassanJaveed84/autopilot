@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -48,6 +49,7 @@ import com.lifeadmin.autopilot.domain.model.ReminderPreset
 import com.lifeadmin.autopilot.domain.model.TaskStatus
 import com.lifeadmin.autopilot.domain.model.ZoneMode
 import com.lifeadmin.autopilot.domain.scheduling.LocalTimeResolver
+import com.lifeadmin.autopilot.domain.scheduling.QuietHoursCalculator
 import com.lifeadmin.autopilot.domain.scheduling.ReminderPresets
 import com.lifeadmin.autopilot.domain.scheduling.ReminderProjection
 import com.lifeadmin.autopilot.ui.components.AutopilotIcons
@@ -56,6 +58,7 @@ import com.lifeadmin.autopilot.ui.components.ChoiceChip
 import com.lifeadmin.autopilot.ui.components.DateSelectDialog
 import com.lifeadmin.autopilot.ui.components.DateTimeSelectDialog
 import com.lifeadmin.autopilot.ui.components.Format
+import com.lifeadmin.autopilot.ui.components.InkSwitch
 import com.lifeadmin.autopilot.ui.components.LinkButton
 import com.lifeadmin.autopilot.ui.components.NoteLine
 import com.lifeadmin.autopilot.ui.components.PrimaryButton
@@ -261,17 +264,45 @@ fun FollowUpSheet(
                 }
             }
 
+            // Routine: a recurring schedule the user confirms repeats on its own ("every night").
+            if (draft.kind != ReminderKind.ONCE) {
+                SheetSwitchRow(
+                    title = "It's a routine",
+                    body = if (draft.routine) "Repeats every time. “Done for today” silences today's nudges and keeps the routine; Mark done ends it."
+                    else "Off: nudges repeat until you mark the task done.",
+                    checked = draft.routine,
+                    onChange = { draft = draft.copy(routine = it) },
+                    tag = "policy_routine",
+                )
+            }
+            val qh = settings.quietHours
+            val inQuiet = remember(draft, settings, now, zone) {
+                qh.isEffective && ReminderProjection.upcomingForNewTask(draft.copy(ringInQuietHours = true), settings, now, zone, 3)
+                    .any { QuietHoursCalculator(qh).isQuiet(it.plannedAt, zone) }
+            }
+            if (qh.isEffective && (inQuiet || draft.ringInQuietHours)) {
+                SheetSwitchRow(
+                    title = "Ring during quiet hours",
+                    body = if (draft.ringInQuietHours) "Rings at its time even in quiet hours (${qh.start.format(hhmm)}–${qh.end.format(hhmm)}), for this task only. Android's Do Not Disturb still applies."
+                    else "A nudge here falls in quiet hours (${qh.start.format(hhmm)}–${qh.end.format(hhmm)}). Turn on to let this task ring at its time.",
+                    checked = draft.ringInQuietHours,
+                    onChange = { draft = draft.copy(ringInQuietHours = it) },
+                    tag = "policy_ring_quiet",
+                )
+            }
+
             Column(Modifier.padding(top = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 NoteLine(
                     AutopilotIcons.Bell,
                     if (draft.kind == ReminderKind.ONCE) "Nudges once. Dismissing it doesn't complete the task — it stays on your list."
+                    else if (draft.routine) "A routine: answer each nudge with “Done for today”. Dismissing a notification doesn't count as done."
                     else "Keeps nudging until you mark it done. Dismissing a notification doesn't count as done.",
                 )
-                val qh = settings.quietHours
                 val behavior = draft.quietHoursBehavior ?: settings.quietHoursBehavior
                 if (qh.isEffective) NoteLine(
                     AutopilotIcons.Moon,
-                    if (behavior == QuietHoursBehavior.SKIP) "Nudges that fall in quiet hours (${qh.start.format(hhmm)}–${qh.end.format(hhmm)}) are skipped."
+                    if (draft.ringInQuietHours) "This task may ring in quiet hours (${qh.start.format(hhmm)}–${qh.end.format(hhmm)}); other tasks still wait."
+                    else if (behavior == QuietHoursBehavior.SKIP) "Nudges that fall in quiet hours (${qh.start.format(hhmm)}–${qh.end.format(hhmm)}) are skipped."
                     else "Nothing rings in quiet hours, ${qh.start.format(hhmm)}–${qh.end.format(hhmm)}. Nudges wait until they end.",
                 )
                 when {
@@ -371,6 +402,26 @@ private fun PresetCard(name: String, desc: String, selected: Boolean, onClick: (
         Box(Modifier.align(Alignment.TopEnd).size(20.dp).clip(CircleShape).background(if (selected) c.inverse else androidx.compose.ui.graphics.Color.Transparent), contentAlignment = Alignment.Center) {
             if (selected) Icon(AutopilotIcons.Check, contentDescription = null, tint = c.onInverse, modifier = Modifier.size(12.dp))
         }
+    }
+}
+
+/** A labelled switch inside the sheet; the whole row is one toggle target. */
+@Composable
+private fun SheetSwitchRow(title: String, body: String, checked: Boolean, onChange: (Boolean) -> Unit, tag: String) {
+    val c = AutopilotTheme.colors
+    Row(
+        Modifier.fillMaxWidth().padding(top = 12.dp).clip(RoundedCornerShape(16.dp)).background(c.paper)
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
+            .testTag(tag)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp), color = c.ink)
+            Text(body, style = MaterialTheme.typography.bodySmall, color = c.ink2)
+        }
+        InkSwitch(checked = checked)
     }
 }
 
