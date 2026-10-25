@@ -32,6 +32,8 @@ import com.lifeadmin.autopilot.domain.model.TaskStatus
 import com.lifeadmin.autopilot.domain.model.TaskStep
 import com.lifeadmin.autopilot.domain.model.ZoneMode
 import com.lifeadmin.autopilot.domain.scheduling.PolicyDescriber
+import com.lifeadmin.autopilot.domain.scheduling.ReminderPlanner
+import com.lifeadmin.autopilot.domain.scheduling.RoutineCycle
 import com.lifeadmin.autopilot.domain.scheduling.ReminderPresets
 import com.lifeadmin.autopilot.domain.usecase.ScheduleCoordinator
 import com.lifeadmin.autopilot.domain.usecase.TaskStateMachine
@@ -219,6 +221,7 @@ class TaskRepository(
                 val policy = when {
                     customPolicy != null -> customPolicy.copy(
                         id = blank.id, taskId = id, lastEditedAt = now, times = customPolicy.times.distinct().sorted(),
+                        routine = customPolicy.routine && customPolicy.kind != ReminderKind.ONCE,
                         zoneId = if (customPolicy.zoneMode == ZoneMode.FIXED_ZONE) customPolicy.zoneId ?: zone.id else null,
                     )
                     draft.preset != null -> ReminderPresets.applyTo(blank, draft.preset, now.atZone(zone).toLocalDate())
@@ -494,6 +497,56 @@ class TaskRepository(
         }
     }
 
+    /**
+     * "Done for tonight" on a routine: silences the rest of the current cycle (until the next
+     * [RoutineCycle.CYCLE_START]) without completing the task, and clears a pending snooze so its
+     * end doesn't ring either. The next cycle's nudges are planned as usual. Repeating it in the
+     * same cycle changes nothing. Throws [ValidationException] for anything that isn't an open routine.
+     *
+     * [answeringSlot] is the slot of the notification being answered (from the notification
+     * action). When it belongs to an earlier cycle — last night's nudge held by quiet hours until
+     * morning — only that cycle is answered: the event is logged and tonight's nudge stays on.
+     *
+     * @return when the routine's nudges resume.
+     */
+    suspend fun finishCycle(taskId: String, answeringSlot: Instant? = null): Instant = coordinator.mutateTask(taskId, dismissNotification = true) {
+        db.withTransaction {
+            val t = requireTask(taskId)
+            val policy = getPolicy(taskId)
+            if (!RoutineCycle.canFinishCycle(t.toDomain(), policy)) throw ValidationException("“Done for tonight” is only for open routines")
+            val now = clock.now()
+            val zone = ReminderPlanner.policyZone(policy, zoneProvider())
+            val until = RoutineCycle.cycleEnd(answeringSlot?.takeIf { it <= now } ?: now, zone)
+            if (until <= now) {
+                log(taskId, now, EventType.OCCURRENCE_DONE, "${RoutineCycle.notificationLabel(answeringSlot!!, now, zone)} · the next nudge is still on", mapOf("slot" to answeringSlot.toString()))
+                return@withTransaction until
+            }
+            if (t.cycleDoneUntil == until && t.snoozedUntil == null) return@withTransaction until
+            update(t.copy(cycleDoneUntil = until, snoozedUntil = null, updatedAt = now))
+            bumpGeneration(taskId)
+            log(taskId, now, EventType.OCCURRENCE_DONE, "${RoutineCycle.label(now, zone)} · the routine continues", mapOf("until" to until.toString()))
+            until
+        }
+    }
+
+    /** Slot of the task's most recently delivered reminder: the one its notification shows. */
+    suspend fun latestDeliveredSlot(taskId: String): Instant? =
+        db.occurrenceDao().getAllForTask(taskId).filter { it.status == OccurrenceStatus.DELIVERED && it.deliveredAt != null }.maxByOrNull { it.deliveredAt!! }?.slotAt
+
+    /** The inverse of [finishCycle] (Undo): this cycle's remaining nudges come back. No-op when nothing is finished. */
+    suspend fun undoFinishCycle(taskId: String) {
+        coordinator.mutateTask(taskId) {
+            db.withTransaction {
+                val t = requireTask(taskId)
+                val now = clock.now()
+                if (t.cycleDoneUntil?.let { it > now } != true) return@withTransaction
+                update(t.copy(cycleDoneUntil = null, updatedAt = now))
+                bumpGeneration(taskId)
+                log(taskId, now, EventType.OCCURRENCE_UNDONE, "Undid “done for now” · the rest of this cycle's nudges are back")
+            }
+        }
+    }
+
     suspend fun savePolicy(policy: ReminderPolicy) {
         validatePolicy(policy)
         coordinator.mutateTask(policy.taskId) {
@@ -503,6 +556,7 @@ class TaskRepository(
                 val now = clock.now()
                 val next = policy.copy(
                     id = existing?.id ?: policy.id,
+                    routine = policy.routine && policy.kind != ReminderKind.ONCE,
                     generation = (existing?.generation ?: 0) + 1,
                     lastEditedAt = now,
                     times = policy.times.distinct().sorted(),

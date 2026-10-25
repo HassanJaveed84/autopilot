@@ -48,6 +48,8 @@ data class TaskEntity(
     val intendedLocalDate: LocalDate? = null,
     val targetLocalDate: LocalDate? = null,
     val targetBasis: String? = null,
+    /** Added in schema v8 (right-time nudges): end of a routine's finished cycle. */
+    val cycleDoneUntil: Instant? = null,
 )
 
 @Entity(
@@ -87,6 +89,9 @@ data class ReminderPolicyEntity(
     val atInstant: Instant?,
     val lastEditedAt: Instant,
     val generation: Int,
+    /** Added in schema v8 (right-time nudges). */
+    @ColumnInfo(defaultValue = "0") val routine: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val ringInQuietHours: Boolean = false,
 )
 
 @Entity(

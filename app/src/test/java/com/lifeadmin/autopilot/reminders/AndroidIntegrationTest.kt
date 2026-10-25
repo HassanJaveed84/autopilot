@@ -19,10 +19,12 @@ import com.lifeadmin.autopilot.domain.model.TaskStatus
 import com.lifeadmin.autopilot.domain.scheduling.SnoozeCalculator
 import com.lifeadmin.autopilot.notifications.AndroidNotificationPublisher
 import com.lifeadmin.autopilot.receivers.NotificationActionReceiver
+import com.lifeadmin.autopilot.domain.scheduling.RoutineCycle
 import com.lifeadmin.autopilot.receivers.ReminderAlarmReceiver
 import com.lifeadmin.autopilot.receivers.SystemEventReceiver
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -53,7 +55,7 @@ class AndroidIntegrationTest {
         // real receiver classes are registered dynamically here; the manifest declarations are
         // verified separately by ManifestContractTest.
         val fire = IntentFilter(IntentContract.ACTION_FIRE).apply { addDataScheme("lifeadmin") }
-        val actions = IntentFilter().apply { addAction(IntentContract.ACTION_DONE); addAction(IntentContract.ACTION_SNOOZE); addDataScheme("lifeadmin") }
+        val actions = IntentFilter().apply { addAction(IntentContract.ACTION_DONE); addAction(IntentContract.ACTION_SNOOZE); addAction(IntentContract.ACTION_DONE_FOR_NOW); addDataScheme("lifeadmin") }
         val system = IntentFilter().apply { addAction(Intent.ACTION_BOOT_COMPLETED); addAction(Intent.ACTION_TIMEZONE_CHANGED); addAction(Intent.ACTION_TIME_CHANGED) }
         app.registerReceiver(ReminderAlarmReceiver(), fire, Context.RECEIVER_NOT_EXPORTED)
         app.registerReceiver(NotificationActionReceiver(), actions, Context.RECEIVER_NOT_EXPORTED)
@@ -128,6 +130,50 @@ class AndroidIntegrationTest {
         await { runBlocking { container.taskRepository.getTask(id)!!.status == TaskStatus.DONE } }
         await { shadowOf(notificationManager).allNotifications.isEmpty() }
         assertTrue(scheduledAlarms().isEmpty())
+    }
+
+    /** A daily routine whose slot is within the next minute (on the real clock), allowed to ring in quiet hours. */
+    private fun routineDueNow(title: String): String = runBlocking {
+        val id = container.taskRepository.createTask(NewTask(title, status = TaskStatus.ACTIONABLE))
+        val zone = container.zoneProvider.current()
+        val slot = container.clock.now().plusSeconds(60).atZone(zone).toLocalTime().withSecond(0).withNano(0)
+        val p = container.taskRepository.getPolicy(id)!!
+        container.taskRepository.savePolicy(
+            p.copy(enabled = true, kind = ReminderKind.DAILY_TIMES, times = listOf(slot), startLocalDate = null, routine = true, ringInQuietHours = true, snoozeDefaultMinutes = 15),
+        )
+        id
+    }
+
+    @Test fun aRoutineNotificationOffersDoneForNowWhichKeepsTheTaskAndTomorrow() {
+        val id = routineDueNow("Check the blanket")
+        fireAlarm(scheduledAlarms().single())
+        await { shadowOf(notificationManager).allNotifications.isNotEmpty() }
+        val n = shadowOf(notificationManager).allNotifications.single()
+        val titles = n.actions.map { it.title.toString() }
+        assertEquals(RoutineCycle.label(container.clock.now(), container.zoneProvider.current()), titles[0])
+        assertTrue("snooze stays short for a routine with a snooze length", titles[1].startsWith("Snooze · "))
+        assertEquals("Open", titles[2])
+
+        n.actions[0].actionIntent.send() // Done for tonight
+        await { runBlocking { container.taskRepository.getTask(id)!!.cycleDoneUntil != null } }
+        await { shadowOf(notificationManager).allNotifications.isEmpty() }
+        val task = runBlocking { container.taskRepository.getTask(id)!! }
+        assertEquals("the task stays open", TaskStatus.ACTIONABLE, task.status)
+        assertNull(task.completedAt)
+        await { scheduledAlarms().isNotEmpty() }
+        assertTrue("the next cycle is scheduled", scheduledAlarms().single().triggerAtTime >= task.cycleDoneUntil!!.toEpochMilli())
+        val events = runBlocking { container.database.eventDao().getForTask(id).map { it.eventType } }
+        assertTrue(com.lifeadmin.autopilot.domain.model.EventType.OCCURRENCE_DONE in events)
+        assertFalse(com.lifeadmin.autopilot.domain.model.EventType.SNOOZED in events)
+    }
+
+    @Test fun doneForNowOnATaskThatIsNoLongerARoutineNeverCompletesIt() {
+        val id = taskDueNow("One-off")
+        app.sendBroadcast(Intent(IntentContract.ACTION_DONE_FOR_NOW).setClass(app, NotificationActionReceiver::class.java).setData(IntentContract.taskUri(id, "done_for_now")))
+        Thread.sleep(300); shadowOf(Looper.getMainLooper()).idle()
+        val task = runBlocking { container.taskRepository.getTask(id)!! }
+        assertEquals(TaskStatus.ACTIONABLE, task.status)
+        assertNull(task.cycleDoneUntil)
     }
 
     @Test fun snoozeActionKeepsTaskOpenAndSchedulesSnoozeEnd() {

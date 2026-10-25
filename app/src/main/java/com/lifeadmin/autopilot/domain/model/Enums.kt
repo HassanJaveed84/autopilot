@@ -83,6 +83,12 @@ enum class EventType {
     ARCHIVED,
     UNARCHIVED,
     IMPORTED,
+
+    /** "Done for tonight" on a routine: this cycle's nudges are silenced; the task stays open. */
+    OCCURRENCE_DONE,
+
+    /** The inverse of [OCCURRENCE_DONE] (Undo). */
+    OCCURRENCE_UNDONE,
 }
 
 /** Default snooze applied by the notification "Snooze" action. */

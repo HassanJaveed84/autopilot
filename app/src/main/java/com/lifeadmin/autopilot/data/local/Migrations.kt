@@ -148,5 +148,18 @@ object Migrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+    /**
+     * v7 → v8 (right-time nudges): a routine's finished cycle on tasks; the routine flag and the
+     * per-task quiet-hours exception on policies. Additive only: existing rows read as "not a
+     * routine, quiet hours apply", which is exactly how they behaved before.
+     */
+    val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE tasks ADD COLUMN cycleDoneUntil INTEGER DEFAULT NULL")
+            db.execSQL("ALTER TABLE reminder_policies ADD COLUMN routine INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE reminder_policies ADD COLUMN ringInQuietHours INTEGER NOT NULL DEFAULT 0")
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
 }

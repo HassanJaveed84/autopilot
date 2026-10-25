@@ -67,6 +67,8 @@ data class TaskDto(
     val waitingReason: String? = null, val waitingCheckInAt: String? = null,
     val rev: Int = 0, val eventLocalDate: String? = null, val eventLabel: String? = null, val intendedLocalDate: String? = null,
     val targetLocalDate: String? = null, val targetBasis: String? = null,
+    /** Schema v8: a routine's finished cycle ("Done for tonight"). Optional; older app versions ignore it. */
+    val cycleDoneUntil: String? = null,
 )
 
 @Serializable
@@ -94,6 +96,8 @@ data class PolicyDto(
     val zoneMode: String = "FOLLOW_DEVICE", val zoneId: String? = null, val dayInterval: Int = 1,
     val quietHoursBehavior: String? = null, val snoozeDefaultMinutes: Int? = null, val atInstant: String? = null,
     val lastEditedAt: String, val times: List<String> = emptyList(),
+    /** Schema v8: confirmed routine and the per-task quiet-hours exception. Optional; older app versions ignore them. */
+    val routine: Boolean = false, val ringInQuietHours: Boolean = false,
 )
 
 @Serializable
@@ -280,6 +284,7 @@ class BackupRepository(
                 intendedLocalDate = t.intendedLocalDate?.let { runCatching { LocalDate.parse(it) }.getOrElse { throw ImportException("Invalid intended date") } },
                 targetLocalDate = t.targetLocalDate?.let { runCatching { LocalDate.parse(it) }.getOrElse { throw ImportException("Invalid target date") } },
                 targetBasis = t.targetBasis?.take(TaskRepository.MAX_STEP),
+                cycleDoneUntil = instant(t.cycleDoneUntil, "done for tonight"),
             )
         }
         val steps = f.steps.map { s ->
@@ -307,6 +312,8 @@ class BackupRepository(
                 atInstant = instant(p.atInstant, "reminder"),
                 lastEditedAt = reqInstant(p.lastEditedAt, "policy edited"),
                 generation = 1,
+                routine = p.routine,
+                ringInQuietHours = p.ringInQuietHours,
             ) to times
         }
         val events = f.events.map { e ->
@@ -512,6 +519,7 @@ class BackupRepository(
         deadlineType.name, deadlineLocalDate?.toString(), deadlineInstant?.toString(), deadlineZoneId, snoozedUntil?.toString(), snoozeRemindAtEnd,
         waitingReason, waitingCheckInAt?.toString(),
         rev, eventLocalDate?.toString(), eventLabel, intendedLocalDate?.toString(), targetLocalDate?.toString(), targetBasis,
+        cycleDoneUntil?.toString(),
     )
 
     private fun com.lifeadmin.autopilot.data.local.UsageRecordEntity.toDto() = UsageRecordDto(
@@ -530,6 +538,7 @@ class BackupRepository(
     private fun ReminderPolicyEntity.toDto(slots: List<ReminderTimeSlotEntity>) = PolicyDto(
         id, taskId, enabled, kind.name, startLocalDate?.toString(), zoneMode.name, zoneId, dayInterval, quietHoursBehavior?.name,
         snoozeDefaultMinutes, atInstant?.toString(), lastEditedAt.toString(), slots.sortedBy { it.sortOrder }.map { it.localTime.toString() },
+        routine, ringInQuietHours,
     )
 
     companion object {

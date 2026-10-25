@@ -68,4 +68,52 @@ class InstrumentedReminderTest {
         assertTrue(nm.activeNotifications.none { it.tag == id })
         runBlocking { container.taskRepository.delete(id) }
     }
+
+    /**
+     * Quiet hours are on and cover "now". A routine allowed to ring in quiet hours still posts, its
+     * first action is "Done for tonight/today", and tapping it keeps the task open with the next
+     * cycle scheduled. The same schedule without the exception is held until quiet hours end.
+     */
+    @Test fun routineMayRingInQuietHoursAndDoneForNowKeepsTheTask() {
+        val zone = container.zoneProvider.current()
+        val now = container.clock.now()
+        val local = now.atZone(zone).toLocalTime()
+        runBlocking {
+            container.settingsRepository.update {
+                it.copy(quietHours = it.quietHours.copy(enabled = true, start = local.minusHours(1).withSecond(0).withNano(0), end = local.plusHours(2).withSecond(0).withNano(0)))
+            }
+        }
+        val slot = now.plusSeconds(60).atZone(zone).toLocalTime().withSecond(0).withNano(0)
+        fun routine(title: String, ring: Boolean): String = runBlocking {
+            val id = container.taskRepository.createTask(NewTask(title, status = TaskStatus.ACTIONABLE))
+            val p = container.taskRepository.getPolicy(id)!!
+            container.taskRepository.savePolicy(p.copy(enabled = true, kind = ReminderKind.DAILY_TIMES, times = listOf(slot), startLocalDate = null, routine = true, ringInQuietHours = ring, snoozeDefaultMinutes = 15))
+            id
+        }
+        val held = routine("Held routine ${System.nanoTime()}", ring = false)
+        val id = routine("Bedtime routine ${System.nanoTime()}", ring = true)
+        val heldNext = runBlocking { container.taskActions.previewNext(held)!! }
+        assertTrue("without the exception it waits for quiet hours to end", heldNext.deferred)
+
+        val nm = context.getSystemService(NotificationManager::class.java)
+        val deadline = System.currentTimeMillis() + 180_000
+        while (System.currentTimeMillis() < deadline && nm.activeNotifications.none { it.tag == id }) Thread.sleep(1_000)
+        val posted = nm.activeNotifications.firstOrNull { it.tag == id }
+        assertTrue("the routine rings during quiet hours within 3 minutes", posted != null)
+        assertTrue("the held one did not ring", nm.activeNotifications.none { it.tag == held })
+        val first = posted!!.notification.actions[0].title.toString()
+        assertTrue("first action is per-cycle: $first", first == "Done for tonight" || first == "Done for today")
+
+        posted.notification.actions[0].actionIntent.send()
+        val by = System.currentTimeMillis() + 60_000
+        while (System.currentTimeMillis() < by && runBlocking { container.taskRepository.getTask(id)!!.cycleDoneUntil } == null) Thread.sleep(250)
+        val task = runBlocking { container.taskRepository.getTask(id)!! }
+        assertEquals("the task stays open", TaskStatus.ACTIONABLE, task.status)
+        assertTrue(task.cycleDoneUntil != null)
+        val next = runBlocking { container.taskActions.previewNext(id)!! }
+        assertTrue("the next cycle is planned", next.plannedAt >= task.cycleDoneUntil!!)
+        Thread.sleep(500)
+        assertTrue(nm.activeNotifications.none { it.tag == id })
+        runBlocking { container.taskRepository.delete(id); container.taskRepository.delete(held) }
+    }
 }

@@ -64,6 +64,7 @@
             <intent-filter>
                 <action android:name="com.lifeadmin.autopilot.action.DONE" />
                 <action android:name="com.lifeadmin.autopilot.action.SNOOZE" />
+                <action android:name="com.lifeadmin.autopilot.action.DONE_FOR_NOW" />
                 <data android:scheme="lifeadmin" android:host="task" />
             </intent-filter>
         </receiver>

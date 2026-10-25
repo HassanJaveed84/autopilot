@@ -12,6 +12,8 @@ object IntentContract {
     const val ACTION_TEST_FIRE = "com.lifeadmin.autopilot.action.TEST_REMINDER_FIRE"
     const val ACTION_DONE = "com.lifeadmin.autopilot.action.DONE"
     const val ACTION_SNOOZE = "com.lifeadmin.autopilot.action.SNOOZE"
+    /** "Done for tonight" on a routine: finishes the current cycle, never the task. */
+    const val ACTION_DONE_FOR_NOW = "com.lifeadmin.autopilot.action.DONE_FOR_NOW"
     const val EXTRA_GENERATION = "generation"
     const val EXTRA_TASK_ID = "com.lifeadmin.autopilot.extra.TASK_ID"
     private const val SCHEME = "lifeadmin"

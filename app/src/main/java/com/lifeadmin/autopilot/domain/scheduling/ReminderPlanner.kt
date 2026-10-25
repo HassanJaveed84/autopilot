@@ -56,7 +56,9 @@ object ReminderPlanner {
 
         if ((status == TaskStatus.ACTIONABLE || status == TaskStatus.INBOX) && policy != null && policy.enabled) {
             // While snoozed, intervening policy slots are suppressed; slots at/after snooze end resume.
-            val from = if (snoozeEnd != null) snoozeEnd.minusNanos(1) else now
+            // A routine's finished cycle ("Done for tonight") suppresses its slots the same way.
+            val resumeAt = listOfNotNull(snoozeEnd, task.cycleDoneUntil?.takeIf { it > now && policy.isRoutine }).maxOrNull()
+            val from = if (resumeAt != null) resumeAt.minusNanos(1) else now
             streams += PolicySlotGenerator.slotsAfter(policy, zone, from).map { OccurrenceKind.POLICY to it }
         }
         if (status == TaskStatus.WAITING) {
@@ -71,7 +73,9 @@ object ReminderPlanner {
         if (streams.isEmpty()) return null
 
         val behavior = policy?.quietHoursBehavior ?: settings.quietHoursBehavior
-        val quiet = QuietHoursCalculator(settings.quietHours)
+        // The per-task exception lifts the app's quiet hours for every stream of this task (so a
+        // snoozed bedtime nudge still rings in the evening). Android's own DND is not affected.
+        val quiet = QuietHoursCalculator(if (policy?.enabled == true && policy.ringInQuietHours) settings.quietHours.copy(enabled = false) else settings.quietHours)
         // Quiet hours are about the user's current location/sleep, so use the device zone.
         var examined = 0
         for ((kind, slot) in mergeSorted(streams)) {

@@ -25,6 +25,7 @@ import com.lifeadmin.autopilot.domain.model.TaskStatus
 import com.lifeadmin.autopilot.domain.model.ZoneMode
 import com.lifeadmin.autopilot.domain.scheduling.PolicySlotGenerator
 import com.lifeadmin.autopilot.domain.scheduling.ReminderPlanner
+import com.lifeadmin.autopilot.domain.scheduling.RoutineCycle
 import com.lifeadmin.autopilot.domain.usecase.ScheduleCoordinator
 import com.lifeadmin.autopilot.notifications.NotificationPublisher
 import com.lifeadmin.autopilot.notifications.PostResult
@@ -281,6 +282,7 @@ class ReminderEngine(
         occ.kind == OccurrenceKind.POLICY && task.status == TaskStatus.WAITING -> "task_waiting"
         occ.kind == OccurrenceKind.POLICY && !policy.enabled -> "reminders_off"
         occ.kind == OccurrenceKind.POLICY && (task.snoozedUntil?.let { it > occ.slotAt } ?: false) -> "snoozed"
+        occ.kind == OccurrenceKind.POLICY && policy.isRoutine && (task.cycleDoneUntil?.let { it > occ.slotAt } ?: false) -> "done_for_now"
         occ.kind == OccurrenceKind.SNOOZE_END && task.snoozedUntil != occ.slotAt -> "snooze_changed"
         occ.kind == OccurrenceKind.CHECK_IN && task.waitingCheckInAt != occ.slotAt -> "check_in_changed"
         else -> "schedule_changed"
@@ -404,7 +406,8 @@ class ReminderEngine(
             OccurrenceKind.POLICY -> {
                 val statusOk = task.status == TaskStatus.ACTIONABLE || task.status == TaskStatus.INBOX
                 val snoozedOver = task.snoozedUntil?.let { it > occ.slotAt } ?: false
-                statusOk && policy.enabled && !snoozedOver && policyStillProduces(policy, occ.slotAt, c)
+                val cycleDone = policy.isRoutine && (task.cycleDoneUntil?.let { it > occ.slotAt } ?: false)
+                statusOk && policy.enabled && !snoozedOver && !cycleDone && policyStillProduces(policy, occ.slotAt, c)
             }
             OccurrenceKind.CHECK_IN -> task.status == TaskStatus.WAITING && task.waitingCheckInAt == occ.slotAt
             OccurrenceKind.SNOOZE_END -> task.snoozeRemindAtEnd && task.snoozedUntil == occ.slotAt
@@ -461,6 +464,8 @@ class ReminderEngine(
                 plannedAt = occ.plannedAt, late = late, redactOnLockScreen = c.settings.lockScreenPrivacy,
                 postedAt = c.now, dueLabel = dueLabel(occ.plannedAt, c),
                 snoozeLabel = snoozeLabel(policy, c),
+                // A routine is answered per cycle from the notification; permanent Done stays in the app.
+                doneForNowLabel = if (policy.isRoutine && (task.status == TaskStatus.ACTIONABLE || task.status == TaskStatus.INBOX)) RoutineCycle.notificationLabel(occ.slotAt, c.now, ReminderPlanner.policyZone(policy, c.zone)) else null,
             ),
         )
         val meta = mapOf(

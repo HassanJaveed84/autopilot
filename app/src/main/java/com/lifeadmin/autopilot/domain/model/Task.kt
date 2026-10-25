@@ -32,6 +32,11 @@ data class Task(
     /** A separately approved planning target with its stated basis; never shown as a deadline (PLAN-041, OD-6). */
     val targetLocalDate: LocalDate? = null,
     val targetBasis: String? = null,
+    /**
+     * "Done for tonight" on a routine (schema v8): policy nudges whose slot is before this instant
+     * are skipped, the task stays open and the next cycle's nudges are scheduled as usual.
+     */
+    val cycleDoneUntil: Instant? = null,
 ) {
     /** True when the user stated (or approved) a latest acceptable completion. */
     val hasDeadline: Boolean get() = deadlineType != DeadlineType.NONE
@@ -65,7 +70,20 @@ data class ReminderPolicy(
     val lastEditedAt: Instant,
     val generation: Int = 0,
     val times: List<LocalTime> = emptyList(),
-)
+    /**
+     * Schema v8: a confirmed routine ("every night"). Its nudges repeat every cycle and are
+     * answered with "Done for tonight"; the task stays open. Only meaningful for recurring kinds.
+     */
+    val routine: Boolean = false,
+    /**
+     * Schema v8: the user allowed this task's nudges to ring during the app's quiet hours. It only
+     * lifts the app's own quiet hours; Android's notification settings and Do Not Disturb still apply.
+     */
+    val ringInQuietHours: Boolean = false,
+) {
+    /** True for a recurring schedule the user confirmed as a routine. */
+    val isRoutine: Boolean get() = enabled && routine && kind != ReminderKind.ONCE
+}
 
 data class ReminderOccurrence(
     val id: String,

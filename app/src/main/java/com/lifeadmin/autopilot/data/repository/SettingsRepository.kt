@@ -79,6 +79,7 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
             lastReconcileAt = this[LAST_RECONCILE]?.let(Instant::ofEpochMilli),
             lastReconcileSummary = this[LAST_RECONCILE_SUMMARY],
             appearance = enumOr(this[APPEARANCE], d.appearance),
+            bedtime = this[BEDTIME]?.let(::parseTime) ?: d.bedtime,
         )
     }
 
@@ -117,6 +118,7 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         s.lastReconcileAt?.let { this[LAST_RECONCILE] = it.toEpochMilli() } ?: remove(LAST_RECONCILE)
         s.lastReconcileSummary?.let { this[LAST_RECONCILE_SUMMARY] = it } ?: remove(LAST_RECONCILE_SUMMARY)
         this[APPEARANCE] = s.appearance.name
+        this[BEDTIME] = s.bedtime.toString()
     }
 
     companion object {
@@ -156,6 +158,7 @@ class DataStoreSettingsRepository(private val store: DataStore<Preferences>) : S
         private val RESEARCH_DEFAULT_SEARCHES = intPreferencesKey("research_default_searches")
         private val RESEARCH_EFFORT = stringPreferencesKey("research_effort")
         private val APPEARANCE = stringPreferencesKey("appearance")
+        private val BEDTIME = stringPreferencesKey("bedtime")
 
         private fun parseTime(raw: String): LocalTime? = runCatching { LocalTime.parse(raw) }.getOrNull()
         private inline fun <reified E : Enum<E>> enumOr(raw: String?, default: E): E =

@@ -18,7 +18,7 @@ fun TaskEntity.toDomain() = Task(
     deadlineZoneId = deadlineZoneId, snoozedUntil = snoozedUntil, snoozeRemindAtEnd = snoozeRemindAtEnd,
     waitingReason = waitingReason, waitingCheckInAt = waitingCheckInAt,
     rev = rev, eventLocalDate = eventLocalDate, eventLabel = eventLabel, intendedLocalDate = intendedLocalDate,
-    targetLocalDate = targetLocalDate, targetBasis = targetBasis,
+    targetLocalDate = targetLocalDate, targetBasis = targetBasis, cycleDoneUntil = cycleDoneUntil,
 )
 
 fun Task.toEntity() = TaskEntity(
@@ -28,7 +28,7 @@ fun Task.toEntity() = TaskEntity(
     deadlineZoneId = deadlineZoneId, snoozedUntil = snoozedUntil, snoozeRemindAtEnd = snoozeRemindAtEnd,
     waitingReason = waitingReason, waitingCheckInAt = waitingCheckInAt,
     rev = rev, eventLocalDate = eventLocalDate, eventLabel = eventLabel, intendedLocalDate = intendedLocalDate,
-    targetLocalDate = targetLocalDate, targetBasis = targetBasis,
+    targetLocalDate = targetLocalDate, targetBasis = targetBasis, cycleDoneUntil = cycleDoneUntil,
 )
 
 fun TaskStepEntity.toDomain() = TaskStep(
@@ -42,13 +42,14 @@ fun ReminderPolicyEntity.toDomain(slots: List<ReminderTimeSlotEntity>) = Reminde
     zoneMode = zoneMode, zoneId = zoneId, dayInterval = dayInterval, quietHoursBehavior = quietHoursBehavior,
     snoozeDefaultMinutes = snoozeDefaultMinutes, atInstant = atInstant, lastEditedAt = lastEditedAt,
     generation = generation, times = slots.sortedWith(compareBy({ it.sortOrder }, { it.localTime })).map { it.localTime },
+    routine = routine, ringInQuietHours = ringInQuietHours,
 )
 
 fun ReminderPolicy.toEntity() = ReminderPolicyEntity(
     id = id, taskId = taskId, enabled = enabled, kind = kind, startLocalDate = startLocalDate,
     zoneMode = zoneMode, zoneId = zoneId, dayInterval = dayInterval, quietHoursBehavior = quietHoursBehavior,
     snoozeDefaultMinutes = snoozeDefaultMinutes, atInstant = atInstant, lastEditedAt = lastEditedAt,
-    generation = generation,
+    generation = generation, routine = routine, ringInQuietHours = ringInQuietHours,
 )
 
 fun ReminderOccurrenceEntity.toDomain() = ReminderOccurrence(

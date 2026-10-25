@@ -316,4 +316,41 @@ class MigrationTest {
         room.close()
         context.deleteDatabase(name)
     }
+
+    @Test fun migrateV7ToV8AddsRoutineFieldsAndKeepsEveryScheduleAsItWas() = runTest {
+        context.deleteDatabase(name)
+        val file = context.getDatabasePath(name).also { it.parentFile?.mkdirs() }
+        SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+            schemaStatements(7).forEach(db::execSQL)
+            db.execSQL(
+                "INSERT INTO tasks (id,title,notes,status,priority,createdAt,updatedAt,completedAt,archivedAt,deadlineType,deadlineLocalDate,deadlineInstant,deadlineZoneId,snoozedUntil,snoozeRemindAtEnd,waitingReason,waitingCheckInAt,rev,eventLocalDate,eventLabel,intendedLocalDate,targetLocalDate,targetBasis) " +
+                    "VALUES ('t1','Book train ride',NULL,'ACTIONABLE','NORMAL',1,2,NULL,NULL,'NONE',NULL,NULL,NULL,5000,0,NULL,NULL,4,NULL,NULL,NULL,NULL,NULL)",
+            )
+            db.execSQL(
+                "INSERT INTO reminder_policies (id,taskId,enabled,kind,startLocalDate,zoneMode,zoneId,dayInterval,quietHoursBehavior,snoozeDefaultMinutes,atInstant,lastEditedAt,generation) " +
+                    "VALUES ('p1','t1',1,'DAILY_TIMES',NULL,'FOLLOW_DEVICE',NULL,1,'SKIP',30,NULL,1,3)",
+            )
+            db.execSQL("INSERT INTO reminder_time_slots (id,policyId,localTime,sortOrder) VALUES ('s1','p1','09:00',0)")
+            db.execSQL("INSERT INTO reminder_time_slots (id,policyId,localTime,sortOrder) VALUES ('s2','p1','18:00',1)")
+            db.version = 7
+        }
+        val room = Room.databaseBuilder(context, AppDatabase::class.java, name)
+            .addMigrations(*Migrations.ALL)
+            .setQueryCoroutineContext(Dispatchers.IO)
+            .build()
+        val task = room.taskDao().get("t1")!!
+        assertEquals(4, task.rev)
+        assertEquals(5000L, task.snoozedUntil!!.toEpochMilli())
+        assertEquals(false, task.snoozeRemindAtEnd)
+        assertEquals("no finished cycle on existing tasks", null, task.cycleDoneUntil)
+        val p = room.policyDao().getForTask("t1")!!
+        assertEquals("existing schedules are not routines", false, p.routine)
+        assertEquals("quiet hours still apply to existing schedules", false, p.ringInQuietHours)
+        assertEquals(com.lifeadmin.autopilot.domain.model.QuietHoursBehavior.SKIP, p.quietHoursBehavior)
+        assertEquals(30, p.snoozeDefaultMinutes)
+        assertEquals(3, p.generation)
+        assertEquals(listOf("09:00", "18:00"), room.policyDao().getSlots("p1").sortedBy { it.sortOrder }.map { it.localTime.toString() })
+        room.close()
+        context.deleteDatabase(name)
+    }
 }

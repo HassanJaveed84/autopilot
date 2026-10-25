@@ -30,7 +30,8 @@ object StallDetector {
     private val WINDOW: Duration = Duration.ofDays(14)
     private val OVERDUE_GRACE: Duration = Duration.ofDays(2)
     private val CHECK_IN_GRACE: Duration = Duration.ofDays(3)
-    private val progressEvents = setOf(EventType.STEP_COMPLETED, EventType.EDITED, EventType.POLICY_EDITED, EventType.STATUS_CHANGED, EventType.REOPENED, EventType.CREATED)
+    // "Done for tonight" on a routine is progress (that cycle was completed), never a snooze.
+    private val progressEvents = setOf(EventType.STEP_COMPLETED, EventType.EDITED, EventType.POLICY_EDITED, EventType.STATUS_CHANGED, EventType.REOPENED, EventType.CREATED, EventType.OCCURRENCE_DONE)
 
     fun detect(d: TaskDetails, now: Instant, zone: ZoneId): StallHint? {
         val t = d.task

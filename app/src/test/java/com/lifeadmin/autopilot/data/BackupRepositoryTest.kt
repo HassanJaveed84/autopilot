@@ -20,6 +20,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -299,6 +300,42 @@ class BackupRepositoryTest {
         } catch (e: ImportException) {
             assertEquals(0, fresh2.taskDao().getAll().size)
         } finally { fresh2.close() }
+    }
+
+    @Test fun routinesQuietHoursExceptionAndFinishedCyclesRoundTripAndOlderBackupsImportAsBefore() = runTest {
+        val repo = TaskRepository(source, clock, SequentialIds(), { CHICAGO }, ScheduleCoordinator.Direct)
+        val id = repo.createTask(NewTask("Check the blanket", status = TaskStatus.ACTIONABLE))
+        val p = repo.getPolicy(id)!!
+        repo.savePolicy(p.copy(enabled = true, kind = com.lifeadmin.autopilot.domain.model.ReminderKind.DAILY_TIMES, times = listOf(t(21, 30)), routine = true, ringInQuietHours = true, snoozeDefaultMinutes = 15))
+        val until = repo.finishCycle(id)
+        val json = backup(source).exportJson()
+        assertTrue(json.contains("\"routine\": true"))
+        assertTrue(json.contains("\"ringInQuietHours\": true"))
+
+        backup(target).importJson(json)
+        val tp = target.policyDao().getForTask(id)!!
+        assertTrue(tp.routine)
+        assertTrue(tp.ringInQuietHours)
+        assertEquals(15, tp.snoozeDefaultMinutes)
+        assertEquals(until, target.taskDao().get(id)!!.cycleDoneUntil)
+        assertTrue(target.eventDao().getForTask(id).any { it.eventType == com.lifeadmin.autopilot.domain.model.EventType.OCCURRENCE_DONE })
+
+        // A backup written before v8 has none of these fields: the task imports as "not a routine, quiet hours apply".
+        val root = kotlinx.serialization.json.Json.parseToJsonElement(json).jsonObject.toMutableMap()
+        fun strip(key: String, vararg fields: String) {
+            root[key] = kotlinx.serialization.json.JsonArray(root[key]!!.jsonArray.map { e -> kotlinx.serialization.json.JsonObject(e.jsonObject.filterKeys { it !in fields }) })
+        }
+        strip("tasks", "cycleDoneUntil"); strip("policies", "routine", "ringInQuietHours")
+        root["events"] = kotlinx.serialization.json.JsonArray(emptyList())
+        val old = inMemoryDatabase()
+        try {
+            backup(old).importJson(kotlinx.serialization.json.JsonObject(root).toString())
+            val op = old.policyDao().getForTask(id)!!
+            assertFalse(op.routine)
+            assertFalse(op.ringInQuietHours)
+            assertNull(old.taskDao().get(id)!!.cycleDoneUntil)
+            assertEquals(listOf(t(21, 30)), old.policyDao().getSlots(op.id).map { it.localTime })
+        } finally { old.close() }
     }
 
     @Test fun draftsProposalSetsAndProvenanceRoundTripAndOlderBackupsStillImport() = runTest {
