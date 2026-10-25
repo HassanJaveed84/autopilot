@@ -231,7 +231,8 @@ class ResearchOnlineUiTest {
         provider.enqueue(ResearchFixtures.clear())
         ask("What about independent tests?", field = "thread_followup", button = "thread_followup_prepare")
         waitFor("auth_card")
-        assertTrue(anyText("This thread's earlier answers"))
+        // The card appears before its authorization preview is computed; the history row follows it.
+        compose.waitUntil(WAIT_MS) { anyText("This thread's earlier answers") }
     }
 
     @Test fun legacyResearchOpensReadOnly() {
