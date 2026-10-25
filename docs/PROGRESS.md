@@ -303,3 +303,8 @@ Same Room v7 tables (no schema change); M4 and M3A.2 research stays readable rea
 interpretation layer and its tests retired. Local: lint clean, 557 unit/Robolectric tests 0 failures,
 debug/release/androidTest APKs built. Details, risks, live-validation plan and device checklist in
 `docs/AI_FIRST_RESEARCH_INTEGRATION_REPORT.md`. Not done: live paid runs, phone testing.
+
+## 2026-10-25 — Right-time nudges (branch `right-time-nudges`, not merged)
+
+Implements the milestone from `docs/TASK_FIRST_AUDIT.md` §5: offline capture timing (`CaptureTiming`), bedtime setting, per-task quiet-hours exception (`ReminderPolicy.ringInQuietHours`), confirmed routines with "Done for tonight" (`ReminderPolicy.routine`, `Task.cycleDoneUntil`, events `OCCURRENCE_DONE`/`OCCURRENCE_UNDONE`), Gentle default for new installs. Room v7 → v8 (additive). Details, tests and device checks: `docs/RIGHT_TIME_NUDGES_REPORT.md`.
+
