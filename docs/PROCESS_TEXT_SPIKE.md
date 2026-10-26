@@ -90,7 +90,7 @@ clipboard or UI-scraping workaround is attempted.
 | Command (this container, no KVM) | Result |
 | --- | --- |
 | `./gradlew lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest` | **BUILD SUCCESSFUL**: lint **0 issues**; **670 tests, 0 failures** (655 on the base branch + 15 new: 10 `ProcessTextActivityTest`, 4 `ShareImportViewModelTest`, 1 `ManifestContractTest`); debug, release and androidTest APKs build |
-| Instrumented `ShareImportDeviceTest.theSystemListsSendToAutopilotForSelectedText` | Runs in CI on the API 34 emulator (see CI below) |
+| CI [Android CI #173](https://github.com/HassanJaveed84/autopilot/actions/runs/40394023553) on `359f0db` | **success**. Build job: lint, unit/Robolectric, APKs. Instrumented job (emulator API 34): **23 tests, 0 failures**, including `ShareImportDeviceTest.theSystemListsSendToAutopilotForSelectedText`. On a real Android `PackageManager`, `PROCESS_TEXT` resolves to Autopilot labelled **Send to Autopilot**, and the selected text is displayed. APK artifact `apks` (signed with the personal key, certificate SHA-256 `a5c56f43…2562146`, same as earlier builds) |
 
 Found while testing: `ActivityScenario.close()` hangs once `onNewIntent` + `setIntent()` swaps in an intent
 with a different action. The scenario looks its activity up by the launch intent. This affects the test
