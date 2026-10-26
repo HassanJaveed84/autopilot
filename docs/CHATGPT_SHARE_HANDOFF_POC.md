@@ -165,7 +165,7 @@ ChatGPT Android app can share generated files directly.
 | Baseline `./gradlew lintDebug testDebugUnitTest` on `right-time-nudges` @ `197d8e0` (clean worktree) | 604 tests, **603 passed, 1 failed**: `MainActivitySmokeTest` class setup could not fetch Robolectric's `android-all-instrumented` jar on first use (environment/network, not code). Gradle stopped before lint. |
 | `./gradlew testDebugUnitTest --tests 'com.lifeadmin.autopilot.share.*' --tests '…ui.ShareImport*'` | **48 tests, 0 failures** |
 | Full gate on this branch: `./gradlew lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest` | see §7.1 |
-| Instrumented `ShareImportDeviceTest` (emulator API 34) | Runs in CI's `connectedDebugAndroidTest` on push; not run locally (no KVM) |
+| CI [Android CI #172](https://github.com/HassanJaveed84/autopilot/actions/runs/40379544730) on `2fd876b` | **success**: lint, unit/Robolectric tests, all APKs, and instrumented tests on the API 34 emulator, including `ShareImportDeviceTest`. The APKs are signed with the personal key (same certificate as earlier builds), so they install over the existing app |
 
 New tests and the requested cases they cover:
 
