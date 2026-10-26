@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Autopilot link test</title>
+<style>
+  :root { color-scheme: light dark; --ink: #1d2421; --ink2: #4a5550; --bg: #f6f3ec; --accent: #1f5c4a; }
+  @media (prefers-color-scheme: dark) { :root { --ink: #e8ece9; --ink2: #b4bdb8; --bg: #141816; --accent: #7cc4a8; } }
+  body { margin: 0; padding: 24px 16px; font: 17px/1.5 system-ui, sans-serif; color: var(--ink); background: var(--bg); }
+  main { max-width: 34rem; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 12px; }
+  p { color: var(--ink2); }
+  a.button { display: inline-block; margin-top: 8px; padding: 12px 18px; border-radius: 999px; background: var(--accent); color: var(--bg); text-decoration: none; font-weight: 600; }
+  code { overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Autopilot didn't open</h1>
+  <p>This page only appears when a browser shows the link instead of handing it to the Autopilot app.
+     That means Android hasn't verified this site for Autopilot yet, the app isn't installed, or the app
+     that showed the link opened it in its own browser.</p>
+  <p id="message">No test message in this link.</p>
+  <p><a class="button" id="open" hidden>Open in Autopilot</a></p>
+  <p>The button asks Android for Autopilot by package name. It works without domain verification, so it
+     proves only that the app can receive the link, not that the link opens the app by itself.</p>
+  <p>This page sends nothing anywhere. The test message is after the <code>#</code> in the address, which browsers never send to the website.</p>
+</main>
+<script>
+  // Same rule as the app: exactly "message=" + 1–64 URL-unreserved characters. Shown as text, never as HTML.
+  var m = /^#message=([A-Za-z0-9._~-]{1,64})$/.exec(location.hash);
+  if (m) {
+    document.getElementById("message").textContent = "Test message: " + m[1];
+    var open = document.getElementById("open");
+    open.href = "intent://" + location.host + "/autopilot/test#message=" + m[1] +
+      "#Intent;scheme=https;package=com.lifeadmin.autopilot;category=android.intent.category.BROWSABLE;end";
+    open.hidden = false;
+  }
+</script>
+</body>
+</html>

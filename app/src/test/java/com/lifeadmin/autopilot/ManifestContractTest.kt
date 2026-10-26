@@ -69,7 +69,7 @@ class ManifestContractTest {
     /** The ChatGPT share target (proof of concept) accepts only plain-text SEND; the launcher entry is unchanged. */
     @Test fun shareTargetAcceptsOnlyPlainTextAndTheLauncherIsUnchanged() {
         val activities = elements("activity").associateBy { it.attr("name") }
-        assertEquals(setOf(".MainActivity", ".ui.share.ShareImportActivity"), activities.keys)
+        assertEquals(setOf(".MainActivity", ".ui.share.ShareImportActivity", ".ui.applink.AppLinkTestActivity"), activities.keys)
         fun filter(a: Element, tag: String) = a.getElementsByTagName(tag).let { nl -> (0 until nl.length).map { (nl.item(it) as Element) } }
         val main = activities.getValue(".MainActivity")
         assertEquals(listOf("android.intent.action.MAIN"), filter(main, "action").map { it.attr("name") })
@@ -80,6 +80,24 @@ class ManifestContractTest {
         assertEquals(listOf("android.intent.category.DEFAULT"), filter(share, "category").map { it.attr("name") })
         assertEquals(listOf("text/plain"), filter(share, "data").map { it.attr("mimeType") })
         assertEquals("singleTop", share.attr("launchMode"))
+    }
+
+    /** The App Link spike claims one https route on one host, verified, and nothing broader. */
+    @Test fun appLinkFilterClaimsOnlyTheVerifiedTestRoute() {
+        val activity = elements("activity").single { it.attr("name") == ".ui.applink.AppLinkTestActivity" }
+        fun Element.all(tag: String) = getElementsByTagName(tag).let { nl -> (0 until nl.length).map { (nl.item(it) as Element) } }
+        val filter = activity.all("intent-filter").single()
+        assertEquals("true", filter.attr("autoVerify"))
+        assertEquals(listOf("android.intent.action.VIEW"), filter.all("action").map { it.attr("name") })
+        assertEquals(setOf("android.intent.category.DEFAULT", "android.intent.category.BROWSABLE"), filter.all("category").map { it.attr("name") }.toSet())
+        val data = filter.all("data").single()
+        assertEquals("https", data.attr("scheme"))
+        assertEquals("\${appLinkHost}", data.attr("host"))
+        assertEquals("/autopilot/test", data.attr("path"))
+        listOf("pathPrefix", "pathPattern", "pathAdvancedPattern", "port").forEach { assertTrue(it, data.attr(it).isEmpty()) }
+        assertEquals("singleTop", activity.attr("launchMode"))
+        assertEquals("", activity.attr("taskAffinity"))
+        assertTrue(activity.hasAttributeNS(ns, "taskAffinity"))
     }
 
     @Test fun networkIsTlsOnlyWithSystemCertificates() {
