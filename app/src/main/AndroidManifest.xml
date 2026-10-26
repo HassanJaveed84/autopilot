@@ -14,8 +14,9 @@
     <uses-permission
         android:name="android.permission.FOREGROUND_SERVICE"
         tools:node="remove" />
-    <!-- Network is used ONLY for optional, user-triggered AI planning requests to
-         api.anthropic.com (M2, off by default). Tasks and reminders never need it. -->
+    <!-- Network is used ONLY for optional, user-triggered AI requests to api.anthropic.com
+         (M2, off by default) and for fetching a ChatGPT shared link the user shared to the app
+         and explicitly asked to fetch (share-import proof of concept). Tasks and reminders never need it. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Lets AI planning say "you're offline" before attempting a request. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -42,6 +43,21 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Share target (proof of concept): accepts shared text, shows a preview and downloads a
+             chatgpt.com/share link only on an explicit tap. Never writes tasks. -->
+        <activity
+            android:name=".ui.share.ShareImportActivity"
+            android:exported="true"
+            android:label="@string/share_import_label"
+            android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
 

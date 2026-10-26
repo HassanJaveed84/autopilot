@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- TLS only, system CAs only (user-installed CAs can't intercept AI requests).
-     The only network use is optional, user-triggered AI planning (api.anthropic.com). -->
+     Network use: optional, user-triggered AI requests (api.anthropic.com) and an explicitly
+     requested fetch of a shared chatgpt.com/share link (share-import proof of concept). -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="false">
         <trust-anchors>

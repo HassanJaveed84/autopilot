@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Life Admin Autopilot</string>
+    <!-- Share-sheet label of the ChatGPT import target (proof of concept). -->
+    <string name="share_import_label">Autopilot</string>
 </resources>
