@@ -47,7 +47,9 @@
         </activity>
 
         <!-- Share target (proof of concept): accepts shared text, shows a preview and downloads a
-             chatgpt.com/share link only on an explicit tap. Never writes tasks. -->
+             chatgpt.com/share link only on an explicit tap. Never writes tasks.
+             Text-selection spike: also offered as "Send to Autopilot" in other apps' text-selection
+             menus (PROCESS_TEXT). Selected text is only shown, never returned, stored or sent. -->
         <activity
             android:name=".ui.share.ShareImportActivity"
             android:exported="true"
@@ -56,6 +58,11 @@
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter android:label="@string/process_text_label">
+                <action android:name="android.intent.action.PROCESS_TEXT" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>

@@ -21,7 +21,8 @@ import com.lifeadmin.autopilot.ui.theme.LifeAdminTheme
 import com.lifeadmin.autopilot.ui.theme.resolveDarkTheme
 
 /**
- * Share target for `text/plain` (proof of concept). Separate from [com.lifeadmin.autopilot.MainActivity]
+ * Share target for `text/plain` (proof of concept), and the "Send to Autopilot" text-selection
+ * action (`PROCESS_TEXT` spike). Separate from [com.lifeadmin.autopilot.MainActivity]
  * so ordinary launches, notification taps and the task UI are untouched. An intent is handled on a
  * fresh create and on [onNewIntent] only; rotation and process recreation restore the view model.
  */
@@ -58,7 +59,20 @@ class ShareImportActivity : ComponentActivity() {
         handle(intent)
     }
 
+    /**
+     * `ACTION_SEND` → shared-link import. `ACTION_PROCESS_TEXT` → show the selected text only; no
+     * result is ever set, so the sender's text is never replaced, read-only or not. Anything else
+     * is treated as an empty share.
+     */
     private fun handle(intent: Intent?) {
+        if (intent?.action == Intent.ACTION_PROCESS_TEXT) {
+            // Extras from another app are untrusted: a malformed bundle reads as no text.
+            val (text, readOnly) = runCatching {
+                intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT) to intent.getBooleanExtra(Intent.EXTRA_PROCESS_TEXT_READONLY, false)
+            }.getOrDefault(null to true)
+            viewModel.onSelectedText(text, readOnly)
+            return
+        }
         val text = if (intent?.action == Intent.ACTION_SEND && intent.type?.startsWith("text/") == true) intent.getStringExtra(Intent.EXTRA_TEXT) else null
         viewModel.onShared(text)
     }

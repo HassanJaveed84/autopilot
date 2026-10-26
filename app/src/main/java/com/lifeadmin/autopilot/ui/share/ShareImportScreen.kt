@@ -51,8 +51,18 @@ fun ShareImportScreen(state: ShareImportUi, onFetch: () -> Unit, onClose: () -> 
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item { BackHeader(null, onClose, Modifier.statusBarsPadding().offset(x = (-8).dp), backLabel = "Close") }
-        item { PageTitle("Import from ChatGPT") }
+        val selection = state is ShareImportUi.Selection || state == ShareImportUi.EmptySelection
+        item { PageTitle(if (selection) "Selected text" else "Import from ChatGPT") }
         when (state) {
+            is ShareImportUi.Selection -> selectionItems(state, onClose)
+            ShareImportUi.EmptySelection -> item {
+                Column {
+                    SurfaceCard(Modifier.testTag("selection_empty")) {
+                        Text("No text arrived. Select some text, then choose Send to Autopilot again.", style = MaterialTheme.typography.bodyLarge, color = c.ink)
+                    }
+                    PrimaryButton("Close", onClose, Modifier.fillMaxWidth().padding(top = 12.dp))
+                }
+            }
             is ShareImportUi.NoLink -> item {
                 Column {
                     SurfaceCard(Modifier.testTag("share_no_link")) {
@@ -98,6 +108,35 @@ fun ShareImportScreen(state: ShareImportUi, onFetch: () -> Unit, onClose: () -> 
         }
     }
 }
+
+/** Text-selection spike: proof the text arrived. Shown only; not a shared link, not a handoff, not a task change. */
+private fun androidx.compose.foundation.lazy.LazyListScope.selectionItems(s: ShareImportUi.Selection, onClose: () -> Unit) {
+    item {
+        val c = AutopilotTheme.colors
+        SurfaceCard(Modifier.testTag("selection_summary")) {
+            Text("Received through the text-selection menu", style = MaterialTheme.typography.titleMedium, color = c.ink, modifier = Modifier.semantics { heading() })
+            Text(
+                "%,d characters".format(s.receivedChars) + (if (s.truncated) ", showing the first %,d".format(s.text.length) else "") +
+                    (if (s.readOnly) " · read-only selection" else " · editable selection, left unchanged"),
+                style = MaterialTheme.typography.bodyMedium, color = c.ink2, modifier = Modifier.padding(top = 4.dp).testTag("selection_count"),
+            )
+            Text(
+                "This is not a shared link: nothing was downloaded, saved or sent, and your tasks are unchanged.",
+                style = MaterialTheme.typography.bodyMedium, color = c.ink2, modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+    }
+    item {
+        SurfaceCard(Modifier.testTag("selection_preview")) {
+            Text("Preview", style = MaterialTheme.typography.labelLarge, color = AutopilotTheme.colors.ink2, modifier = Modifier.semantics { heading() })
+            val preview = if (s.text.length > PREVIEW_CHARS) s.text.take(PREVIEW_CHARS) + "…" else s.text
+            SelectionContainer { Text(preview, style = MaterialTheme.typography.bodyMedium, color = AutopilotTheme.colors.ink, modifier = Modifier.padding(top = 6.dp).testTag("selection_text")) }
+        }
+    }
+    item { PrimaryButton("Close", onClose, Modifier.fillMaxWidth().navigationBarsPadding().testTag("selection_close")) }
+}
+
+private const val PREVIEW_CHARS = 2_000
 
 private fun androidx.compose.foundation.lazy.LazyListScope.linkItems(url: String) {
     item {

@@ -55,4 +55,19 @@ class ShareImportDeviceTest {
             compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("share_no_link")).fetchSemanticsNodes().isNotEmpty() }
         }
     }
+
+    // ---- PROCESS_TEXT spike: what a text-selection menu sees
+
+    @Test fun theSystemListsSendToAutopilotForSelectedText() {
+        val pm = context.packageManager
+        val ours = pm.queryIntentActivities(Intent(Intent.ACTION_PROCESS_TEXT).setType("text/plain"), 0)
+            .single { it.activityInfo.packageName == context.packageName }
+        assertTrue(ours.loadLabel(pm).toString() == "Send to Autopilot")
+        val selected = Intent(Intent.ACTION_PROCESS_TEXT).setType("text/plain").setPackage(context.packageName)
+            .putExtra(Intent.EXTRA_PROCESS_TEXT, "Synthetic selected text").putExtra(Intent.EXTRA_PROCESS_TEXT_READONLY, true)
+        ActivityScenario.launch<ShareImportActivity>(selected).use {
+            compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("selection_text") and hasText("Synthetic selected text")).fetchSemanticsNodes().isNotEmpty() }
+            assertTrue(compose.onAllNodes(hasTestTag("share_fetch")).fetchSemanticsNodes().isEmpty())
+        }
+    }
 }

@@ -125,4 +125,41 @@ class ShareImportViewModelTest {
         assertEquals(ImportResult.Unavailable, awaitDone(vm).result)
         assertEquals(2, transport.calls)
     }
+    // ---- PROCESS_TEXT spike: selected text is shown only
+
+    @Test fun selectedTextIsShownWithoutAnyNetworkAndCanNotBeFetched() {
+        val vm = vm()
+        vm.onSelectedText("Buy Widget A", readOnly = true)
+        assertEquals(ShareImportUi.Selection("Buy Widget A", 12, readOnly = true), vm.state.value)
+        vm.fetch()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(ShareImportUi.Selection("Buy Widget A", 12, readOnly = true), vm.state.value)
+        assertEquals(0, transport.calls)
+    }
+
+    @Test fun aSelectionIsCappedWithoutSplittingACharacter() {
+        val vm = vm()
+        val text = "a".repeat(ShareImportViewModel.MAX_SELECTION - 1) + "\uD83D\uDE00tail"
+        vm.onSelectedText(text, readOnly = false)
+        val s = vm.state.value as ShareImportUi.Selection
+        assertEquals(ShareImportViewModel.MAX_SELECTION - 1, s.text.length)
+        assertEquals(text.length, s.receivedChars)
+        assertTrue(s.truncated)
+    }
+
+    @Test fun aSelectionReplacesALinkPreviewAndSurvivesProcessRecreation() {
+        val saved = SavedStateHandle()
+        val first = vm(saved)
+        first.onShared(url)
+        first.onSelectedText("Chosen text", readOnly = true)
+        assertEquals(null, saved.get<String>(ShareImportViewModel.KEY_LINK))
+        assertEquals(ShareImportUi.Selection("Chosen text", 11, readOnly = true), vm(saved).state.value)
+        first.onShared(url)
+        assertEquals(ShareImportUi.Ready(link), vm(saved).state.value)
+    }
+
+    @Test fun blankSelectionsAreEmpty() {
+        val vm = vm()
+        listOf(null, "", " \n ").forEach { vm.onSelectedText(it, readOnly = true); assertEquals(ShareImportUi.EmptySelection, vm.state.value) }
+    }
 }

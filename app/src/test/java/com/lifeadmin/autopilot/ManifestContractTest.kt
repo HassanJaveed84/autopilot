@@ -75,11 +75,23 @@ class ManifestContractTest {
         assertEquals(listOf("android.intent.action.MAIN"), filter(main, "action").map { it.attr("name") })
         assertEquals(listOf("android.intent.category.LAUNCHER"), filter(main, "category").map { it.attr("name") })
         val share = activities.getValue(".ui.share.ShareImportActivity")
-        assertEquals(1, filter(share, "intent-filter").size)
-        assertEquals(listOf("android.intent.action.SEND"), filter(share, "action").map { it.attr("name") })
-        assertEquals(listOf("android.intent.category.DEFAULT"), filter(share, "category").map { it.attr("name") })
-        assertEquals(listOf("text/plain"), filter(share, "data").map { it.attr("mimeType") })
+        val filters = filter(share, "intent-filter")
+        assertEquals(2, filters.size)
+        // One SEND filter and one PROCESS_TEXT filter, each text/plain with DEFAULT only.
+        assertEquals(listOf("android.intent.action.SEND", "android.intent.action.PROCESS_TEXT"), filters.map { f -> filter(f, "action").single().attr("name") })
+        filters.forEach { f ->
+            assertEquals(listOf("android.intent.category.DEFAULT"), filter(f, "category").map { it.attr("name") })
+            assertEquals(listOf("text/plain"), filter(f, "data").map { it.attr("mimeType") })
+        }
+        assertEquals("", filters[0].attr("label"))
+        assertEquals("@string/process_text_label", filters[1].attr("label"))
         assertEquals("singleTop", share.attr("launchMode"))
+    }
+
+    /** The text-selection menu shows the filter's label. */
+    @Test fun processTextLabelIsSendToAutopilot() {
+        val strings = File("src/main/res/values/strings.xml").readText()
+        assertTrue(strings.contains("<string name=\"process_text_label\">Send to Autopilot</string>"))
     }
 
     @Test fun networkIsTlsOnlyWithSystemCertificates() {

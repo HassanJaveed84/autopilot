@@ -3,4 +3,6 @@
     <string name="app_name">Life Admin Autopilot</string>
     <!-- Share-sheet label of the ChatGPT import target (proof of concept). -->
     <string name="share_import_label">Autopilot</string>
+    <!-- Text-selection menu label (PROCESS_TEXT spike). -->
+    <string name="process_text_label">Send to Autopilot</string>
 </resources>
