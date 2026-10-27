@@ -18,8 +18,8 @@ and no AI API call. UX design: `docs/CHATGPT_ROUND_TRIP_UX.md`. Earlier evidence
 | Local gate (lint, all unit tests, debug/release/androidTest builds) | **Green**: 751 tests, 0 failures. Lint: no issues (§7.1) |
 | CI on this branch | **Green**: run #180, including 28/28 emulator tests (§7.2) |
 | Release APK signed with the personal key | **Built by CI** run #180; certificate `A5:C5:…:21:46` matches the published `assetlinks.json` (§7.2) |
-| Real-phone acceptance test | **Not done**: owner (§8) |
-| Outbound intent from Autopilot to ChatGPT on the phone | **Not verified here**: owner (§8, step 4) |
+| Real-phone acceptance test | **Passed on S24 Ultra**: owner verified share, return link, correct task, two applied changes, and return to same ChatGPT conversation (§8) |
+| Outbound intent from Autopilot to ChatGPT on the phone | **Passed**: ChatGPT composer received prepared task message and user sent it (§8) |
 
 ## 2. What was built
 
@@ -105,7 +105,7 @@ explicit tap, keyed by the handoff so it's made once.
   `persistNever` keeps the launch intent, which carries the handoff, out of the recents store across reboots.
 - **Outbound.** The share uses no `FLAG_ACTIVITY_NEW_TASK`, the same as sharing from Samsung Notes. Depending on
   how ChatGPT declares its share activity, the composer may open on top of Autopilot's task. Back from ChatGPT
-  then returns to the task, which helps if the user cancels. **Not verified here; check on the phone.**
+  then returns to the task, which helps if the user cancels. **Verified on S24 Ultra by owner:** share opened ChatGPT and the user sent the prepared prompt.
 
 ## 6. Privacy and safety
 
@@ -168,7 +168,7 @@ Later commits on this branch change only docs, which CI skips, so this is the AP
 | 14 | Existing App Link and reminders | `AppLinkTestActivityTest`, `AppLinkDeviceTest`, `ManifestContractTest` (both routes, queries), `HandoffImportActivityTest.eachRouteResolvesToItsOwnScreen…`, `HandoffImporterTest` (reminder policy identical after apply), full reminder suites |
 | 15 | Backup compatibility | `BackupRepositoryTest.aChatGptHandoffSetAndItsProvenanceRoundTrip` (and a repeat link after restore finds the restored set) |
 
-## 8. Real-phone test (owner, Galaxy S24 Ultra)
+## 8. Real-phone test (owner, Galaxy S24 Ultra) — PASSED
 
 Install the release APK from §7.2 over the current app. It uses the same personal key, so data is kept and the
 domain stays verified. Android re-verifies on update, and the new path needs no change to `assetlinks.json`.
@@ -206,7 +206,21 @@ whether the right task was identified, and any message shown.
   the model. The app refuses bad links clearly, and a missing or wrong reference falls back to the picker.
 - **No new-task creation from the share sheet side.** The handoff's new-task option is basic by intent: an Inbox
   task with the title only.
-- **Pre-existing, not changed here:** proposal sets aren't removed when their task is deleted. The backup
-  importer rejects a set whose task is missing, so a backup taken after deleting a task that had any proposal set
-  (planning, research or handoff) may not import. This feature makes such sets more common. A small follow-up
-  should skip orphaned sets on export.
+- **Resolved on `chatgpt-roundtrip-polish`:** deleted tasks previously left orphaned proposal sets and
+  provenance records; restoring the resulting backups could fail. The polish branch cleans both types on task
+  deletion and filters legacy orphaned records during backup export. Existing already-exported broken backup
+  files still require separate recovery work if encountered.
+
+
+## 10. Phone acceptance and post-review fixes (2026-10-27)
+
+The owner verified the entire round trip on the S24 Ultra: a saved task's **Discuss in ChatGPT** action shared the prepared context; ChatGPT generated **Open in Autopilot**; the link opened the existing task's canonical review; a step and a budget note were applied; **Return to ChatGPT** returned to the same conversation.
+
+Follow-up branch `chatgpt-roundtrip-polish` (on top of the feature branch) addresses the review findings:
+
+- Hide the pre-apply explanation after successful application.
+- Exclude proposal sets and provenance records for deleted task/draft targets from backup exports; retain strict import validation.
+- Delete task-targeted proposal sets and provenance with the task in a Room transaction, preventing the same handoff from binding to stale applied proposals if a task ID is recreated.
+- Strengthen the regression test to apply a step, capture its provenance, delete the task, simulate orphaned records from an older database, and restore the exported backup.
+
+These changes are pending a fresh green CI run at the time of this update. No PR opened and nothing merged. Note that changing the destination of an already-existing pending set leaves the old set reviewable on the original task by design; this behavior avoids deleting user-created proposal history.
