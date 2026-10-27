@@ -224,3 +224,41 @@ Follow-up branch `chatgpt-roundtrip-polish` (on top of the feature branch) addre
 - Strengthen the regression test to apply a step, capture its provenance, delete the task, simulate orphaned records from an older database, and restore the exported backup.
 
 These changes are pending a fresh green CI run at the time of this update. No PR opened and nothing merged. Note that changing the destination of an already-existing pending set leaves the old set reviewable on the original task by design; this behavior avoids deleting user-created proposal history.
+
+## 11. Emulator CI failures in run #188: root cause and fix (2026-10-27)
+
+Run [#188](https://github.com/HassanJaveed84/autopilot/actions/runs/40534401725) (`2be74b2`) passed its build job (lint, 754 unit/Robolectric tests, APKs). Its emulator job failed in both attempts:
+
+| Attempt | Failing test | Exact failure (from the uploaded `instrumented-reports`) |
+|---|---|---|
+| 1 | `HandoffImportDeviceTest.aRepeatedLinkReachesTheOpenScreenAndAddsNothing` | `ComposeTimeoutException` at line 99: after the **third** delivery, the destination title never came back within 15 s |
+| 2 | same test | `AssertionError: expected:<2> but was:<1>` at line 101: only one proposal set for the task after three deliveries |
+| 2 | `InstrumentedUiTest.captureThenMarkWaitingWithTypedReason` | `ComposeTimeoutException` at line 46: the task never became Waiting within 10 s of tapping **Start waiting** |
+
+The last fully green emulator runs were #180 (`b4c675a`) and #183 (`04100dc`).
+
+### Repeat-link test: an app defect plus a test assumption (confirmed)
+
+**App defect.** `HandoffImportViewModel.onLink` cancels the job of the link it replaces. All four `catch (_: Exception)` blocks in the view model also caught that job's `CancellationException` and published `FAILED` from `_state.value`, which by then belonged to the **newer** link. A Room call doesn't return to a cancelled job until its blocking work finishes, so when the replaced link's call outlasted the newer link's whole import (a repeat needs only two reads), the newer link's review was overwritten with "Something went wrong". On the device test's third delivery this is exactly the attempt-1 symptom (no destination title), and it explains #179's missing repeat note. A person tapping a second ChatGPT link while the first is still preparing could hit the same thing.
+
+Evidence: `HandoffImportViewModelTest.aLinkArrivingMidImportKeepsItsReviewWhenTheReplacedWorkReturns` parks the replaced link's first database call (a test dispatcher for Room), lets the newer link reach its review, then releases the call. Without the fix it fails 3 of 3 runs with `expected stage=REVIEW … existed=true but was stage=FAILED`; with the fix it passes 5 of 5.
+
+**Fix.** Each catch rethrows `CancellationException`. Genuine failures still show `FAILED`. Nothing else changes: activity, launch mode, task affinity, saved state, return to ChatGPT.
+
+**Test assumption.** The device test sent the third link once the second was *delivered* (`activity.intent` changed) rather than *prepared*. The third delivery could therefore cancel the second before it saved its set: attempt 2's count of 1. The test now waits for the second set to be saved before sending the repeat, then waits for the repeat note (`handoff_repeat`), which only the third delivery can show. That restores the check #180 had to drop.
+
+### `captureThenMarkWaitingWithTypedReason`: independent, cause not confirmed
+
+There's no shared state with the handoff test: different activity, different task, and the handoff test runs about six classes earlier. The failure is a Save tap that didn't take effect. The likely cause is a hypothesis, not a confirmed finding:
+
+- Typing focuses the reason field, and the soft keyboard then opens asynchronously. The job log shows `enable-hw-keyboard: false`, so the keyboard does open.
+- The sheet's pinned footer moves up with it (`imePadding`). Compose's idling doesn't wait for the keyboard, so a tap aimed just before it settles can land where Save used to be.
+- The same test failed the same way before (`FLIGHT_PLAN_STABILIZATION_REPORT.md`), with a keyboard-layout cause.
+- In attempt 2 the emulator's `Failed to find ColorBuffer` warning appears about 1 s before the wait began, which fits a window surface change at that moment. The same warning also appeared in attempt 1, where this test passed, so it is not a failure on its own.
+
+The test now waits until the Save button sits above the open keyboard before tapping, for both the Capture and Waiting sheets. A button left behind the keyboard still fails, as it should. No timeouts were raised.
+
+### Verification
+
+- Local (no KVM, so no emulator): `./gradlew lintDebug testDebugUnitTest assembleDebug assembleDebugAndroidTest` passed. **755 tests, 0 failures** (754 plus the new view-model test). The handoff suites passed: `HandoffImportViewModelTest` 6, `HandoffImportActivityTest` 11, `HandoffImporterTest` 10.
+- CI on `2d10c26`: run [#189](https://github.com/HassanJaveed84/autopilot/actions/runs/40545214808), result pending at the time of this commit.
