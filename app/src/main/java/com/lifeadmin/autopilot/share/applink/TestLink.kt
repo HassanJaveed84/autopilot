@@ -14,6 +14,10 @@ enum class TestLinkProblem { MALFORMED, NOT_HTTPS, WRONG_HOST, WRONG_PATH, NO_ME
 sealed interface TestLinkResult {
     data class Received(val message: String) : TestLinkResult
     data class Rejected(val problem: TestLinkProblem) : TestLinkResult
+
+    /** A structured `ap=v1` fragment on the same route ([HandoffFragment]); display only. */
+    data class HandoffReceived(val handoff: LinkHandoff) : TestLinkResult
+    data class HandoffRejected(val issue: HandoffIssue) : TestLinkResult
 }
 
 /**
@@ -25,6 +29,7 @@ sealed interface TestLinkResult {
  *   `message=<1–64 URL-unreserved characters>`; percent-escapes, extra keys and separators are refused
  *   rather than decoded or guessed.
  * - A query string is ignored (chat apps may append tracking such as `utm_source`); it is never read.
+ * - A fragment starting `ap=` is the structured handoff experiment instead, validated by [HandoffFragment].
  */
 class TestLinkParser(private val host: String) {
     fun parse(raw: String?): TestLinkResult {
@@ -36,6 +41,12 @@ class TestLinkParser(private val host: String) {
         }
         if (uri.rawPath != PATH) return TestLinkResult.Rejected(TestLinkProblem.WRONG_PATH)
         val fragment = uri.rawFragment
+        if (fragment != null && fragment.startsWith(HandoffFragment.PREFIX)) {
+            return when (val r = HandoffFragment.parse(fragment)) {
+                is HandoffParseResult.Valid -> TestLinkResult.HandoffReceived(r.handoff)
+                is HandoffParseResult.Invalid -> TestLinkResult.HandoffRejected(r.issue)
+            }
+        }
         if (fragment.isNullOrEmpty() || !fragment.startsWith(KEY)) return TestLinkResult.Rejected(TestLinkProblem.NO_MESSAGE)
         val message = fragment.removePrefix(KEY)
         if (!MESSAGE.matches(message)) return TestLinkResult.Rejected(TestLinkProblem.INVALID_MESSAGE)

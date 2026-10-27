@@ -64,11 +64,14 @@
         <!-- ChatGPT → App Link spike: one verified https route, display-only, never writes tasks.
              https only (Android 12+ verifies http and/or https filters; http is not wanted). Its own
              task so a link doesn't disturb an open Today screen and Close/Back return to the caller.
-             The host comes from the appLinkHost placeholder (app/build.gradle.kts). -->
+             The host comes from the appLinkHost placeholder (app/build.gradle.kts).
+             persistNever: the task's launch intent carries the link (and any handoff text in its
+             fragment), so Android must not write it to its recent-tasks store across reboots. -->
         <activity
             android:name=".ui.applink.AppLinkTestActivity"
             android:exported="true"
             android:launchMode="singleTop"
+            android:persistableMode="persistNever"
             android:taskAffinity="">
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />

@@ -100,6 +100,7 @@ class ManifestContractTest {
         assertEquals("/autopilot/test", data.attr("path"))
         listOf("pathPrefix", "pathPattern", "pathAdvancedPattern", "port").forEach { assertTrue(it, data.attr(it).isEmpty()) }
         assertEquals("singleTop", activity.attr("launchMode"))
+        assertEquals("persistNever", activity.attr("persistableMode"))
         assertEquals("", activity.attr("taskAffinity"))
         assertTrue(activity.hasAttributeNS(ns, "taskAffinity"))
     }

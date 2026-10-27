@@ -5,9 +5,13 @@ import android.net.Uri
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.lifeadmin.autopilot.share.applink.LinkHandoff
 import com.lifeadmin.autopilot.share.applink.TestLinkParser
 import com.lifeadmin.autopilot.ui.applink.AppLinkTestActivity
 import org.junit.Assert.assertTrue
@@ -54,6 +58,40 @@ class AppLinkDeviceTest {
         } finally {
             instrumentation.removeMonitor(monitor)
             activity?.let { instrumentation.runOnMainSync { it.finishAndRemoveTask() } }
+        }
+    }
+
+    @Test fun theSystemDeliversTheFixedHandoffIntact() {
+        val handoff = LinkHandoff.FIXED_EXAMPLE.toUrl(BuildConfig.APP_LINK_HOST)
+        assertTrue(context.packageManager.queryIntentActivities(view(handoff), 0).any { it.activityInfo.name == AppLinkTestActivity::class.java.name })
+        ActivityScenario.launch<AppLinkTestActivity>(view(handoff)).use {
+            waitFor("handoff_task", "Task: Choose a coffee grinder")
+            waitFor("handoff_decision_0", "Choose Model A")
+            waitFor("handoff_step_0", "1. Check warranty")
+            waitFor("handoff_step_1", "2. Compare retailer prices")
+            waitFor("handoff_note_0", "Budget is \$1,000")
+            waitFor("app_link_validation", "Succeeded")
+            waitFor("app_link_fixed_match", "Yes, every field")
+        }
+    }
+
+    /** Message link cold, then the handoff warm through the system, then Close: the task is removed. */
+    @Test fun aHandoffReachesTheOpenScreenAndCloseEndsItsTask() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val monitor = instrumentation.addMonitor(AppLinkTestActivity::class.java.name, null, false)
+        context.startActivity(view(url).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        val activity = instrumentation.waitForMonitorWithTimeout(monitor, 10_000)
+        try {
+            waitFor("app_link_message", "hello-from-chatgpt")
+            context.startActivity(view(LinkHandoff.FIXED_EXAMPLE.toUrl(BuildConfig.APP_LINK_HOST)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            waitFor("handoff_step_1", "Compare retailer prices")
+            waitFor("app_link_delivery", "Sent to the already open screen · links received here: 2")
+            compose.onNodeWithTag("app_link_close").performScrollTo().performClick()
+            val screen = checkNotNull(activity)
+            compose.waitUntil(10_000) { screen.isFinishing || screen.isDestroyed }
+        } finally {
+            instrumentation.removeMonitor(monitor)
+            activity?.takeIf { !it.isFinishing }?.let { instrumentation.runOnMainSync { it.finishAndRemoveTask() } }
         }
     }
 }

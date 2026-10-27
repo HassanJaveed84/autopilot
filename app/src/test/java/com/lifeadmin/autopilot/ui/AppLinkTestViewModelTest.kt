@@ -1,6 +1,9 @@
 package com.lifeadmin.autopilot.ui
 
 import androidx.lifecycle.SavedStateHandle
+import com.lifeadmin.autopilot.share.applink.HandoffIssue
+import com.lifeadmin.autopilot.share.applink.HandoffProblem
+import com.lifeadmin.autopilot.share.applink.LinkHandoff
 import com.lifeadmin.autopilot.share.applink.TestLinkParser
 import com.lifeadmin.autopilot.share.applink.TestLinkProblem
 import com.lifeadmin.autopilot.share.applink.TestLinkResult
@@ -54,5 +57,35 @@ class AppLinkTestViewModelTest {
         assertNull(vm.state.value.result)
         vm.onLink(null, viewIntent = false, openedBy = null, delivery = Delivery.NEW_SCREEN)
         assertNull(vm.state.value.result)
+    }
+
+    @Test fun aHandoffSurvivesProcessDeathAsValidatedFieldsOnly() {
+        val handoffUrl = LinkHandoff.FIXED_EXAMPLE.toUrl(host)
+        vm.onLink(handoffUrl, viewIntent = true, openedBy = "com.openai.chatgpt", delivery = Delivery.NEW_SCREEN)
+        assertEquals(TestLinkResult.HandoffReceived(LinkHandoff.FIXED_EXAMPLE), vm.state.value.result)
+        assertFalse(saved.keys().any { saved.get<Any>(it).toString().let { v -> v.contains("https://") || v.contains("%20") || v.contains("ap=v1") } })
+        val restored = AppLinkTestViewModel(SavedStateHandle(saved.keys().associateWith { saved.get<Any>(it) }), TestLinkParser(host)).state.value
+        assertEquals(TestLinkResult.HandoffReceived(LinkHandoff.FIXED_EXAMPLE), restored.result)
+        assertEquals(Delivery.RESTORED, restored.delivery)
+    }
+
+    @Test fun aRefusedHandoffKeepsOnlyItsCategoryAndPosition() {
+        vm.onLink("https://$host/autopilot/test#ap=v1&t=secret-title&s=Check+warranty", viewIntent = true, openedBy = null, delivery = Delivery.NEW_SCREEN)
+        val issue = HandoffIssue(HandoffProblem.AMBIGUOUS_PLUS, 3, 3)
+        assertEquals(TestLinkResult.HandoffRejected(issue), vm.state.value.result)
+        assertFalse(saved.keys().any { saved.get<Any>(it).toString().contains("secret") })
+        val restored = AppLinkTestViewModel(SavedStateHandle(saved.keys().associateWith { saved.get<Any>(it) }), TestLinkParser(host)).state.value
+        assertEquals(TestLinkResult.HandoffRejected(issue), restored.result)
+    }
+
+    @Test fun eachLinkReplacesTheLastWhateverItsKind() {
+        vm.onLink(LinkHandoff.FIXED_EXAMPLE.toUrl(host), viewIntent = true, openedBy = null, delivery = Delivery.NEW_SCREEN)
+        vm.onLink(url, viewIntent = true, openedBy = null, delivery = Delivery.OPEN_SCREEN)
+        assertEquals(TestLinkResult.Received("hello-from-chatgpt"), vm.state.value.result)
+        val restored = AppLinkTestViewModel(SavedStateHandle(saved.keys().associateWith { saved.get<Any>(it) }), TestLinkParser(host)).state.value
+        assertEquals(TestLinkResult.Received("hello-from-chatgpt"), restored.result)
+        vm.onLink(LinkHandoff.FIXED_EXAMPLE.toUrl(host), viewIntent = true, openedBy = null, delivery = Delivery.OPEN_SCREEN)
+        assertEquals(TestLinkResult.HandoffReceived(LinkHandoff.FIXED_EXAMPLE), vm.state.value.result)
+        assertEquals(3, vm.state.value.received)
     }
 }
