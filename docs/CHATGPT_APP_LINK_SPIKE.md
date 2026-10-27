@@ -10,10 +10,10 @@ Autopilot directly? The test uses a fixed, harmless payload. No task changes, no
 | Gate | State |
 | --- | --- |
 | App code: verified-ready intent filter, validator, test screen, tests | **Done** on this branch; CI #176 green, including the emulator |
-| Static site files (`applink-site/`) | **Prepared, not published** |
-| Domain (`hassanjaveed84.github.io`) | **Not live** (HTTP 404 on 2026-10-26). Publishing needs the owner's approval to create the public `HassanJaveed84.github.io` Pages repository |
+| Static site files (`applink-site/`) | **Published 2026-10-27** to the public repo `HassanJaveed84/HassanJaveed84.github.io` @ `15dc0d5` (exactly `.nojekyll`, `.well-known/assetlinks.json`, `autopilot/test.html`, byte-identical to `applink-site/`); GitHub Pages from `main`, deployment run 40439525082 succeeded |
+| Domain (`hassanjaveed84.github.io`) | **Live** (§5.5). The owner created the repository; this session's GitHub integration may not create repositories (403) |
 | Real release-certificate fingerprint in `assetlinks.json` | **Done**: `A5:C5:…:21:46`, from CI's personal-key release APK, not a local build (§5.1). Confirm it on the phone |
-| Domain verification on the phone (`pm get-app-links` → `verified`) | **Not done.** Impossible until the site is published |
+| Domain verification on the phone (`pm get-app-links` → `verified`) | **Not done yet.** Server side is ready: Google's Digital Asset Links API reports `linked: true` (§5.5). Needs the APK installed after publication |
 | Tapping the link inside ChatGPT on the S24 Ultra | **Not done.** This is the experiment's actual success criterion, and it remains open |
 
 Nothing in this report claims verification or ChatGPT behavior that wasn't observed. Robolectric, the
@@ -117,9 +117,21 @@ Android SDK 36 was installed for the session. There's no KVM, so there's no loca
 
 ### 5.4 Not verified
 
-- The site isn't published, so there's no `assetlinks.json` over HTTPS, no Google statement-list check and no `pm get-app-links` → `verified`.
+- No `pm get-app-links` → `verified` on a device yet.
 - No physical-device run of any kind, and no tap from the ChatGPT app.
 - The `intent://` fallback button (Chrome's handling of a fragment inside an intent URI) is untested.
+
+### 5.5 Deployment checks (2026-10-27, after Pages run 40439525082)
+
+| Check | Result |
+| --- | --- |
+| `GET https://hassanjaveed84.github.io/.well-known/assetlinks.json` | **200**, `application/json; charset=utf-8`, **0 redirects**, no `Location` header, 297 bytes, valid JSON, byte-identical to `applink-site/.well-known/assetlinks.json` |
+| Statement content | relation `delegate_permission/common.handle_all_urls`, `android_app`, `com.lifeadmin.autopilot`, fingerprint `A5:C5:6F:43:16:77:81:B6:8B:5F:10:70:BF:36:A6:AF:17:76:D5:6C:1D:BB:B8:8D:C2:44:BD:BD:A2:56:21:46` (the personal release key) |
+| Google `statements:list` / `assetlinks:check` for that package and fingerprint | Statement returned; **`"linked": true`** |
+| `http://…/assetlinks.json` | 301 to https. Not used: Android fetches the file over HTTPS |
+| `GET https://hassanjaveed84.github.io/autopilot/test` | **200**, `text/html`, 0 redirects, byte-identical to `applink-site/autopilot/test.html` |
+| Rendered in Chromium (412×915) with `#message=hello-from-chatgpt` | Heading "Autopilot didn't open", "Test message: hello-from-chatgpt", *Open in Autopilot* button shown; the only network request was the page itself, without the fragment |
+| Same page with `#message=<script>…` or no fragment | "No test message in this link.", button hidden |
 
 ## 6. Phone test (owner)
 
