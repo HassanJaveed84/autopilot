@@ -595,10 +595,16 @@ class TaskRepository(
         }
     }
 
-    /** Hard delete; steps, policy, slots, occurrences and events cascade. */
+    /** Hard delete; dependent task content cascades, while proposal history needs explicit cleanup. */
     suspend fun delete(taskId: String) {
         coordinator.mutateTask(taskId, dismissNotification = true) {
-            taskDao.delete(taskId)
+            db.withTransaction {
+                // Proposal sets and provenance intentionally have no foreign keys. Delete them with
+                // the task so a recreated import target cannot inherit stale applied proposals.
+                db.proposalSetDao().deleteForTask(taskId)
+                provenanceDao.deleteForTask(taskId)
+                taskDao.delete(taskId)
+            }
         }
     }
 
