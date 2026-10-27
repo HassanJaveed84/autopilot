@@ -14,8 +14,8 @@ system of its own.
 | --- | --- |
 | Dependency map and removal | **Done** (§2–§4) |
 | Saved research read-only, backups and migrations unchanged | **Done** (§5, §6) |
-| Local gate (lint, unit/Robolectric, debug/release APKs, androidTest APK) | See §8.1 |
-| CI on this branch (incl. emulator instrumented tests) | See §8.2 |
+| Local gate (lint, unit/Robolectric, debug/release APKs, androidTest APK) | **Green**: 485 tests, 0 failures; lint no issues (§8.1) |
+| CI on this branch (incl. emulator instrumented tests) | **Green**: run #194, 16/16 emulator tests; screenshot run #39 green (§8.2) |
 | Phone check (upgrade over an install with saved research and a stored key) | **Not done** by the agent |
 
 ## 2. Dependency map
@@ -169,7 +169,13 @@ before the saved-research count had loaded; it now waits for the row.
 
 ### 8.2 CI
 
-_Filled in after the push._
+Commit `7baf92c` (code `983a505` + docs `85a461e` + screenshot request):
+
+| Run | Result |
+| --- | --- |
+| [Android CI #194](https://github.com/HassanJaveed84/autopilot/actions/runs/40600958963), job *Lint, unit/Robolectric tests, APKs* | **Success** (lint, unit tests, debug and release APKs uploaded as `apks`) |
+| Android CI #194, job *Instrumented tests (emulator API 34)* | **Success: 16/16** (`AppLinkDeviceTest`, `HandoffImportDeviceTest`, `CaptureTimingDeviceTest`, database, reliability, reminder, UI and `LegacyApiKeyDeviceTest`). Earlier runs reported 28 because CI also ran the AI screenshot-tour classes `ScreenshotTourResearch` / `ScreenshotTourInvestigation`, which are removed |
+| [Screenshots #39](https://github.com/HassanJaveed84/autopilot/actions/runs/40600959105) (phone, light, font 1.0) | **Success: 5/5** tour scenes, 50 screenshots in artifact `screenshots-phone-light-font1.0`, including `eq1-detail-saved-research`, `eq2-saved-thread-read-only`, `eq3-settings-saved-research` |
 
 ## 9. Verification that no obsolete entry point remains
 
