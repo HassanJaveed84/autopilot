@@ -196,7 +196,7 @@ private fun Header(s: ReviewUi) {
             style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(top = 4.dp).testTag("review_meta"),
         )
         s.details?.task?.let { t -> Text("Task: ${t.title}", style = MaterialTheme.typography.bodyMedium, color = c.ink2, modifier = Modifier.padding(top = 6.dp).testTag("review_task")) }
-        Text("Nothing changes until you apply. Your task stays as it is while you review.", style = MaterialTheme.typography.bodySmall, color = c.ink3, modifier = Modifier.padding(top = 6.dp))
+        if (s.applied == null) Text("Nothing changes until you apply. Your task stays as it is while you review.", style = MaterialTheme.typography.bodySmall, color = c.ink3, modifier = Modifier.padding(top = 6.dp))
     }
 }
 
