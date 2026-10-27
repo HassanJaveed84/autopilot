@@ -211,6 +211,29 @@ class HandoffImporterTest {
         assertTrue(sets.get(kept) != null)
     }
 
+    @Test fun deletingAndRecreatingAnImportedTaskDoesNotResurrectAppliedProposals() = runTest {
+        val h = handoff(null, title = "Plan the garden")
+        val firstTask = importer.createTask(h)
+        val first = ready(h, firstTask)
+        val firstSet = sets.get(first.setId)!!
+        val step = firstSet.items.first { it.kind == ItemKind.ADD_STEP }
+        assertTrue(applier.apply(first.setId, listOf(ApplyChoice(step.id))) is ApplyResult.Applied)
+        assertTrue(sets.provenanceForTask(firstTask).isNotEmpty())
+
+        tasks.delete(firstTask)
+        assertNull(sets.get(first.setId))
+        assertTrue(sets.provenanceForTask(firstTask).isEmpty())
+
+        // New task from the same link deliberately reuses its deterministic task id.
+        val recreatedTask = importer.createTask(h)
+        assertEquals(firstTask, recreatedTask)
+        val reopened = ready(h, recreatedTask)
+        assertEquals(first.setId, reopened.setId)
+        assertFalse(reopened.existed)
+        assertTrue(sets.get(reopened.setId)!!.items.all { it.status == ItemStatus.PENDING })
+        assertTrue(tasks.getSteps(recreatedTask).isEmpty())
+    }
+
     @Test fun aNewTaskFromAHandoffIsPlainAndMadeOnce() = runTest {
         val h = handoff(null, title = "Plan the garden")
         val first = importer.createTask(h)
