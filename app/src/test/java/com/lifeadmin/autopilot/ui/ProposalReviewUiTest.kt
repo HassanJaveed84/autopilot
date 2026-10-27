@@ -74,7 +74,7 @@ class ProposalReviewUiTest {
     private fun launch(withDeadline: Boolean = true, source: ProposalSource = ProposalSource.RESEARCH) {
         container = AppContainer(
             context = ApplicationProvider.getApplicationContext<Context>(), clock = clock, zoneProvider = FakeZoneProvider(CHICAGO), ids = SequentialIds("ui"),
-            database = inMemoryDatabase(), settingsRepository = InMemorySettingsRepository(AppSettings(onboardingCompleted = true)), networkStatus = { true },
+            database = inMemoryDatabase(), settingsRepository = InMemorySettingsRepository(AppSettings(onboardingCompleted = true)),
         )
         runBlocking {
             taskId = container.taskRepository.createTask(NewTask("Renew passport", notes = "Expires in March", status = TaskStatus.ACTIONABLE))
@@ -279,7 +279,7 @@ class ProposalReviewLargeTextUiTest {
     @Test fun reviewWorksAtNarrowWidthAndDoubleFontScale() {
         container = AppContainer(
             context = ApplicationProvider.getApplicationContext<Context>(), clock = clock, zoneProvider = FakeZoneProvider(CHICAGO), ids = SequentialIds("ui"),
-            database = inMemoryDatabase(), settingsRepository = InMemorySettingsRepository(AppSettings(onboardingCompleted = true)), networkStatus = { true },
+            database = inMemoryDatabase(), settingsRepository = InMemorySettingsRepository(AppSettings(onboardingCompleted = true)),
         )
         val taskId = runBlocking { container.taskRepository.createTask(NewTask("Renew passport", status = TaskStatus.ACTIONABLE)) }
         runBlocking {

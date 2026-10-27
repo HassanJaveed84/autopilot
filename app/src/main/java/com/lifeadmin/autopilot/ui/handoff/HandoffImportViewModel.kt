@@ -3,7 +3,7 @@ package com.lifeadmin.autopilot.ui.handoff
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.lifeadmin.autopilot.ai.ProposalValidator
+import com.lifeadmin.autopilot.domain.proposal.MatchKey
 import com.lifeadmin.autopilot.data.repository.TaskSummary
 import com.lifeadmin.autopilot.share.applink.HandoffDestination
 import com.lifeadmin.autopilot.share.applink.HandoffImporter
@@ -241,7 +241,7 @@ class HandoffImportViewModel(
         )
     }
 
-    private fun key(s: String) = ProposalValidator.normalizeKeyPublic(s)
+    private fun key(s: String) = MatchKey.of(s)
 
     private companion object {
         const val MAX_CANDIDATES = 50

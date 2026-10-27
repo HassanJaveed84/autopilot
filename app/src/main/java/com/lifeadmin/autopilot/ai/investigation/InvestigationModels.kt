@@ -1,7 +1,5 @@
 package com.lifeadmin.autopilot.ai.investigation
 
-import com.lifeadmin.autopilot.ai.context.FindingDisposition
-import com.lifeadmin.autopilot.ai.context.TurnConfig
 import com.lifeadmin.autopilot.ai.research2.CallDiagnostic
 import com.lifeadmin.autopilot.ai.research2.SourceRef2
 import com.lifeadmin.autopilot.ai.research2.StageRecord
@@ -532,3 +530,25 @@ object InvestigationJson {
     fun encodeMeta(m: InvestigationMeta): String = json.encodeToString(InvestigationMeta.serializer(), m)
     fun decodeMeta(raw: String): InvestigationMeta? = runCatching { json.decodeFromString(InvestigationMeta.serializer(), raw) }.getOrNull()
 }
+
+/** Legacy (M4): how an earlier finding was carried into a turn; kept for decoding stored turns. */
+enum class FindingDisposition {
+    /** Needed by the new objective; reused as found, not re-checked. */
+    SENT,
+
+    /** Unticked by the user before authorization; never reinserted (OD-4). */
+    EXCLUDED,
+
+    /** Irrelevant to the new objective. */
+    NOT_SENT,
+
+    /** Answered by the new input. */
+    REPLACED,
+
+    /** Volatile: checked fresh, never reused. */
+    FRESH,
+}
+
+/** Legacy (M4): a turn's configuration as recorded on its authorization; kept for decoding stored turns. */
+@Serializable
+data class TurnConfig(val model: String, val effort: String? = null, val depth: String, val searchBudget: Int, val spendLimitCents: Int? = null, val auto: Boolean = false)

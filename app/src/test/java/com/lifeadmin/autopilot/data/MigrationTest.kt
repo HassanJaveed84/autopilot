@@ -241,11 +241,7 @@ class MigrationTest {
         context.deleteDatabase(name)
         val file = context.getDatabasePath(name).also { it.parentFile?.mkdirs() }
         // A real M3A.2 session payload: parsed content with two recorded runs (initial + stopped continuation) and one applied proposal.
-        val r = com.lifeadmin.autopilot.ai.research2.RequirementExtractor.extract(com.lifeadmin.autopilot.testing.Research2Fixtures.SUPPLEMENTS_REQUEST)
-        val registry = com.lifeadmin.autopilot.ai.research2.SourceRegistry2(runId = "r1")
-        val fx = com.lifeadmin.autopilot.testing.Research2Fixtures.supplementsGather()
-        var content = com.lifeadmin.autopilot.ai.research2.SessionContent("Picks", com.lifeadmin.autopilot.testing.Research2Fixtures.SUPPLEMENTS_REQUEST, r.template, r.requirements, outcome = com.lifeadmin.autopilot.ai.research2.SessionOutcome.INTERRUPTED)
-        content = com.lifeadmin.autopilot.ai.research2.SessionAssembler.merge(content, com.lifeadmin.autopilot.ai.research2.ContractParser.parse(fx.segments, fx.searches, registry, r.requirements, 1L), registry.sources())
+        var content = com.lifeadmin.autopilot.testing.SavedResearchFixtures.m3a2Session().copy(title = "Picks")
         val run1 = com.lifeadmin.autopilot.ai.research2.RunRecord("r1", com.lifeadmin.autopilot.ai.research2.RunKind.INITIAL, 1_000L, com.lifeadmin.autopilot.ai.research2.ResearchMode.THOROUGH, "claude-sonnet-5-5", 10, usage = com.lifeadmin.autopilot.ai.research2.RunUsage(41_000, 2_600, 0, 0, 5, 42_000), outcome = com.lifeadmin.autopilot.ai.research2.SessionOutcome.COMPLETE)
         val run2 = run1.copy(id = "r2", kind = com.lifeadmin.autopilot.ai.research2.RunKind.CONTINUATION, startedAtEpochMs = 2_000L, usage = com.lifeadmin.autopilot.ai.research2.RunUsage(10_000, 500, 0, 0, 2, 9_000, complete = false), outcome = com.lifeadmin.autopilot.ai.research2.SessionOutcome.STOPPED)
         content = content.copy(runs = listOf(run1, run2), outcome = com.lifeadmin.autopilot.ai.research2.SessionOutcome.STOPPED)
@@ -293,7 +289,7 @@ class MigrationTest {
         assertEquals("usage per run is carried over", 41_000L, decoded[0].usage.inputTokens)
         assertEquals("a stopped run's usage is a floor", true, decoded[1].usage.floor)
         assertEquals(listOf("r1", "r2"), decoded.map { it.legacy!!.runId })
-        assertEquals("the question is the person's words", com.lifeadmin.autopilot.testing.Research2Fixtures.SUPPLEMENTS_REQUEST, decoded[0].objective.question)
+        assertEquals("the question is the person's words", com.lifeadmin.autopilot.testing.SavedResearchFixtures.SUPPLEMENTS_REQUEST, decoded[0].objective.question)
         assertEquals(com.lifeadmin.autopilot.ai.investigation.AskKind.RECOMMEND, decoded[0].objective.askKind)
         // The legacy content and applied history read back byte-for-byte through the legacy view.
         val session = com.lifeadmin.autopilot.data.repository.ResearchSessionRepository(room).get("s1")!!

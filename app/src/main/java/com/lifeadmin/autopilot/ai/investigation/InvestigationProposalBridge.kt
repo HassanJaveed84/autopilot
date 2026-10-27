@@ -22,7 +22,7 @@ import java.time.ZoneOffset
 
 /**
  * LEGACY: proposals of turns saved by the retired M4 engine stay reviewable through the canonical
- * Proposal Review. New research proposes through [com.lifeadmin.autopilot.ai.aifirst.AfTaskSuggester].
+ * Proposal Review. (Built-in research is retired: nothing proposes through it any more.)
  *
  * Turns one turn's proposed changes into the canonical [ProposalSet] (RES-110–113, INT-042): one set
  * per turn, reviewed and applied by the one Proposal Review and the one write path. Pure mapping;

@@ -127,7 +127,7 @@ jobs:
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           # The screenshot tour runs on demand: .github/workflows/screenshots.yml.
-          script: ./gradlew --stacktrace connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=com.lifeadmin.autopilot.ScreenshotTour,com.lifeadmin.autopilot.ScreenshotTourAiReview
+          script: ./gradlew --stacktrace connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=com.lifeadmin.autopilot.ScreenshotTour
       - name: Upload instrumented reports
         if: always()
         uses: actions/upload-artifact@v4

@@ -43,7 +43,7 @@ class AfThreadRepositoryTest {
     @Before fun setUp() { db = inMemoryDatabase(); store = AfThreadRepository(db); legacy = InvestigationRepository(db) }
     @After fun tearDown() { db.close() }
 
-    private val auth = AfAuthorization("Address?", config = AfConfig("claude-sonnet-5-5", 3, 100), promptVersion = 2, payload = "Address?", payloadSha256 = AfJson.sha256("Address?"), authorizedAtMs = now.toEpochMilli())
+    private val auth = AfAuthorization("Address?", config = AfConfig("claude-sonnet-5-5", 3, 100), promptVersion = 2, payload = "Address?", payloadSha256 = "0".repeat(64), authorizedAtMs = now.toEpochMilli())
     private fun answered(id: String, index: Int) = AfTurn(
         id, index, "Address?", now.toEpochMilli(), AfStatus.COMPLETE, authorization = auth, segments = listOf(AfSegment("At 50 Massachusetts Ave NE.", listOf(1))),
         answer = "At 50 Massachusetts Ave NE. [1]", sources = listOf(AfSource(1, "https://amtrak.example/was", "Amtrak", listOf("50 Massachusetts Ave NE"), "October 2026")),
@@ -83,9 +83,22 @@ class AfThreadRepositoryTest {
         val before = db.investigationTurnDao().forInvestigation(LegacySeed.ID)
         assertTrue(runCatching { store.saveTurn(LegacySeed.ID, answered("x", 1)) }.isFailure)
         assertEquals(before, db.investigationTurnDao().forInvestigation(LegacySeed.ID))
-        // Association is the one change allowed on legacy research, and keeps its own meta format.
-        store.associate(LegacySeed.ID, null, "Unlinked", now)
-        assertEquals("Unlinked", legacy.get(LegacySeed.ID)!!.meta.associations.single().note)
+    }
+
+    @Test fun appStartSettlesATurnLeftRunningAndNeverTouchesFinishedOnes() = runTest {
+        // Saved by a build with built-in research while a turn was running; that process is gone.
+        store.create("af1", null, "Address?", "Address?", answered("t0", 0), now)
+        store.saveTurn("af1", answered("t1", 1).copy(status = AfStatus.RUNNING, finishedAtMs = null))
+        LegacySeed.m4Thread(legacy, null, running = true)
+
+        assertEquals(2, store.settleInterrupted(now.plusSeconds(60)))
+        val t = store.get("af1")!!
+        assertEquals(answered("t0", 0), t.turns[0])
+        assertEquals(AfStatus.INTERRUPTED, t.turns[1].status)
+        assertTrue(t.turns[1].costIsFloor)
+        assertEquals("the answer that had arrived is kept", answered("t1", 1).answer, t.turns[1].answer)
+        assertTrue(legacy.get(LegacySeed.ID)!!.turns.none { it.state == com.lifeadmin.autopilot.ai.investigation.TurnState.RUNNING })
+        assertEquals("nothing is left to settle", 0, store.settleInterrupted(now.plusSeconds(120)))
     }
 
     @Test fun aBackupCarriesBothFormatsAndSettlesARunningTurn() = runTest {

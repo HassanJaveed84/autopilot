@@ -2,10 +2,6 @@ package com.lifeadmin.autopilot.ui.capture
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.lifeadmin.autopilot.ai.AiAvailability
-import com.lifeadmin.autopilot.ai.AiConfig
-import com.lifeadmin.autopilot.ai.AiPlanningService
-import com.lifeadmin.autopilot.ai.security.ApiKeyStore
 import com.lifeadmin.autopilot.core.AppClock
 import com.lifeadmin.autopilot.core.ZoneProvider
 import com.lifeadmin.autopilot.data.repository.SettingsRepository
@@ -22,7 +18,6 @@ import com.lifeadmin.autopilot.domain.scheduling.ReminderProjection
 import com.lifeadmin.autopilot.domain.usecase.TaskActions
 import com.lifeadmin.autopilot.ui.components.Format
 import com.lifeadmin.autopilot.ui.userMessage
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -30,7 +25,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /** Everything typed into the capture sheet. Lives in the ViewModel so it survives rotation and leaving the sheet. */
 data class CaptureDraft(
@@ -76,14 +70,6 @@ data class CaptureUiState(
     val settings: AppSettings = AppSettings(),
     val saving: Boolean = false,
     val error: String? = null,
-    /** AI availability, refreshed when the sheet opens and after setup. */
-    val availability: AiAvailability? = null,
-    /** The in-place "Turn on AI planning?" sheet. */
-    val aiSetup: Boolean = false,
-    val aiSetupBusy: Boolean = false,
-    val aiSetupError: String? = null,
-    val hasKey: Boolean = false,
-    val keyHint: String? = null,
 ) {
     /** The nudge from the words with "Every night instead" applied: a routine at the one-off nudge's time. */
     fun inferredNudge(zone: java.time.ZoneId): CaptureTiming.Nudge? = draft.inferredNudge?.let { n ->
@@ -125,8 +111,6 @@ class CaptureViewModel(
     private val actions: TaskActions,
     private val repository: TaskRepository,
     private val settingsRepository: SettingsRepository,
-    private val keyStore: ApiKeyStore,
-    private val aiPlanning: AiPlanningService,
     private val clock: AppClock,
     private val zoneProvider: ZoneProvider,
 ) : ViewModel() {
@@ -146,24 +130,17 @@ class CaptureViewModel(
             }
         }
         viewModelScope.launch { draft.collect { d -> _state.update { it.copy(draft = d) } } }
-        refreshAvailability()
     }
 
     fun now() = clock.now()
     fun zone() = zoneProvider.current()
-
-    fun refreshAvailability() = viewModelScope.launch {
-        val s = settingsRepository.current()
-        val (has, hint) = withContext(Dispatchers.IO) { keyStore.hasKey() to keyStore.hint() }
-        _state.update { it.copy(availability = aiPlanning.availability(s), hasKey = has, keyHint = hint) }
-    }
 
     fun update(transform: (CaptureDraft) -> CaptureDraft) {
         draft.update(transform)
         _state.update { it.copy(error = null) }
     }
 
-    fun setText(text: String) = update { withTiming(it.copy(text = text.take(AiConfig.MAX_INPUT_CHARS))) }
+    fun setText(text: String) = update { withTiming(it.copy(text = text.take(MAX_INPUT_CHARS))) }
 
     /** Re-reads the words for timing (offline, deterministic). A changed reading shows again even after "Ignore". */
     private fun withTiming(d: CaptureDraft): CaptureDraft {
@@ -184,10 +161,7 @@ class CaptureViewModel(
     fun toggleDetails() = update { it.copy(detailsOpen = !it.detailsOpen) }
 
     /** Pre-fills the field from an example prompt (only when nothing has been typed yet). */
-    fun prefill(text: String) = update { if (it.text.isBlank()) withTiming(it.copy(text = text.take(AiConfig.MAX_INPUT_CHARS))) else it }
-
-    /** Full text sent to "Plan with AI": the sentence plus any notes typed in the disclosure. */
-    fun planText(): String = listOf(draft.value.text, draft.value.notes).filter { it.isNotBlank() }.joinToString("\n")
+    fun prefill(text: String) = update { if (it.text.isBlank()) withTiming(it.copy(text = text.take(MAX_INPUT_CHARS))) else it }
 
     /** Title = first line, cut at a word if over the limit; every other character goes to the notes. */
     private fun split(d: CaptureDraft): Pair<String, String?> = CaptureText.split(d.text, d.notes).let { it.title to it.notes }
@@ -221,43 +195,8 @@ class CaptureViewModel(
         }
     }
 
-    /** "Plan with AI": continue when ready, otherwise open the in-place setup sheet. */
-    fun planWithAi(onReady: (String) -> Unit) = viewModelScope.launch {
-        if (draft.value.isEmpty) return@launch
-        val s = settingsRepository.current()
-        when (aiPlanning.availability(s)) {
-            is AiAvailability.Ready -> onReady(planText())
-            else -> { refreshAvailability(); _state.update { it.copy(aiSetup = true, aiSetupError = null) } }
-        }
-    }
-
-    fun closeAiSetup() = _state.update { it.copy(aiSetup = false, aiSetupError = null) }
-
-    /**
-     * "Turn on & plan": records the privacy/billing consent, stores the key the user pasted (if
-     * any), turns AI planning on, then continues to the plan only when the service reports Ready.
-     * The key never enters UI state; it goes straight to the encrypted store.
-     */
-    fun turnOnAndPlan(rawKey: String, onReady: (String) -> Unit) = viewModelScope.launch {
-        _state.update { it.copy(aiSetupBusy = true, aiSetupError = null) }
-        val keyError = withContext(Dispatchers.IO) {
-            if (rawKey.isBlank()) null
-            else if (ApiKeyStore.normalize(rawKey) == null) "That doesn't look like an Anthropic API key (it usually starts with “sk-ant-”)."
-            else runCatching { keyStore.save(rawKey) }.exceptionOrNull()?.let { "Couldn't store the key securely on this device." }
-        }
-        if (keyError != null) {
-            _state.update { it.copy(aiSetupBusy = false, aiSetupError = keyError) }
-            return@launch
-        }
-        settingsRepository.update { it.copy(aiEnabled = true, aiConsentAt = it.aiConsentAt ?: clock.now()) }
-        val s = settingsRepository.current()
-        val availability = aiPlanning.availability(s)
-        val (has, hint) = withContext(Dispatchers.IO) { keyStore.hasKey() to keyStore.hint() }
-        _state.update { it.copy(aiSetupBusy = false, availability = availability, hasKey = has, keyHint = hint) }
-        when (availability) {
-            is AiAvailability.Ready -> { _state.update { it.copy(aiSetup = false) }; onReady(planText()) }
-            is AiAvailability.NeedsSetup -> _state.update { it.copy(aiSetupError = if (availability.needsKey) "Add your Anthropic API key to continue." else "AI planning still needs setting up.") }
-            AiAvailability.Off -> _state.update { it.copy(aiSetupError = "AI planning could not be turned on.") }
-        }
+    companion object {
+        /** Longest capture text; the counter under the field shows it. */
+        const val MAX_INPUT_CHARS = 2_000
     }
 }

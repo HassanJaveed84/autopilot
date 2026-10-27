@@ -53,7 +53,7 @@ class DiscussInChatGptUiTest {
             zoneProvider = FakeZoneProvider(CHICAGO),
             ids = SequentialIds(),
             database = inMemoryDatabase(),
-            // AI planning stays off and no key is stored: the action must not depend on either.
+            // No API key exists anywhere: the action depends on nothing but the task.
             settingsRepository = InMemorySettingsRepository(AppSettings(onboardingCompleted = true)),
         )
         runBlocking {
@@ -69,7 +69,6 @@ class DiscussInChatGptUiTest {
     private fun has(tag: String, text: String) = compose.onAllNodes(hasTestTag(tag) and hasText(text, substring = true)).fetchSemanticsNodes().isNotEmpty()
 
     @Test fun theSheetSharesTheTaskWithoutNotesUnlessChosenAndChangesNothing() {
-        assertFalse(container.settingsRepository.let { runBlocking { it.current().aiEnabled } })
         compose.onNodeWithTag("nav_tasks").performClick()
         compose.waitUntil(10_000) { compose.onAllNodes(hasText("Choose a coffee grinder")).fetchSemanticsNodes().isNotEmpty() }
         compose.onAllNodes(hasText("Choose a coffee grinder"))[0].performClick()

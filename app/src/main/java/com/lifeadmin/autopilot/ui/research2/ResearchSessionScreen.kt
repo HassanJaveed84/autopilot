@@ -39,13 +39,12 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.lifeadmin.autopilot.ai.AiConfig
+import com.lifeadmin.autopilot.ai.ModelNames
 import com.lifeadmin.autopilot.ai.research2.DeliverableTemplate
 import com.lifeadmin.autopilot.ai.research2.RequirementStatus
 import com.lifeadmin.autopilot.ai.research2.RequirementType
 import com.lifeadmin.autopilot.ai.research2.ResearchMode
-import com.lifeadmin.autopilot.ai.research2.ResearchModes
-import com.lifeadmin.autopilot.ai.research2.SessionAssembler
+import com.lifeadmin.autopilot.ai.research2.SessionCoverage
 import com.lifeadmin.autopilot.ai.research2.SessionContent
 import com.lifeadmin.autopilot.ai.research2.SessionOutcome
 import com.lifeadmin.autopilot.ai.research2.StageResult
@@ -97,7 +96,6 @@ fun ResearchSessionScreen(
     zone: ZoneId,
     onBack: () -> Unit,
     onReview: (setId: String) -> Unit,
-    onOpenUsage: () -> Unit,
 ) {
     val s by viewModel.state.collectAsStateWithLifecycle()
     val c = AutopilotTheme.colors
@@ -114,7 +112,7 @@ fun ResearchSessionScreen(
                 Text("Research", style = MaterialTheme.typography.titleLarge.copy(fontSize = 22.sp), color = c.ink, modifier = Modifier.weight(1f).padding(start = 4.dp).semantics { heading() })
                 session?.let { ss ->
                     val (est, partial) = sessionEstimate(ss.content)
-                    LinkButton((if (partial) "≥ " else "~") + UsdEstimate.format(est.usd), onClick = onOpenUsage, modifier = Modifier.testTag("cost_chip"))
+                    Text((if (partial) "≥ " else "~") + UsdEstimate.format(est.usd), style = MaterialTheme.typography.labelLarge, color = c.ink2, modifier = Modifier.testTag("cost_chip"))
                 }
             }
         },
@@ -147,7 +145,7 @@ fun ResearchSessionScreen(
                 val content = session.content
                 val sources = content.sources
                 val items = content.requirements.filter { (it.type == RequirementType.ITEM || it.type == RequirementType.USER_ADDED) && !it.followUp }
-                val open = SessionAssembler.gaps(content)
+                val open = SessionCoverage.gaps(content)
                 val affected = open.map { it.label }
                 val cite = viewModel::openSource
                 val latest = content.latestRun
@@ -156,7 +154,6 @@ fun ResearchSessionScreen(
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             OutcomeBanner(content.outcome, affected, latest?.technical, onContinue = null)
                             if (s.isStale) ResearchBanner("Researched ${Format.relativeLower(session.updatedAt, s.now, zone)}", "Prices, stock and rules may have changed since.", warn = true, tag = "brief_stale")
-                            if (s.online == false) ResearchBanner("You're offline", "This saved result is fully readable; links open once you're back online.", icon = AutopilotIcons.WifiOff, tag = "brief_offline")
                             if (sources.none { it.citedCount > 0 }) ResearchBanner("Nothing here could be verified", "The answer came back without any source citations, so nothing below counts as a fact and no steps are pre-selected.", warn = true, icon = AutopilotIcons.Warn, tag = "brief_unverified")
                             if (content.injectionNoticed) ResearchBanner("A web page tried to give instructions", "Page text is information only. The line was dropped and nothing was done.", icon = AutopilotIcons.Shield, tag = "brief_injection")
                             Text(content.title, style = MaterialTheme.typography.headlineMedium, color = c.ink, modifier = Modifier.padding(top = 4.dp).semantics { heading() }.testTag("brief_title"))
@@ -188,7 +185,7 @@ fun ResearchSessionScreen(
                     }
                     item {
                         BriefSectionTitle("Your request, point by point")
-                        Text(SessionAssembler.coverageLine(content).ifBlank { "${content.requirements.count { content.coverageOf(it.id).status.covered }} of ${content.requirements.size} covered" }, style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(bottom = 8.dp).testTag("brief_coverage_line"))
+                        Text(SessionCoverage.line(content).ifBlank { "${content.requirements.count { content.coverageOf(it.id).status.covered }} of ${content.requirements.size} covered" }, style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(bottom = 8.dp).testTag("brief_coverage_line"))
                         SurfaceCard(radius = 18.dp, contentPadding = PaddingValues(0.dp), modifier = Modifier.testTag("brief_coverage")) {
                             content.requirements.forEachIndexed { i, r -> CoverageRow(r, content.coverageOf(r.id), onClick = { scope.launch { listState.animateScrollToItem(4) } }, divider = i > 0) }
                         }
@@ -253,7 +250,7 @@ fun ResearchSessionScreen(
                         if (s.showLog) SurfaceCard(radius = 18.dp, contentPadding = PaddingValues(16.dp), modifier = Modifier.testTag("brief_log")) {
                             content.runs.forEachIndexed { ri, run ->
                                 if (ri > 0) HorizontalDivider(color = c.line, modifier = Modifier.padding(vertical = 8.dp))
-                                ResearchStamp("${if (run.kind == com.lifeadmin.autopilot.ai.research2.RunKind.CONTINUATION) "Continuation" else "Run"} ${ri + 1} · ${run.mode.label} · ${AiConfig.label(run.model)} · ${run.outcome.label}")
+                                ResearchStamp("${if (run.kind == com.lifeadmin.autopilot.ai.research2.RunKind.CONTINUATION) "Continuation" else "Run"} ${ri + 1} · ${run.mode.label} · ${ModelNames.label(run.model)} · ${run.outcome.label}")
                                 run.stages.forEach { st ->
                                     Text("${st.kind.label}: ${st.result.name.lowercase()}" + (if (st.result == StageResult.DONE) " · ${st.searchesRun} of ${st.searchesAllowed} searches" + (if (st.calls > 1) " · ${st.calls} calls" else "") else "") + (st.note?.let { " — $it" } ?: ""), style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(top = 4.dp))
                                     st.queries.forEach { q -> Text("   “$q”", style = MaterialTheme.typography.bodySmall, color = c.ink) }
@@ -264,7 +261,6 @@ fun ResearchSessionScreen(
                                 Text("${run.usage.inputTokens} in · ${run.usage.outputTokens} out" + (if (run.usage.cacheReadTokens > 0) " · ${run.usage.cacheReadTokens} cached" else "") + " · ${run.usage.webSearches} searches · ${run.usage.elapsedMs / 1000} s" + (if (!run.usage.complete) " · usage incomplete" else ""), style = MaterialTheme.typography.labelSmall, color = c.ink3, modifier = Modifier.padding(top = 4.dp))
                             }
                             Text("Shared: ${content.shared.joinToString(", ").lowercase()}.", style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(top = 8.dp))
-                            LinkButton("See cost breakdown", onClick = onOpenUsage, modifier = Modifier.padding(top = 4.dp).testTag("brief_cost_link"))
                         }
                     }
                 }
@@ -276,7 +272,7 @@ fun ResearchSessionScreen(
                             content.claims.filter { n in it.refs }.forEach { add(it.text) }
                             if (content.answer.any { n in it.refs }) add("The answer")
                         }
-                        SourceSheet(src.legacy(), usedFor, researchedLine = "Researched ${Format.relative(session.updatedAt, s.now, zone)}", onDismiss = viewModel::closeSource, online = s.online)
+                        SourceSheet(src.legacy(), usedFor, researchedLine = "Researched ${Format.relative(session.updatedAt, s.now, zone)}", onDismiss = viewModel::closeSource)
                     }
                 }
                 s.candidateSheet?.let { id -> content.body.candidates.firstOrNull { it.id == id }?.let { cd -> CandidateSheet(cd, content, s, zone, viewModel) } }

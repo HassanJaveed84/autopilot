@@ -49,9 +49,9 @@ import com.lifeadmin.autopilot.ui.theme.AutopilotTheme
 import java.time.ZoneId
 
 /**
- * "Discuss in ChatGPT" on task detail (docs/CHATGPT_ROUND_TRIP_UX.md §2). Independent of the AI
- * settings: it needs no API key, makes no request and writes nothing; it only prepares text and hands
- * it to the ChatGPT app.
+ * "Discuss in ChatGPT" on task detail (docs/CHATGPT_ROUND_TRIP_UX.md §2), the app's one AI entry
+ * point: it needs no API key, makes no request and writes nothing; it only prepares text and hands it
+ * to the ChatGPT app.
  */
 @Composable
 internal fun DiscussCard(onClick: () -> Unit) {

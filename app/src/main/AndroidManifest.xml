@@ -14,11 +14,8 @@
     <uses-permission
         android:name="android.permission.FOREGROUND_SERVICE"
         tools:node="remove" />
-    <!-- Network is used ONLY for optional, user-triggered AI requests to api.anthropic.com
-         (M2, off by default). Tasks and reminders never need it. -->
-    <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Lets AI planning say "you're offline" before attempting a request. -->
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- No INTERNET permission: the app makes no network requests of its own. "Discuss in ChatGPT"
+         hands text to another app, and the /autopilot/import App Link is verified by the system. -->
 
     <!-- "Discuss in ChatGPT": lets the app see whether the ChatGPT app is installed to hand it shared
          text directly (Android 11+ package visibility). Nothing else about other apps is visible. -->

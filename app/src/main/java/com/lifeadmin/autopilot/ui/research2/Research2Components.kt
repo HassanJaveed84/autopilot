@@ -53,7 +53,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.lifeadmin.autopilot.ai.AiConfig
+import com.lifeadmin.autopilot.ai.ModelNames
 import com.lifeadmin.autopilot.ai.research2.Callout
 import com.lifeadmin.autopilot.ai.research2.CalloutKind
 import com.lifeadmin.autopilot.ai.research2.Candidate
@@ -68,8 +68,6 @@ import com.lifeadmin.autopilot.ai.research2.RequirementStatus
 import com.lifeadmin.autopilot.ai.research2.RequirementType
 import com.lifeadmin.autopilot.ai.research2.Research2Config
 import com.lifeadmin.autopilot.ai.research2.ResearchMode
-import com.lifeadmin.autopilot.ai.research2.ResearchModes
-import com.lifeadmin.autopilot.ai.research2.RunConfig
 import com.lifeadmin.autopilot.ai.research2.SessionOutcome
 import com.lifeadmin.autopilot.ai.research2.SourceRef2
 import com.lifeadmin.autopilot.ai.research2.StepLine
@@ -104,38 +102,6 @@ fun Modifier.dashedRoute(color: Color, radius: Dp2 = 18.dp): Modifier = drawBehi
 private typealias Dp2 = androidx.compose.ui.unit.Dp
 
 // ------------------------------------------------------------------ requirements & coverage
-
-/** Preflight row: type chip, label, remove. The id never changes. */
-@Composable
-fun RequirementRow(req: Requirement, onRemove: (() -> Unit)?, modifier: Modifier = Modifier, divider: Boolean = false) {
-    val c = AutopilotTheme.colors
-    if (divider) HorizontalDivider(color = c.line)
-    Row(
-        modifier.fillMaxWidth().heightIn(min = 52.dp).padding(start = 14.dp, end = 4.dp, top = 6.dp, bottom = 6.dp)
-            .semantics(mergeDescendants = true) { contentDescription = "${req.type.label}: ${req.label}" + if (!req.confident) ", unsure" else "" }
-            .testTag("req_${req.id}"),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        TypeChip(req.type)
-        Column(Modifier.weight(1f)) {
-            Text(req.label, style = MaterialTheme.typography.bodyLarge, color = c.ink)
-            if (!req.confident) Text("Unsure — edit or remove if this isn't what you meant", style = MaterialTheme.typography.labelSmall, color = c.route)
-        }
-        if (onRemove != null) RoundIconButton(AutopilotIcons.Close, contentDescription = "Remove ${req.label}", onClick = onRemove, modifier = Modifier.testTag("req_remove_${req.id}"))
-    }
-}
-
-@Composable
-private fun TypeChip(type: RequirementType) {
-    val c = AutopilotTheme.colors
-    val (text, bg, fg) = when (type) {
-        RequirementType.ITEM -> Triple("Item", c.inverse, c.onInverse)
-        RequirementType.CONSTRAINT -> Triple("Constraint", c.sunken, c.ink)
-        RequirementType.OUTPUT -> Triple("Output", c.routeSoft, c.onRouteSoft)
-        RequirementType.USER_ADDED -> Triple("Yours", c.sunken, c.ink)
-    }
-    Text(text.uppercase(), style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, letterSpacing = 0.4.sp), color = fg, modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(bg).padding(horizontal = 6.dp, vertical = 3.dp))
-}
 
 /** Status glyph: filled check / half circle / dotted ? / dotted − / split. Words come from [RequirementStatus.label]. */
 @Composable
@@ -282,96 +248,6 @@ fun OutcomeBanner(outcome: SessionOutcome, affected: List<String>, technical: St
 }
 
 // ------------------------------------------------------------------ modes & estimate
-
-/** Radio card: name, badge, description, meta (model · searches · time · estimate). */
-@Composable
-fun ModeCard(preset: ResearchModes.Preset, selected: Boolean, badge: String?, modelOverride: String?, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val c = AutopilotTheme.colors
-    val model = modelOverride?.takeIf { it.isNotBlank() } ?: preset.model
-    val est = com.lifeadmin.autopilot.ai.usage.CostCalculator.estimateRun(model, preset.searches, preset.outputTokens)
-    val shape = RoundedCornerShape(18.dp)
-    Column(
-        modifier.fillMaxWidth().clip(shape).background(if (selected) c.sunken else c.surface).border(if (selected) 2.dp else 1.dp, if (selected) c.ink else c.line, shape)
-            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick).padding(14.dp).testTag("mode_${preset.mode.name.lowercase()}"),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        FlowRow(verticalArrangement = Arrangement.spacedBy(4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                RadioButton(selected = selected, onClick = null)
-                Text(preset.mode.label, style = MaterialTheme.typography.titleMedium, color = c.ink)
-            }
-            if (badge != null) Text(badge, style = MaterialTheme.typography.labelSmall, color = c.onRouteSoft, modifier = Modifier.padding(top = 10.dp).clip(CircleShape).background(c.routeSoft).padding(horizontal = 8.dp, vertical = 2.dp))
-        }
-        Text(preset.blurb, style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(start = 32.dp))
-        ResearchStamp("${AiConfig.label(model)} · up to ${preset.searches} searches · ${preset.timeHint}" + (est?.let { " · ${UsdEstimate.formatRange(it.lowUsd, it.highUsd)}" } ?: ""), Modifier.padding(start = 32.dp))
-    }
-}
-
-/** "~$0.27–0.51 estimate" with the authorized budget and this month's spend, always labelled estimate. */
-@Composable
-fun EstimateLine(config: RunConfig, monthSoFar: UsdEstimate?, monthlyBudgetCents: Int, modifier: Modifier = Modifier, onOpenUsage: (() -> Unit)? = null) {
-    val c = AutopilotTheme.colors
-    val est = config.estimate()
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        // Wrapping row: at large text the month link drops to its own line instead of being squeezed.
-        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-            Text(est?.let { UsdEstimate.formatRange(it.lowUsd, it.highUsd) } ?: "No price table for this model", style = TimeTextStyle.copy(fontSize = 18.sp), color = c.ink, modifier = Modifier.testTag("estimate_value"))
-            Text("estimate", style = MaterialTheme.typography.labelSmall, color = c.ink2, modifier = Modifier.padding(top = 6.dp))
-        }
-        if (monthSoFar != null) {
-            val month = "This month ~${UsdEstimate.format(monthSoFar.usd)}" + (if (monthlyBudgetCents > 0) " of ${UsdEstimate.format(monthlyBudgetCents / 100.0)}" else "")
-            if (onOpenUsage != null) com.lifeadmin.autopilot.ui.components.LinkButton(month, onClick = onOpenUsage, modifier = Modifier.testTag("estimate_month"))
-            else Text(month, style = MaterialTheme.typography.labelSmall, color = c.ink2)
-        }
-        val limit = config.spendLimitCents
-        if (limit != null && est != null && est.highUsd > limit / 100.0) {
-            Text("May reach your ${UsdEstimate.format(limit / 100.0)} limit — it would stop early and keep what it found.", style = MaterialTheme.typography.bodySmall, color = c.onSignalSoft, modifier = Modifier.testTag("estimate_limit_warn"))
-        }
-    }
-}
-
-/** Adjust: model radio with relative token cost, search stepper 1–30, spending limit chips. No limit is the default. */
-@Composable
-fun AdjustPanel(
-    model: String, onModel: (String) -> Unit,
-    searches: Int, onSearches: (Int) -> Unit,
-    limitCents: Int?, onLimit: (Int?) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val c = AutopilotTheme.colors
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("Model", style = MaterialTheme.typography.titleSmall, color = c.ink)
-        Column(Modifier.clip(RoundedCornerShape(14.dp)).border(1.dp, c.line, RoundedCornerShape(14.dp))) {
-            AiConfig.MODELS.forEachIndexed { i, m ->
-                if (i > 0) HorizontalDivider(color = c.line)
-                Row(
-                    Modifier.fillMaxWidth().heightIn(min = 52.dp).selectable(selected = model == m.id, role = Role.RadioButton, onClick = { onModel(m.id) }).padding(horizontal = 10.dp, vertical = 6.dp).testTag("adjust_model_${m.id}"),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    RadioButton(selected = model == m.id, onClick = null)
-                    Column(Modifier.weight(1f).padding(start = 6.dp)) {
-                        Text(m.label, style = MaterialTheme.typography.bodyLarge, color = c.ink)
-                        Text(m.description.substringBefore(" (default)").substringBefore(", ~"), style = MaterialTheme.typography.bodySmall, color = c.ink2)
-                    }
-                    Text(PricingCatalog.relativeCost(m.id) ?: "?", style = TimeTextStyle.copy(fontSize = 13.sp), color = c.ink2)
-                }
-            }
-        }
-        Text("Search budget", style = MaterialTheme.typography.titleSmall, color = c.ink)
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            RoundIconButton(AutopilotIcons.Minus, contentDescription = "Fewer searches", onClick = { onSearches((searches - 1).coerceAtLeast(Research2Config.MIN_SEARCHES)) }, modifier = Modifier.testTag("adjust_fewer"))
-            Text("$searches searches max", style = TimeTextStyle.copy(fontSize = 16.sp), color = c.ink, modifier = Modifier.testTag("adjust_searches").semantics { stateDescription = "$searches" })
-            RoundIconButton(AutopilotIcons.Plus, contentDescription = "More searches", onClick = { onSearches((searches + 1).coerceAtMost(Research2Config.MAX_SEARCHES)) }, modifier = Modifier.testTag("adjust_more"))
-        }
-        Text("Unused searches aren't charged. More searches cover more candidates and cross-checks.", style = MaterialTheme.typography.bodySmall, color = c.ink2)
-        Text("Stop if this research would cost more than", style = MaterialTheme.typography.titleSmall, color = c.ink)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            ChoiceChip("No limit", selected = limitCents == null, onClick = { onLimit(null) }, modifier = Modifier.testTag("limit_none"))
-            Research2Config.SPEND_LIMIT_CHOICES_CENTS.forEach { cents -> ChoiceChip(UsdEstimate.format(cents / 100.0), selected = limitCents == cents, onClick = { onLimit(cents) }, modifier = Modifier.testTag("limit_$cents")) }
-        }
-        Text(if (limitCents == null) "No limit: the estimate above is what to expect; every search and call is still counted." else "If it gets close, research stops and keeps what it found. One search already in flight can still land. You can continue after.", style = MaterialTheme.typography.bodySmall, color = c.ink2)
-    }
-}
 
 // ------------------------------------------------------------------ template B: candidates & compare
 
@@ -545,38 +421,6 @@ fun StepList(steps: List<StepLine>, sources: List<SourceRef2>, onCite: (Int) -> 
 
 // ------------------------------------------------------------------ continue & stop sheets
 
-@Composable
-fun ContinueCard(openLabels: List<String>, estimate: UsdEstimate?, onContinue: () -> Unit, modifier: Modifier = Modifier) {
-    val c = AutopilotTheme.colors
-    SurfaceCard(radius = 18.dp, modifier = modifier.testTag("continue_card")) {
-        Text("Still open", style = MaterialTheme.typography.titleSmall, color = c.ink)
-        Text(if (openLabels.isEmpty()) "Everything you asked for is covered. More searches could still add candidates or confirm prices." else openLabels.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = c.ink2, modifier = Modifier.padding(top = 4.dp))
-        FlowRow(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            SecondaryButton("Continue researching…", onClick = onContinue, minHeight = 44.dp, modifier = Modifier.testTag("continue_button"))
-            estimate?.let { ResearchStamp("${UsdEstimate.formatRange(it.lowUsd, it.highUsd)} est.", Modifier.padding(top = 12.dp)) }
-        }
-        Text("Picks up from this result — nothing found so far is searched again. Starts only when you confirm.", style = MaterialTheme.typography.bodySmall, color = c.ink3, modifier = Modifier.padding(top = 6.dp))
-    }
-}
-
-@Composable
-fun StopSheet(searchesRun: Int, spentFloor: UsdEstimate, canKeep: Boolean, onKeep: () -> Unit, onDiscard: () -> Unit, onDismiss: () -> Unit) {
-    val c = AutopilotTheme.colors
-    AutopilotSheet(title = "Stop researching?", onDismiss = onDismiss, closeLabel = "Keep researching", footer = {
-        PrimaryButton(if (canKeep) "Stop and keep what's found" else "Stop (nothing to keep yet)", onClick = onKeep, modifier = Modifier.fillMaxWidth().testTag("stop_keep"))
-        SecondaryButton("Stop and discard", onClick = onDiscard, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("stop_discard"), minHeight = 48.dp)
-        SecondaryButton("Keep researching", onClick = onDismiss, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("stop_cancel"), minHeight = 48.dp)
-    }) {
-        Column(Modifier.fillMaxWidth().padding(bottom = 12.dp).testTag("stop_sheet"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                "$searchesRun ${if (searchesRun == 1) "search has" else "searches have"} run so far (≥ ${UsdEstimate.format(spentFloor.usd)} for searches and finished calls); tokens for the call in flight are billed too, exact count unknown. Stopping aborts the request now.",
-                style = MaterialTheme.typography.bodyMedium, color = c.ink2,
-            )
-            Text(if (canKeep) "Keeping saves a result marked Stopped, with what was gathered. Discarding saves nothing; the usage is still recorded." else "Nothing usable has arrived yet, so there is nothing to keep.", style = MaterialTheme.typography.bodySmall, color = c.ink2)
-        }
-    }
-}
-
 /** Mono stamp: THOROUGH · SONNET 5.5 · 7 SEARCHES · 1:20. */
 fun stampLine(mode: ResearchMode, model: String, searches: Int, elapsedMs: Long): String =
-    "${mode.label} · ${AiConfig.label(model).removePrefix("Claude ")} · $searches ${if (searches == 1) "search" else "searches"} · ${elapsedMs / 60_000}:${"%02d".format((elapsedMs / 1000) % 60)}"
+    "${mode.label} · ${ModelNames.label(model).removePrefix("Claude ")} · $searches ${if (searches == 1) "search" else "searches"} · ${elapsedMs / 60_000}:${"%02d".format((elapsedMs / 1000) % 60)}"

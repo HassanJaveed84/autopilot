@@ -90,7 +90,6 @@ fun TodayScreen(
     onOpenInbox: () -> Unit,
     onOpenSettings: () -> Unit = {},
     healthIssue: Boolean = false,
-    onOpenResearch: (() -> Unit)? = null,
     showHealth: Boolean = false,
     container: AppContainer? = null,
     onOpenHealth: () -> Unit = {},
@@ -130,7 +129,7 @@ fun TodayScreen(
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp),
     ) {
         item {
-            ScreenHeader(state.dateText, onOpenSettings, Modifier.statusBarsPadding(), showMark = true, healthDot = healthIssue, onOpenResearch = onOpenResearch)
+            ScreenHeader(state.dateText, onOpenSettings, Modifier.statusBarsPadding(), showMark = true, healthDot = healthIssue)
         }
         if (showHealth && container != null) item { HealthBanner(container, onFix = onOpenHealth) }
 
@@ -334,7 +333,7 @@ private fun EmptyToday(state: TodayUiState, onCaptureWithText: (String) -> Unit,
         )
         Text("A clear day.", style = MaterialTheme.typography.displayMedium, color = c.ink, modifier = Modifier.semantics { heading() }.testTag("today_headline"))
         Text(
-            if (state.showOnboarding) "Nothing needs you right now. Tell Autopilot what you mean to do — it remembers, and keeps after you until it's done. Everything stays on this phone: no account, no cloud. AI planning is optional and off unless you set it up. Dismissing a notification never completes a task."
+            if (state.showOnboarding) "Nothing needs you right now. Tell Autopilot what you mean to do — it remembers, and keeps after you until it's done. Everything stays on this phone: no account, no cloud. Dismissing a notification never completes a task."
             else "Nothing needs you right now. Tell Autopilot what you mean to do — it remembers, and keeps after you until it's done.",
             style = MaterialTheme.typography.bodyLarge, color = c.ink2,
         )

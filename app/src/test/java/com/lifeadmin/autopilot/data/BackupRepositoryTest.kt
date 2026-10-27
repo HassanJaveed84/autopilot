@@ -178,18 +178,16 @@ class BackupRepositoryTest {
     @Test fun sessionsAndUsageRoundTripWithHonestLedgerRules() = runTest {
         val repo = TaskRepository(source, clock, SequentialIds(), { CHICAGO }, ScheduleCoordinator.Direct)
         val id = repo.createTask(NewTask("Supplements"))
-        val r = com.lifeadmin.autopilot.ai.research2.RequirementExtractor.extract(com.lifeadmin.autopilot.testing.Research2Fixtures.SUPPLEMENTS_REQUEST)
-        val registry = com.lifeadmin.autopilot.ai.research2.SourceRegistry2(runId = "run1")
-        val fx = com.lifeadmin.autopilot.testing.Research2Fixtures.supplementsGather()
-        var content = com.lifeadmin.autopilot.ai.research2.SessionContent("t", com.lifeadmin.autopilot.testing.Research2Fixtures.SUPPLEMENTS_REQUEST, r.template, r.requirements, outcome = com.lifeadmin.autopilot.ai.research2.SessionOutcome.INTERRUPTED)
-        content = com.lifeadmin.autopilot.ai.research2.SessionAssembler.merge(content, com.lifeadmin.autopilot.ai.research2.ContractParser.parse(fx.segments, fx.searches, registry, r.requirements, 1L), registry.sources()).copy(outcome = com.lifeadmin.autopilot.ai.research2.SessionOutcome.INCOMPLETE_EVIDENCE)
+        val content = com.lifeadmin.autopilot.testing.SavedResearchFixtures.m3a2Session()
         val sessions = com.lifeadmin.autopilot.data.repository.ResearchSessionRepository(source)
         sessions.save(com.lifeadmin.autopilot.ai.research2.ResearchSession("s1", id, clock.now(), clock.now(), content))
         sessions.recordApplied("s1", listOf(com.lifeadmin.autopilot.ai.research2.AppliedProposal("p-1", 5L, "Buy multivitamin", "st1")))
-        val ledger = com.lifeadmin.autopilot.data.repository.RoomUsageLedger(source)
-        val base = com.lifeadmin.autopilot.ai.usage.UsageRecord("u1", com.lifeadmin.autopilot.ai.usage.UsageFeature.RESEARCH, "claude-sonnet-5-5", clock.now(), runId = "run1", sessionId = "s1", taskId = id, stage = "GATHER")
-        ledger.record(com.lifeadmin.autopilot.ai.usage.UsageRecord.priced(base, com.lifeadmin.autopilot.ai.usage.MeasuredUsage(41_000, 2_600, 0, 0, 0, 5), com.lifeadmin.autopilot.ai.usage.CallOutcome.COMPLETE, 42_000, "msg_1"))
-        ledger.record(com.lifeadmin.autopilot.ai.usage.UsageRecord("u2", com.lifeadmin.autopilot.ai.usage.UsageFeature.PLANNING, "claude-haiku-5-5", clock.now()))
+        // Usage rows the retired AI features recorded: a priced research call and a planning call left in flight.
+        source.usageDao().upsert(com.lifeadmin.autopilot.testing.SavedResearchFixtures.usageRow(
+            "u1", "RESEARCH", "claude-sonnet-5-5", clock.now(), "COMPLETE", "COMPLETE", sessionId = "s1", taskId = id, runId = "run1", stage = "GATHER",
+            inputTokens = 41_000, outputTokens = 2_600, webSearches = 5, estimatedMicros = 158_000, providerMessageId = "msg_1",
+        ))
+        source.usageDao().upsert(com.lifeadmin.autopilot.testing.SavedResearchFixtures.usageRow("u2", "PLANNING", "claude-haiku-5-5", clock.now(), "IN_FLIGHT", "UNKNOWN"))
 
         val json = backup(source).exportJson()
         assertTrue(json.contains("\"sessions\"") && json.contains("\"usage\""))
@@ -199,9 +197,9 @@ class BackupRepositoryTest {
         val restored = com.lifeadmin.autopilot.data.repository.ResearchSessionRepository(target).get("s1")!!
         assertEquals(content, restored.content)
         assertEquals(listOf("p-1"), restored.applied.map { it.proposalId })
-        val tl = com.lifeadmin.autopilot.data.repository.RoomUsageLedger(target)
+        val tl = target.usageDao()
         assertEquals(158_000L, tl.get("u1")!!.estimatedMicros)
-        assertEquals("an in-flight row can never finish after a restore", com.lifeadmin.autopilot.ai.usage.CallOutcome.INTERRUPTED, tl.get("u2")!!.outcome)
+        assertEquals("an in-flight row can never finish after a restore", com.lifeadmin.autopilot.ai.usage.CallOutcome.INTERRUPTED.name, tl.get("u2")!!.outcome)
         // Append-only: a changed record in a re-import does not overwrite the existing row.
         val altered = json.replace("\"estimatedMicros\": 158000", "\"estimatedMicros\": 1")
         assertTrue(altered != json)

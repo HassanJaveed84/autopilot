@@ -1,6 +1,6 @@
 package com.lifeadmin.autopilot.share.applink
 
-import com.lifeadmin.autopilot.ai.ProposalValidator
+import com.lifeadmin.autopilot.domain.proposal.MatchKey
 import com.lifeadmin.autopilot.domain.model.ContentOrigin
 import com.lifeadmin.autopilot.domain.proposal.ItemKind
 import com.lifeadmin.autopilot.domain.proposal.ItemValue
@@ -67,5 +67,5 @@ object HandoffProposalBridge {
         )
     }
 
-    private fun key(s: String) = ProposalValidator.normalizeKeyPublic(s)
+    private fun key(s: String) = MatchKey.of(s)
 }

@@ -85,18 +85,6 @@ android {
                     test.systemProperty("robolectric.dependency.repo.url", it)
                 }
                 test.maxHeapSize = "2g"
-                // Development-only paid evaluation (src/test/.../liveeval): never part of a normal or CI run.
-                if (providers.gradleProperty("liveEval").orNull == "true") {
-                    test.filter.includeTestsMatching("com.lifeadmin.autopilot.liveeval.*")
-                    test.systemProperty("liveEval.enabled", "true")
-                    test.systemProperty("liveEval.outDir", layout.buildDirectory.dir("live-eval").get().asFile.absolutePath)
-                    providers.gradleProperty("liveEvalRerun").orNull?.let { test.systemProperty("liveEval.rerun", it) }
-                    // Which validation scenario LiveResearchEval runs (V1-fact … V5-follow-up); none = nothing runs.
-                    providers.gradleProperty("liveEvalScenario").orNull?.let { test.systemProperty("liveEval.scenario", it) }
-                    test.outputs.upToDateWhen { false }
-                } else {
-                    test.exclude("**/liveeval/**")
-                }
             }
         }
     }
@@ -146,8 +134,6 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
-    // Optional AI planning (M2). Only the ai/anthropic package may import com.anthropic.*.
-    implementation(libs.anthropic.java)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
@@ -165,7 +151,6 @@ dependencies {
     testImplementation(libs.androidx.test.ext.junit)
     testImplementation(libs.androidx.room.testing)
     testImplementation(libs.androidx.work.testing)
-    testImplementation(libs.okhttp.mockwebserver)
     testImplementation(platform(libs.androidx.compose.bom))
     testImplementation(libs.androidx.compose.ui.test.junit4)
 

@@ -14,7 +14,7 @@ import javax.xml.parsers.DocumentBuilderFactory
 
 /**
  * Verifies security/permission properties of the source manifest (SPEC §5.4, §8):
- * network only for optional AI planning (TLS-only config), no sensitive permissions, no
+ * no network permission (a TLS-only config stays as defence in depth), no sensitive permissions, no
  * USE_EXACT_ALARM, non-exported internal receivers, backups disabled.
  */
 class ManifestContractTest {
@@ -32,12 +32,11 @@ class ManifestContractTest {
         assertEquals(
             setOf(
                 "android.permission.POST_NOTIFICATIONS", "android.permission.RECEIVE_BOOT_COMPLETED", "android.permission.SCHEDULE_EXACT_ALARM",
-                // M2: only for optional, user-triggered AI planning requests.
-                "android.permission.INTERNET", "android.permission.ACCESS_NETWORK_STATE",
             ),
             permissions,
         )
-        listOf("USE_EXACT_ALARM", "READ_CONTACTS", "ACCESS_FINE_LOCATION", "RECORD_AUDIO", "READ_SMS", "READ_CALENDAR", "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", "USE_FULL_SCREEN_INTENT")
+        // Built-in AI is retired: the app makes no network requests of its own.
+        listOf("INTERNET", "ACCESS_NETWORK_STATE", "USE_EXACT_ALARM", "READ_CONTACTS", "ACCESS_FINE_LOCATION", "RECORD_AUDIO", "READ_SMS", "READ_CALENDAR", "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", "USE_FULL_SCREEN_INTENT")
             .forEach { p -> assertFalse(p, permissions.any { it.endsWith(".$p") }) }
     }
 

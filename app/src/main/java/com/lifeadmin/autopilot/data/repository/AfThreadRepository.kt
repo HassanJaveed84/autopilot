@@ -1,12 +1,10 @@
 package com.lifeadmin.autopilot.data.repository
 
 import androidx.room.withTransaction
-import com.lifeadmin.autopilot.ai.aifirst.AfAssociation
 import com.lifeadmin.autopilot.ai.aifirst.AfJson
 import com.lifeadmin.autopilot.ai.aifirst.AfStatus
 import com.lifeadmin.autopilot.ai.aifirst.AfThread
 import com.lifeadmin.autopilot.ai.aifirst.AfThreadMeta
-import com.lifeadmin.autopilot.ai.aifirst.AfThreadStore
 import com.lifeadmin.autopilot.ai.aifirst.AfTurn
 import com.lifeadmin.autopilot.ai.investigation.TurnState
 import com.lifeadmin.autopilot.data.local.AppDatabase
@@ -42,16 +40,17 @@ data class ResearchThreadSummary(
  * tables as the M4 threads (no schema change). A thread is AI-first when its meta JSON carries
  * `engine`; its turns are stored with kind [AfJson.TURN_KIND] and [AfTurn] JSON. Legacy threads are
  * never rewritten here: they stay readable through [InvestigationRepository]. Unreadable rows are
- * skipped, never deleted.
+ * skipped, never deleted. Built-in research is retired: the app only reads, settles and deletes
+ * threads now; [create] and [saveTurn] keep the stored format writable for backups and tests.
  */
-open class AfThreadRepository(private val db: AppDatabase) : AfThreadStore {
+open class AfThreadRepository(private val db: AppDatabase) {
     private val dao get() = db.investigationDao()
     private val turns get() = db.investigationTurnDao()
     private val legacy = InvestigationRepository(db)
 
     fun observe(id: String): Flow<AfThread?> = combine(dao.observe(id), turns.observeForInvestigation(id)) { e, t -> e?.let { decode(it, t) } }
 
-    override suspend fun get(id: String): AfThread? = dao.get(id)?.let { decode(it, turns.forInvestigation(id)) }
+    suspend fun get(id: String): AfThread? = dao.get(id)?.let { decode(it, turns.forInvestigation(id)) }
 
     /** True when the thread exists and was written by the earlier engine. */
     suspend fun isLegacy(id: String): Boolean = dao.get(id)?.let { AfJson.decodeMeta(it.meta) == null } ?: false
@@ -66,7 +65,7 @@ open class AfThreadRepository(private val db: AppDatabase) : AfThreadStore {
         turns.upsert(turnEntity(id, first))
     }
 
-    override suspend fun saveTurn(threadId: String, turn: AfTurn) = db.withTransaction {
+    suspend fun saveTurn(threadId: String, turn: AfTurn) = db.withTransaction {
         val e = dao.get(threadId) ?: return@withTransaction
         check(AfJson.decodeMeta(e.meta) != null) { "legacy research is read-only" }
         turns.upsert(turnEntity(threadId, turn))
@@ -75,20 +74,23 @@ open class AfThreadRepository(private val db: AppDatabase) : AfThreadStore {
         dao.upsert(e.copy(updatedAt = Instant.ofEpochMilli(maxOf(e.updatedAt.toEpochMilli(), turn.finishedAtMs ?: turn.startedAtMs ?: turn.createdAtMs)), state = latest?.state ?: e.state, turnCount = all.size))
     }
 
-    /** Explicit association, recorded with its reason; never implied by where the thread was opened. */
-    suspend fun associate(threadId: String, taskId: String?, note: String, at: Instant) = db.withTransaction {
-        val e = dao.get(threadId) ?: return@withTransaction
-        val meta = AfJson.decodeMeta(e.meta)
-        val raw = if (meta != null) AfJson.encodeMeta(meta.copy(associations = meta.associations + AfAssociation(at.toEpochMilli(), taskId, note))) else {
-            // A legacy thread keeps its own meta format; only the association event is added.
-            val m = com.lifeadmin.autopilot.ai.investigation.InvestigationJson.decodeMeta(e.meta) ?: return@withTransaction
-            com.lifeadmin.autopilot.ai.investigation.InvestigationJson.encodeMeta(m.copy(associations = m.associations + com.lifeadmin.autopilot.ai.investigation.AssociationEvent(at.toEpochMilli(), taskId, note)))
-        }
-        dao.associate(threadId, taskId, raw, at)
-    }
-
     /** AI-first threads with a turn still marked running: after a process death they can never finish. */
     suspend fun running(): List<AfThread> = dao.running().mapNotNull { decode(it, turns.forInvestigation(it.id)) }
+
+    /**
+     * App start: a turn still marked running belongs to a process that died (built-in research is
+     * retired, so nothing runs any more). It becomes Interrupted with everything its last checkpoint
+     * held; the cost of a call that was in flight is unknown and shown as such. Nothing is re-sent.
+     */
+    suspend fun settleInterrupted(at: Instant): Int {
+        var n = 0
+        for (t in running()) for (turn in t.turns.filter { it.status == AfStatus.RUNNING }) {
+            saveTurn(t.id, turn.copy(status = AfStatus.INTERRUPTED, costIsFloor = true, finishedAtMs = at.toEpochMilli(),
+                note = "Interrupted: the app closed while this was running. " + (if (turn.hasAnswer) "What arrived before is kept. " else "Nothing had arrived yet. ") + "A call may have been in flight; its cost is unknown."))
+            n++
+        }
+        return n + legacy.settleRunning(at)
+    }
 
     suspend fun delete(id: String) = dao.delete(id)
     suspend fun deleteForTask(taskId: String) = dao.deleteForTask(taskId)

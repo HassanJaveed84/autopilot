@@ -209,7 +209,7 @@ internal fun EmptyList(title: String, body: String, icon: ImageVector = Autopilo
     }
 }
 
-/** Inbox triage: each note gets four big next moves (Nudge me · Plan with AI · Waiting on… · Done already) and Delete. */
+/** Inbox triage: each note gets three big next moves (Nudge me · Waiting on… · Done already) and Delete. */
 @Composable
 fun InboxScreen(
     viewModel: TaskListViewModel,
@@ -217,7 +217,6 @@ fun InboxScreen(
     onOpenTask: (String) -> Unit,
     onOpenSettings: () -> Unit = {},
     healthIssue: Boolean = false,
-    onPlanTask: (String) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val settings by viewModel.appSettings.collectAsStateWithLifecycle()
@@ -248,7 +247,6 @@ fun InboxScreen(
                 val stacked = LocalDensity.current.fontScale >= 1.3f
                 val triage: List<@Composable RowScope.() -> Unit> = listOf(
                     { TriageButton(AutopilotIcons.Bell, "Nudge me", c.signalSoft, c.onSignalSoft, Modifier.weight(1f).testTag("inbox_nudge")) { nudging = s } },
-                    { TriageButton(AutopilotIcons.Route, "Plan with AI", c.routeSoft, c.onRouteSoft, Modifier.weight(1f).testTag("inbox_plan")) { onPlanTask(s.task.id) } },
                     { TriageButton(AutopilotIcons.Hourglass, "Waiting on…", c.sunken, c.ink, Modifier.weight(1f).testTag("inbox_waiting")) { waiting = s } },
                     { TriageButton(AutopilotIcons.Check, "Done already", c.sunken, c.ink, Modifier.weight(1f).testTag("inbox_done")) { doneWithUndo(scope, snackbar, viewModel, s, "Marked done. Nice.") } },
                 )

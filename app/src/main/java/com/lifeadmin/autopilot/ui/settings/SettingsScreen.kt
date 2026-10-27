@@ -78,7 +78,8 @@ private val hhmm = DateTimeFormatter.ofPattern("HH:mm")
 
 /**
  * Settings: reminder health first, then Follow-up defaults (preset, snooze button, quiet hours),
- * Privacy, AI planning, Appearance, Your data and About. Every control from the previous
+ * Privacy, Appearance, Your data (with saved research from earlier versions, when there is some)
+ * and About. Every control from the previous
  * Settings tab is still here; the layout follows the Flight Plan groups.
  */
 @Composable
@@ -89,10 +90,13 @@ fun SettingsScreen(
     showHealth: Boolean = false,
     container: AppContainer? = null,
     onOpenHealth: () -> Unit = {},
-    onOpenAiSettings: () -> Unit = {},
+    /** Read-only research saved by earlier versions; the row shows only when there is some. */
+    onOpenResearch: () -> Unit = {},
     onOpenLicenses: () -> Unit = {},
 ) {
     val s by viewModel.settings.collectAsStateWithLifecycle()
+    val savedResearch by viewModel.savedResearchCount.collectAsStateWithLifecycle()
+    val legacyKey by viewModel.legacyKeyStored.collectAsStateWithLifecycle()
     val c = AutopilotTheme.colors
     val context = LocalContext.current
     var pickStart by remember { mutableStateOf(false) }
@@ -100,6 +104,7 @@ fun SettingsScreen(
     var pickBedtime by remember { mutableStateOf(false) }
     var confirmExport by remember { mutableStateOf(false) }
     var confirmImport by remember { mutableStateOf(false) }
+    var confirmRemoveKey by remember { mutableStateOf(false) }
     var presetSheet by remember { mutableStateOf(false) }
     var snoozeOpen by rememberSaveable { mutableStateOf(false) }
     var quietOpen by rememberSaveable { mutableStateOf(false) }
@@ -201,29 +206,6 @@ fun SettingsScreen(
             }
         }
 
-        item { SectionTitle("AI planning · optional", Modifier.padding(top = 28.dp, bottom = 10.dp, start = 4.dp)) }
-        item {
-            val modelLabel = com.lifeadmin.autopilot.ai.AiConfig.label(com.lifeadmin.autopilot.ai.AiConfig.modelOrDefault(s.aiModel))
-            RowGroup {
-                GroupRow(
-                    title = "Plan with AI",
-                    subtitle = if (s.aiEnabled) "On · $modelLabel · uses your own Anthropic API key" else "Off. Turn a sentence into a reviewed plan, using your own Anthropic API key.",
-                    icon = AutopilotIcons.Route, iconTint = c.route, iconBackground = c.routeSoft,
-                    onClick = onOpenAiSettings,
-                    minHeight = 76.dp,
-                    chevron = false,
-                    trailing = {
-                        Text(
-                            if (s.aiEnabled) "On" else "Off", style = MaterialTheme.typography.labelMedium,
-                            color = if (s.aiEnabled) c.onRouteSoft else c.ink2,
-                            modifier = Modifier.clip(RoundedCornerShape(14.dp)).background(if (s.aiEnabled) c.routeSoft else c.sunken).padding(horizontal = 10.dp, vertical = 5.dp).testTag("ai_status"),
-                        )
-                    },
-                    modifier = Modifier.testTag("open_ai_settings"),
-                )
-            }
-        }
-
         item { SectionTitle("Appearance", Modifier.padding(top = 28.dp, bottom = 10.dp, start = 4.dp)) }
         item {
             Row(
@@ -255,6 +237,35 @@ fun SettingsScreen(
                 }
             }
         }
+        // Left behind by the retired built-in AI: shown only while there is something to see or remove.
+        if (savedResearch > 0 || legacyKey) {
+            item {
+                RowGroup(Modifier.padding(top = 12.dp)) {
+                    if (savedResearch > 0) {
+                        GroupRow(
+                            title = "Saved research",
+                            subtitle = "$savedResearch from earlier versions · read-only",
+                            icon = AutopilotIcons.Research,
+                            onClick = onOpenResearch,
+                            minHeight = 68.dp,
+                            modifier = Modifier.testTag("settings_saved_research"),
+                        )
+                    }
+                    if (legacyKey) {
+                        GroupRow(
+                            title = "Remove the old Anthropic API key",
+                            subtitle = "Kept on this phone from built-in AI. Autopilot no longer uses it.",
+                            icon = AutopilotIcons.Lock,
+                            onClick = { confirmRemoveKey = true },
+                            minHeight = 68.dp,
+                            divider = savedResearch > 0,
+                            chevron = false,
+                            modifier = Modifier.testTag("settings_remove_key"),
+                        )
+                    }
+                }
+            }
+        }
 
         item {
             Column(Modifier.padding(top = 28.dp, start = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -262,7 +273,7 @@ fun SettingsScreen(
                     Icon(AutopilotIcons.Route, contentDescription = null, tint = c.ink, modifier = Modifier.size(18.dp))
                     Text("Life Admin Autopilot", style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp), color = c.ink)
                 }
-                Text("Works fully offline. No account, analytics or ads. The network is used only when you ask AI planning for something.", style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = c.ink2)
+                Text("Works fully offline. No account, analytics or ads, and no network access: Discuss in ChatGPT hands a task to the ChatGPT app only when you tap it.", style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = c.ink2)
                 Text("Version ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall, color = c.ink3)
                 TextButton(onClick = onOpenLicenses, contentPadding = PaddingValues(0.dp), modifier = Modifier.testTag("open_licenses")) {
                     Text("Open-source licences (fonts)", style = MaterialTheme.typography.labelLarge, color = c.ink2)
@@ -321,6 +332,15 @@ fun SettingsScreen(
             text = { Text("Tasks are merged by ID: new ones are added and newer versions replace older ones. Invalid files are rejected without changing anything. Reminders are rescheduled afterwards.") },
             confirmButton = { TextButton(onClick = { confirmImport = false; importLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }) { Text("Choose file") } },
             dismissButton = { TextButton(onClick = { confirmImport = false }) { Text("Cancel") } },
+        )
+    }
+    if (confirmRemoveKey) {
+        AlertDialog(
+            onDismissRequest = { confirmRemoveKey = false },
+            title = { Text("Remove the API key?") },
+            text = { Text("Deletes the encrypted Anthropic key from this phone. Your tasks and saved research stay. Revoke the key in the Anthropic Console too if you no longer use it.") },
+            confirmButton = { TextButton(onClick = { confirmRemoveKey = false; viewModel.removeLegacyKey() }, modifier = Modifier.testTag("settings_remove_key_confirm")) { Text("Remove") } },
+            dismissButton = { TextButton(onClick = { confirmRemoveKey = false }) { Text("Cancel") } },
         )
     }
 }

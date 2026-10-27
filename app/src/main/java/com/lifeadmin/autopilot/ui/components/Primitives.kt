@@ -39,12 +39,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextDecoration
-import com.lifeadmin.autopilot.ui.theme.LocalAutopilot
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
@@ -55,7 +53,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -232,18 +229,6 @@ fun StatusPill(text: String, icon: ImageVector?, background: Color, foreground: 
     }
 }
 
-/** Dashed indigo pill: "Draft · not saved". */
-@Composable
-fun DraftPill(text: String, modifier: Modifier = Modifier) {
-    val c = AutopilotTheme.colors
-    Text(
-        text,
-        style = MaterialTheme.typography.labelMedium,
-        color = c.route,
-        modifier = modifier.provenanceBorder(suggested = true, radius = 14.dp).padding(horizontal = 12.dp, vertical = 6.dp),
-    )
-}
-
 // ---------------------------------------------------------------- surfaces
 
 /** Card surface with a hairline edge; the default container for grouped content. */
@@ -398,12 +383,6 @@ fun TimeText(text: String, modifier: Modifier = Modifier, color: Color = Color.U
     Text(text, style = TimeTextStyle.copy(fontSize = size.sp, lineHeight = (size + 4).sp), color = if (color == Color.Unspecified) AutopilotTheme.colors.ink else color, modifier = modifier, maxLines = 1, softWrap = false)
 }
 
-/** Small uppercase kind tag ("ADD STEP · FIRST"). */
-@Composable
-fun KindTag(text: String, color: Color, modifier: Modifier = Modifier) {
-    Text(text.uppercase(), style = MaterialTheme.typography.labelSmall, color = color, modifier = modifier)
-}
-
 /** Body copy in ink-2. */
 @Composable
 fun Muted(text: String, modifier: Modifier = Modifier, style: TextStyle = MaterialTheme.typography.bodyMedium) {
@@ -423,41 +402,10 @@ fun NoteLine(icon: ImageVector, text: String, modifier: Modifier = Modifier, col
 
 // ---------------------------------------------------------------- provenance
 
-/**
- * The "suggested" edge: dashed indigo for anything AI drafted, solid grey once the user edited
- * it. Also exposed in words through [androidx.compose.ui.semantics.stateDescription] by callers.
- */
-fun Modifier.provenanceBorder(suggested: Boolean, radius: Dp = 14.dp, width: Dp = 1.5.dp): Modifier = composed {
-    val c = LocalAutopilot.current
-    drawBehind {
-        val stroke = Stroke(
-            width = width.toPx(),
-            pathEffect = if (suggested) PathEffect.dashPathEffect(floatArrayOf(10f, 7f)) else null,
-        )
-        drawRoundRect(color = if (suggested) c.route else c.lineStrong, cornerRadius = CornerRadius(radius.toPx()), style = stroke)
-    }
-}
-
 /** Dashed hairline edge in ink (ghost rows, inbox prompt). */
 fun Modifier.dashedBorder(color: Color, radius: Dp, width: Dp = 1.5.dp): Modifier = drawBehind {
     val stroke = Stroke(width = width.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 7f)))
     drawRoundRect(color = color, cornerRadius = CornerRadius(radius.toPx()), style = stroke)
-}
-
-/** Provenance label with a dot: "Suggested" (route) or "Edited by you" (ink). */
-@Composable
-fun ProvenanceTag(suggested: Boolean, modifier: Modifier = Modifier, suggestedText: String = "Suggested", editedText: String = "Edited by you") {
-    val c = AutopilotTheme.colors
-    val color = if (suggested) c.route else c.ink2
-    val text = if (suggested) suggestedText else editedText
-    Row(
-        modifier.semantics { stateDescription = if (suggested) "Suggested by AI" else "Edited by you" },
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Box(Modifier.size(8.dp).clip(CircleShape).background(if (suggested) c.route else c.ink))
-        Text(text, style = MaterialTheme.typography.labelSmall, color = color)
-    }
 }
 
 /** Progress bar for checklist completion (96×4dp). */

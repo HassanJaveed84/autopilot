@@ -2,11 +2,10 @@ package com.lifeadmin.autopilot.ai.aifirst
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import java.security.MessageDigest
 
 /*
- * Research Online (AI-first). The data a research thread keeps: what the person approved, what the
- * provider returned and what the app measured. Nothing here is a model's description of itself.
+ * Research Online (AI-first), retired: the data a saved research thread keeps, decoded for its
+ * read-only screens. What the person approved, what the provider returned and what the app measured. Nothing here is a model's description of itself.
  * Stored as JSON in the existing `investigations` / `investigation_turns` tables (turn kind
  * [AfJson.TURN_KIND]); older M4 turns in the same tables stay readable through the legacy path.
  */
@@ -173,23 +172,6 @@ data class AfThread(
     val answered: List<AfTurn> get() = turns.sortedBy { it.index }.filter { it.ran && it.hasAnswer }
 }
 
-/** Persistence seam: Room in the app ([com.lifeadmin.autopilot.data.repository.AfThreadRepository]), in memory in tests. */
-interface AfThreadStore {
-    suspend fun get(id: String): AfThread?
-    /** Writes one turn (insert or replace by id) and refreshes the thread's list columns. */
-    suspend fun saveTurn(threadId: String, turn: AfTurn)
-}
-
-class InMemoryAfThreadStore : AfThreadStore {
-    private val threads = java.util.concurrent.ConcurrentHashMap<String, AfThread>()
-    fun put(thread: AfThread) { threads[thread.id] = thread }
-    override suspend fun get(id: String) = threads[id]
-    override suspend fun saveTurn(threadId: String, turn: AfTurn) {
-        val t = threads[threadId] ?: AfThread(threadId, null, 0, 0, AfThreadMeta(turn.question, turn.question), emptyList())
-        threads[threadId] = t.copy(turns = (t.turns.filterNot { it.id == turn.id } + turn).sortedBy { it.index })
-    }
-}
-
 object AfJson {
     const val TURN_KIND = "AI_FIRST"
     const val ENGINE = "ai-first"
@@ -203,6 +185,4 @@ object AfJson {
         if (!json.parseToJsonElement(raw).let { it is kotlinx.serialization.json.JsonObject && it.containsKey("engine") }) return null
         json.decodeFromString(AfThreadMeta.serializer(), raw)
     }.getOrNull()
-
-    fun sha256(text: String): String = MessageDigest.getInstance("SHA-256").digest(text.toByteArray()).joinToString("") { "%02x".format(it) }
 }

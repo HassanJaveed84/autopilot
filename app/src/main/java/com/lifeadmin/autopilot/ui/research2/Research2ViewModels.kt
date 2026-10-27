@@ -3,7 +3,6 @@ package com.lifeadmin.autopilot.ui.research2
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.lifeadmin.autopilot.ai.NetworkStatus
 import com.lifeadmin.autopilot.ai.research2.ResearchSession
 import com.lifeadmin.autopilot.ai.research2.ResearchSessionStore
 import com.lifeadmin.autopilot.core.AppClock
@@ -31,7 +30,6 @@ data class Session2Ui(
     val loading: Boolean = true,
     val session: ResearchSession? = null,
     val details: TaskDetails? = null,
-    val online: Boolean? = null,
     val now: Instant = Instant.EPOCH,
     val sourceSheet: Int? = null,
     val candidateSheet: String? = null,
@@ -53,7 +51,6 @@ class Session2ViewModel(
     store: ResearchSessionStore,
     tasks: TaskRepository,
     settings: SettingsRepository,
-    private val network: NetworkStatus,
     private val clock: AppClock,
     private val proposalSets: com.lifeadmin.autopilot.ai.research2.ResearchProposalSets,
     sets: com.lifeadmin.autopilot.data.repository.ProposalSetRepository,
@@ -70,7 +67,7 @@ class Session2ViewModel(
     }
 
     val state: StateFlow<Session2Ui> = combine(sessionAndSets, tasks.observeDetails(taskId), local, settings.settings) { (s, pending), d, l, st ->
-        l.copy(loading = false, session = s, details = d, online = network.isOnline(), now = clock.now(), settings = st, pendingProposals = pending)
+        l.copy(loading = false, session = s, details = d, now = clock.now(), settings = st, pendingProposals = pending)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Session2Ui())
 
     /** Finds or creates the canonical proposal set for this session's latest run, then hands off to Proposal Review. */

@@ -1,6 +1,6 @@
 package com.lifeadmin.autopilot.testing
 
-import com.lifeadmin.autopilot.ai.context.TurnConfig
+import com.lifeadmin.autopilot.ai.investigation.TurnConfig
 import com.lifeadmin.autopilot.ai.investigation.Answer
 import com.lifeadmin.autopilot.ai.investigation.AnswerSegment
 import com.lifeadmin.autopilot.ai.investigation.AskKind

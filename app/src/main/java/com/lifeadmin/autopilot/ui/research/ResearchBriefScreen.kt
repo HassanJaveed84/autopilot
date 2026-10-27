@@ -31,7 +31,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.lifeadmin.autopilot.ai.AiConfig
+import com.lifeadmin.autopilot.ai.ModelNames
 import com.lifeadmin.autopilot.ai.research.Finding
 import com.lifeadmin.autopilot.ui.components.AutopilotIcons
 import com.lifeadmin.autopilot.ui.components.ButtonPair
@@ -56,7 +56,6 @@ fun ResearchBriefScreen(
     viewModel: ResearchBriefViewModel,
     zone: ZoneId,
     onBack: () -> Unit,
-    onResearchAgain: (question: String) -> Unit,
 ) {
     val s by viewModel.state.collectAsStateWithLifecycle()
     val c = AutopilotTheme.colors
@@ -101,8 +100,7 @@ fun ResearchBriefScreen(
                 LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(padding).testTag("brief_list"), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 32.dp)) {
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            if (s.isStale) ResearchBanner("This brief is from ${Format.relativeLower(brief.createdAt, s.now, zone)}", "Fares, times and rules may have changed since.", warn = true, tag = "brief_stale", action = { LinkButton("Research again", onClick = { onResearchAgain(brief.question) }, modifier = Modifier.padding(top = 4.dp).testTag("brief_again")) })
-                            if (s.online == false) ResearchBanner("You’re offline", "This saved brief is fully readable; links open once you’re back online.", icon = AutopilotIcons.WifiOff, tag = "brief_offline")
+                            if (s.isStale) ResearchBanner("This brief is from ${Format.relativeLower(brief.createdAt, s.now, zone)}", "Fares, times and rules may have changed since.", warn = true, tag = "brief_stale")
                             if (!content.verified) ResearchBanner("Nothing here could be verified", "The answer came back without any source citations, so everything below is labelled as Claude’s suggestion. Check it before you rely on it.", warn = true, icon = AutopilotIcons.Warn, tag = "brief_unverified")
                             if (content.truncated) ResearchBanner("The answer was cut short", "Anthropic stopped before the brief was complete. What arrived is shown; parts may be missing.", icon = AutopilotIcons.Warn, tag = "brief_truncated")
                             if (content.injectionNoticed) ResearchBanner("A web page tried to give instructions", "Page text is information only. The line was dropped and nothing was done.", icon = AutopilotIcons.Shield, tag = "brief_injection")
@@ -177,14 +175,13 @@ fun ResearchBriefScreen(
                                 }
                             }
                             ResearchStamp(
-                                "${AiConfig.label(content.usage.model)} · ${content.usage.inputTokens} in · ${content.usage.outputTokens} out · ${content.usage.webSearches} ${if (content.usage.webSearches == 1) "search" else "searches"} · ${content.usage.elapsedMs / 1000} s" + if (content.usage.continuedOnce) " · continued once" else "",
+                                "${ModelNames.label(content.usage.model)} · ${content.usage.inputTokens} in · ${content.usage.outputTokens} out · ${content.usage.webSearches} ${if (content.usage.webSearches == 1) "search" else "searches"} · ${content.usage.elapsedMs / 1000} s" + if (content.usage.continuedOnce) " · continued once" else "",
                                 Modifier.padding(top = 6.dp).testTag("brief_usage"),
                             )
                             Text("Shared: ${content.shared.joinToString(", ").lowercase()}.", style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(top = 8.dp))
                             Text("Page text was treated as information only — instructions found on web pages are never followed. Billed by Anthropic to your key; the app shows counts, not prices.", style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(top = 4.dp))
                         }
                         Spacer(Modifier.heightIn(min = 8.dp))
-                        LinkButton("Research again with this question", onClick = { onResearchAgain(brief.question) }, modifier = Modifier.padding(top = 12.dp).testTag("brief_again_bottom"))
                     }
                 }
                 s.sourceSheet?.let { n ->
@@ -200,7 +197,7 @@ fun ResearchBriefScreen(
                             }
                             if (content.quickAnswer.any { n in it.refs }) add("The quick answer")
                         }
-                        SourceSheet(src, usedFor, researchedLine = "Researched ${Format.relative(brief.createdAt, s.now, zone)}", onDismiss = viewModel::closeSource, online = s.online)
+                        SourceSheet(src, usedFor, researchedLine = "Researched ${Format.relative(brief.createdAt, s.now, zone)}", onDismiss = viewModel::closeSource)
                     }
                 }
             }

@@ -51,7 +51,7 @@ data class Requirement(
     /**
      * A preference the person allows exceptions to ("brand preference", "ideally under $150"). A
      * violation of a soft constraint is shown as an exception for the person to decide on; a violation
-     * of a strict one keeps the research from being complete. See [CompletionPolicy].
+     * of a strict one keeps the research from being complete. It was validated in code when the session ran.
      */
     val soft: Boolean = false,
     /**
@@ -62,7 +62,7 @@ data class Requirement(
 )
 
 /**
- * Completion semantics (validated in code by [CompletionPolicy], never taken from the model alone):
+ * Completion semantics (validated in code when the session ran, never taken from the model alone):
  *
  * | status            | investigated | evidence supports an answer | satisfied for "Complete" |
  * |-------------------|--------------|-----------------------------|--------------------------|
@@ -489,7 +489,7 @@ data class SessionContent(
     fun source(n: Int): SourceRef2? = sources.firstOrNull { it.n == n }
 
     companion object {
-        /** 2: statuses validated by [CompletionPolicy]; model-typed `src=` pointers kept apart from provider citations. */
+        /** 2: statuses validated in code; model-typed `src=` pointers kept apart from provider citations. */
         const val CONTRACT_VERSION = 2
     }
 }

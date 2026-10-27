@@ -1,6 +1,6 @@
 package com.lifeadmin.autopilot.share.applink
 
-import com.lifeadmin.autopilot.ai.ProposalValidator
+import com.lifeadmin.autopilot.domain.proposal.MatchKey
 import com.lifeadmin.autopilot.core.AppClock
 import com.lifeadmin.autopilot.data.repository.NewTask
 import com.lifeadmin.autopilot.data.repository.ProposalApplier
@@ -85,5 +85,5 @@ class HandoffImporter(
         return tasks.createCapturedTask(NewTask(handoff.task, status = TaskStatus.INBOX), customPolicy = null, deadline = null, taskId = id).first
     }
 
-    private fun key(s: String) = ProposalValidator.normalizeKeyPublic(s)
+    private fun key(s: String) = MatchKey.of(s)
 }

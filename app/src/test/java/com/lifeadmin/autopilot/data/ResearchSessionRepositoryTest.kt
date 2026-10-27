@@ -3,30 +3,20 @@ package com.lifeadmin.autopilot.data
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.lifeadmin.autopilot.ai.research2.AppliedProposal
 import com.lifeadmin.autopilot.ai.research2.Claim
-import com.lifeadmin.autopilot.ai.research2.ContractParser
 import com.lifeadmin.autopilot.ai.research2.ProvenanceTag
 import com.lifeadmin.autopilot.ai.research2.Research2Config
-import com.lifeadmin.autopilot.ai.research2.RequirementExtractor
 import com.lifeadmin.autopilot.ai.research2.ResearchSession
-import com.lifeadmin.autopilot.ai.research2.SessionAssembler
 import com.lifeadmin.autopilot.ai.research2.SessionContent
 import com.lifeadmin.autopilot.ai.research2.SessionOutcome
 import com.lifeadmin.autopilot.ai.research2.SourceRef2
-import com.lifeadmin.autopilot.ai.research2.SourceRegistry2
-import com.lifeadmin.autopilot.ai.usage.CallOutcome
-import com.lifeadmin.autopilot.ai.usage.MeasuredUsage
-import com.lifeadmin.autopilot.ai.usage.UsageFeature
-import com.lifeadmin.autopilot.ai.usage.UsageRecord
-import com.lifeadmin.autopilot.ai.usage.UsageStatus
 import com.lifeadmin.autopilot.data.local.AppDatabase
 import com.lifeadmin.autopilot.data.local.InvestigationEntity
 import com.lifeadmin.autopilot.data.local.TaskEntity
 import com.lifeadmin.autopilot.data.repository.ResearchSessionRepository
-import com.lifeadmin.autopilot.data.repository.RoomUsageLedger
 import com.lifeadmin.autopilot.domain.model.DeadlineType
 import com.lifeadmin.autopilot.domain.model.Priority
 import com.lifeadmin.autopilot.domain.model.TaskStatus
-import com.lifeadmin.autopilot.testing.Research2Fixtures
+import com.lifeadmin.autopilot.testing.SavedResearchFixtures
 import com.lifeadmin.autopilot.testing.inMemoryDatabase
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -44,26 +34,17 @@ import java.time.Instant
 class ResearchSessionRepositoryTest {
     private lateinit var db: AppDatabase
     private lateinit var repo: ResearchSessionRepository
-    private lateinit var ledger: RoomUsageLedger
     private val now = Instant.parse("2026-10-20T15:00:00Z")
 
     @Before fun setUp() = runTest {
         db = inMemoryDatabase()
         repo = ResearchSessionRepository(db)
-        ledger = RoomUsageLedger(db)
         db.taskDao().insert(TaskEntity("t1", "Supplements", null, TaskStatus.ACTIONABLE, Priority.NORMAL, now, now, null, null, DeadlineType.NONE, null, null, null, null, true, null, null))
     }
 
     @After fun tearDown() { db.close() }
 
-    private fun content(): SessionContent {
-        val r = RequirementExtractor.extract(Research2Fixtures.SUPPLEMENTS_REQUEST)
-        val registry = SourceRegistry2(runId = "run1")
-        var s = SessionContent("t", Research2Fixtures.SUPPLEMENTS_REQUEST, r.template, r.requirements, outcome = SessionOutcome.INTERRUPTED)
-        val fx = Research2Fixtures.supplementsGather()
-        s = SessionAssembler.merge(s, ContractParser.parse(fx.segments, fx.searches, registry, r.requirements, now.toEpochMilli()), registry.sources())
-        return SessionAssembler.settlePending(s).copy(outcome = SessionOutcome.INCOMPLETE_EVIDENCE)
-    }
+    private fun content(): SessionContent = SavedResearchFixtures.m3a2Session()
 
     private fun session(id: String = "s1", c: SessionContent = content()) = ResearchSession(id, "t1", now, now, c)
 
@@ -120,43 +101,5 @@ class ResearchSessionRepositoryTest {
         assertNull("the legacy view needs a task; the thread itself is still there", repo.get("s1"))
         assertNull(db.investigationDao().get("s1")!!.taskId)
         assertEquals(1, db.investigationTurnDao().forInvestigation("s1").size)
-    }
-
-    @Test fun roomLedgerRecordsDeduplicatesSettlesAndPrunes() = runTest {
-        val base = UsageRecord("c1", UsageFeature.RESEARCH, "claude-sonnet-5-5", now, runId = "r1", sessionId = "s1", taskId = "t1", stage = "GATHER")
-        ledger.record(base)
-        assertEquals(CallOutcome.IN_FLIGHT, ledger.get("c1")!!.outcome)
-        ledger.record(UsageRecord.priced(base, MeasuredUsage(41_000, 2_600, 0, 0, 0, 5), CallOutcome.COMPLETE, 42_000, "msg_1"))
-        val r = ledger.get("c1")!!
-        assertEquals(UsageStatus.COMPLETE, r.usageStatus)
-        assertEquals(5, r.usage!!.webSearches)
-        assertEquals(158_000L, r.estimatedMicros)
-        // Duplicate provider response under a new id replaces, never adds.
-        ledger.record(UsageRecord.priced(base.copy(id = "c1-dup"), MeasuredUsage(41_000, 2_600, 0, 0, 0, 5), CallOutcome.COMPLETE, 42_000, "msg_1"))
-        assertEquals(1, ledger.forSession("s1").size)
-        assertEquals("c1-dup", ledger.forSession("s1")[0].id)
-        // Process death: in-flight rows are settled as interrupted/unknown.
-        ledger.record(UsageRecord("c2", UsageFeature.PLANNING, "claude-haiku-5-5", now.plusSeconds(60)))
-        assertEquals(1, ledger.settleInterrupted())
-        assertEquals(CallOutcome.INTERRUPTED, ledger.get("c2")!!.outcome)
-        assertNull(ledger.get("c2")!!.estimatedMicros)
-        assertEquals(2, ledger.observeAll().first().size)
-        assertEquals(1, ledger.deleteOlderThan(now.plusSeconds(30)))
-        assertEquals(listOf("c2"), ledger.getAll().map { it.id })
-        assertFalse(ledger.restoreIfAbsent(UsageRecord("c2", UsageFeature.RESEARCH, "x", now)))
-        assertEquals("append-only: an existing row is never overwritten by a restore", UsageFeature.PLANNING, ledger.get("c2")!!.feature)
-        ledger.deleteAll()
-        assertEquals(0, ledger.getAll().size)
-    }
-
-    @Test fun restoreNeverDuplicatesAProviderResponseUnderANewId() = runTest {
-        val base = UsageRecord("u1", UsageFeature.RESEARCH, "claude-sonnet-5-5", now, runId = "r1", sessionId = "s1")
-        ledger.record(UsageRecord.priced(base, MeasuredUsage(1_000, 100, 0, 0, 0, 1), CallOutcome.COMPLETE, 1_000, "msg_same"))
-        // A backup made on another phone holds the same provider response under a different local id.
-        assertFalse(ledger.restoreIfAbsent(UsageRecord.priced(base.copy(id = "u1-from-backup"), MeasuredUsage(1_000, 100, 0, 0, 0, 1), CallOutcome.COMPLETE, 1_000, "msg_same")))
-        assertEquals(listOf("u1"), ledger.getAll().map { it.id })
-        assertTrue(ledger.restoreIfAbsent(UsageRecord.priced(base.copy(id = "u2"), MeasuredUsage(500, 50, 0, 0, 0, 0), CallOutcome.COMPLETE, 800, "msg_other")))
-        assertEquals(2, ledger.getAll().size)
-        assertEquals("totals count each provider response once", 2, com.lifeadmin.autopilot.ai.usage.UsageTotals.of(ledger.getAll()).calls)
     }
 }

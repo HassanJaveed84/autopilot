@@ -4,8 +4,8 @@ import kotlin.math.roundToLong
 
 /**
  * Versioned price table, copied from platform.claude.com/docs/en/about-claude/pricing on 2026-10-20.
- * Prices are USD per million tokens; web search is USD per 1,000 searches. Every estimate the app
- * shows names the version it used, so a stale table is visible rather than silently wrong.
+ * Built-in AI is retired; the table only prices the usage that saved research recorded, for its
+ * read-only screens. Prices are USD per million tokens; web search is USD per 1,000 searches.
  */
 data class ModelPrice(
     val model: String,
@@ -21,7 +21,6 @@ data class ModelPrice(
 
 object PricingCatalog {
     const val VERSION = "2026-10"
-    const val SOURCE = "platform.claude.com/docs/en/about-claude/pricing (2026-10-20)"
 
     /** $10 per 1,000 searches; errored searches are not billed. */
     const val WEB_SEARCH_USD = 0.01
@@ -35,14 +34,6 @@ object PricingCatalog {
     )
 
     fun price(model: String): ModelPrice? = MODELS.firstOrNull { it.model == model.trim() }
-
-    /** "~20×" style relation to the cheapest model, for the Adjust sheet. */
-    fun relativeCost(model: String): String? {
-        val p = price(model) ?: return null
-        val base = MODELS.minOf { it.input }
-        val ratio = p.input / base
-        return if (ratio < 1.5) "1×" else "~${ratio.roundToLong()}×"
-    }
 }
 
 /** Token and search counts of one API call, each nullable when the provider never reported it. */
@@ -61,8 +52,6 @@ data class MeasuredUsage(
 /** USD in micro-dollars (1 USD = 1,000,000) so sums never lose cents. */
 data class UsdEstimate(val micros: Long, val lowMicros: Long = micros, val highMicros: Long = micros, val priceVersion: String = PricingCatalog.VERSION) {
     val usd: Double get() = micros / 1_000_000.0
-    val lowUsd: Double get() = lowMicros / 1_000_000.0
-    val highUsd: Double get() = highMicros / 1_000_000.0
     operator fun plus(o: UsdEstimate) = UsdEstimate(micros + o.micros, lowMicros + o.lowMicros, highMicros + o.highMicros, priceVersion)
 
     companion object {
@@ -95,18 +84,6 @@ object CostCalculator {
         micros += perMTok(usage.cacheReadTokens, tier.cacheRead)
         micros += (usage.webSearches ?: 0) * PricingCatalog.WEB_SEARCH_USD * 1_000_000
         return Priced(UsdEstimate(micros.roundToLong()), partial = usage.anyUnknown)
-    }
-
-    /**
-     * Pre-run estimate (design d5): searches at list price, ~6k base + ~11k input tokens per search result
-     * set, the mode's output budget; shown as a 0.7×–1.3× range because the token figure is a calibration guess.
-     */
-    fun estimateRun(model: String, maxSearches: Int, outputTokens: Long, baseInputTokens: Long = 6_000, inputPerSearch: Long = 11_000): UsdEstimate? {
-        val p = PricingCatalog.price(model) ?: return null
-        val input = baseInputTokens + maxSearches * inputPerSearch
-        val tier = if (p.longContextThreshold != null && p.longContext != null && input > p.longContextThreshold) p.longContext else p
-        val mid = perMTok(input, tier.input) + perMTok(outputTokens, tier.output) + maxSearches * PricingCatalog.WEB_SEARCH_USD * 1_000_000
-        return UsdEstimate(mid.roundToLong(), (mid * 0.7).roundToLong(), (mid * 1.3).roundToLong())
     }
 
     private fun perMTok(tokens: Long?, usdPerMTok: Double): Double = (tokens ?: 0L) * usdPerMTok

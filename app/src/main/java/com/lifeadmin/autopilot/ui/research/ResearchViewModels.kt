@@ -1,9 +1,7 @@
 package com.lifeadmin.autopilot.ui.research
 
-import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.lifeadmin.autopilot.ai.NetworkStatus
 import com.lifeadmin.autopilot.core.AppClock
 import com.lifeadmin.autopilot.data.repository.ResearchBrief
 import com.lifeadmin.autopilot.data.repository.ResearchRepository
@@ -22,7 +20,6 @@ data class BriefUi(
     val loading: Boolean = true,
     val brief: ResearchBrief? = null,
     val details: TaskDetails? = null,
-    val online: Boolean? = null,
     val now: Instant = Instant.EPOCH,
     val sourceSheet: Int? = null,
 ) {
@@ -30,19 +27,17 @@ data class BriefUi(
 }
 
 class ResearchBriefViewModel(
-    private val saved: SavedStateHandle,
     val taskId: String,
     val briefId: String,
     briefs: ResearchRepository,
     tasks: TaskRepository,
-    private val network: NetworkStatus,
     private val clock: AppClock,
 ) : ViewModel() {
     private val sheet = MutableStateFlow<Int?>(null)
 
     /** Read-only (M4): a legacy brief is shown as it was saved; nothing here can change the task. */
     val state: StateFlow<BriefUi> = combine(briefs.observe(briefId), tasks.observeDetails(taskId), sheet) { b, d, sh ->
-        BriefUi(loading = false, brief = b, details = d, online = network.isOnline(), now = clock.now(), sourceSheet = sh)
+        BriefUi(loading = false, brief = b, details = d, now = clock.now(), sourceSheet = sh)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BriefUi())
 
     fun openSource(n: Int) { sheet.value = n }
