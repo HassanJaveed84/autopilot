@@ -1,5 +1,9 @@
 package com.lifeadmin.autopilot
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -98,6 +102,18 @@ class ManifestContractTest {
         assertEquals("singleTop", activity.attr("launchMode"))
         assertEquals("", activity.attr("taskAffinity"))
         assertTrue(activity.hasAttributeNS(ns, "taskAffinity"))
+    }
+
+    /** The site file the spike publishes names only the release package, with well-formed SHA-256 fingerprints. */
+    @Test fun assetLinksNameOnlyTheReleasePackage() {
+        val statements = Json.parseToJsonElement(File("../applink-site/.well-known/assetlinks.json").readText()).jsonArray.map { it.jsonObject }
+        val statement = statements.single()
+        assertEquals(listOf("delegate_permission/common.handle_all_urls"), statement.getValue("relation").jsonArray.map { it.jsonPrimitive.content })
+        val target = statement.getValue("target").jsonObject
+        assertEquals("android_app", target.getValue("namespace").jsonPrimitive.content)
+        assertEquals(BuildConfig.APPLICATION_ID.removeSuffix(".debug"), target.getValue("package_name").jsonPrimitive.content)
+        val prints = target.getValue("sha256_cert_fingerprints").jsonArray.map { it.jsonPrimitive.content }
+        assertTrue(prints.isNotEmpty() && prints.all { Regex("([0-9A-F]{2}:){31}[0-9A-F]{2}").matches(it) })
     }
 
     @Test fun networkIsTlsOnlyWithSystemCertificates() {
