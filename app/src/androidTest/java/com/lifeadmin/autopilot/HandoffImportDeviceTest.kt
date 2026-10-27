@@ -39,7 +39,9 @@ class HandoffImportDeviceTest {
     private val container get() = (context.applicationContext as LifeAdminApp).container
     private lateinit var taskId: String
 
+    /** A tapped link as ChatGPT sends it; Android would report ChatGPT as the referrer, so the test says so explicitly. */
     private fun view(link: String) = Intent(Intent.ACTION_VIEW, Uri.parse(link)).addCategory(Intent.CATEGORY_BROWSABLE).setPackage(context.packageName)
+        .putExtra(Intent.EXTRA_REFERRER, Uri.parse("android-app://com.openai.chatgpt"))
     private fun waitFor(tag: String, text: String) = compose.waitUntil(15_000) {
         compose.onAllNodes(hasTestTag(tag) and hasText(text, substring = true), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
     }
@@ -79,19 +81,23 @@ class HandoffImportDeviceTest {
         }
     }
 
-    /** The same link tapped again while the screen is open reaches it (singleTop) and reopens the same pending set. */
+    /** A second link while the screen is open reaches the same instance (singleTop), and a repeat of the first adds nothing. */
     @Test fun aRepeatedLinkReachesTheOpenScreenAndAddsNothing() {
-        val link = LinkHandoff("Choose a coffee grinder", emptyList(), listOf("Compare retailer prices"), emptyList(), taskId)
-            .toUrl(BuildConfig.APP_LINK_HOST, ImportLinkParser.PATH)
+        fun link(step: String) = LinkHandoff("Choose a coffee grinder", emptyList(), listOf(step), emptyList(), taskId).toUrl(BuildConfig.APP_LINK_HOST, ImportLinkParser.PATH)
+        val first = link("Compare retailer prices")
+        val second = link("Check warranty coverage")
         val monitor = instrumentation.addMonitor(HandoffImportActivity::class.java.name, null, false)
-        context.startActivity(view(link).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        context.startActivity(view(first).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         val activity = checkNotNull(instrumentation.waitForMonitorWithTimeout(monitor, 15_000))
         try {
             waitFor("handoff_destination_title", "Choose a coffee grinder (device test)")
-            context.startActivity(view(link).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            context.startActivity(view(second).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            compose.waitUntil(15_000) { activity.intent?.dataString == second }
+            assertTrue("the open screen took the link, no new instance", !activity.isFinishing && !activity.isDestroyed)
+            context.startActivity(view(first).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            compose.waitUntil(15_000) { activity.intent?.dataString == first }
             compose.waitUntil(15_000) { compose.onAllNodes(hasTestTag("handoff_repeat"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
-            assertEquals(1, monitor.hits)
-            assertEquals(1, runBlocking { container.proposalSets.getForTarget(taskId) }.size)
+            assertEquals(2, runBlocking { container.proposalSets.getForTarget(taskId) }.size)
             assertTrue(runBlocking { container.taskRepository.getSteps(taskId) }.isEmpty())
         } finally {
             instrumentation.removeMonitor(monitor)

@@ -12,6 +12,12 @@ intact, and Close returns to the conversation.
 
 ## 1. Status
 
+> **Update 2026-10-27.** The owner reports that Test A and Test B both passed on the Galaxy S24 Ultra (Test B
+> carried one decision, two steps and one note, including punctuation that needed percent-encoding), and that
+> Close returned to the conversation. The production round trip built on this format, with an optional `r=`
+> task reference and a separate `/autopilot/import` route, is in `docs/CHATGPT_ROUND_TRIP_REPORT.md`. The rows
+> below are the record as of this experiment.
+
 | Gate | State |
 | --- | --- |
 | URL format (`ap=v1`) and validator | **Done**, unit-tested (§3, §5) |
