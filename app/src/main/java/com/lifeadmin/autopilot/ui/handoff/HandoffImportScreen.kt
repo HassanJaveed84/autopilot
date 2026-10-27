@@ -202,9 +202,12 @@ fun DestinationCard(
 @Composable
 private fun Outcome(title: String, body: String, tag: String, extra: (@Composable () -> Unit)? = null) {
     val c = AutopilotTheme.colors
-    Column(Modifier.fillMaxWidth().padding(top = 8.dp).clip(RoundedCornerShape(16.dp)).background(c.surface).padding(16.dp).testTag(tag), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(title, style = MaterialTheme.typography.titleMedium, color = c.ink, modifier = Modifier.semantics { heading() })
-        Text(body, style = MaterialTheme.typography.bodyMedium, color = c.ink2)
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp).clip(RoundedCornerShape(16.dp)).background(c.surface).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        // Title and explanation read as one announcement; the optional action stays its own target.
+        Column(Modifier.semantics(mergeDescendants = true) { heading() }.testTag(tag), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, color = c.ink)
+            Text(body, style = MaterialTheme.typography.bodyMedium, color = c.ink2)
+        }
         extra?.invoke()
     }
 }

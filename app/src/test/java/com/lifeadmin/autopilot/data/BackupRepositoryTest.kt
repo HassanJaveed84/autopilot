@@ -394,6 +394,38 @@ class BackupRepositoryTest {
         fresh.close()
     }
 
+    /** A ChatGPT handoff set, partly applied, round-trips with its source, its pending items and its provenance. */
+    @Test fun aChatGptHandoffSetAndItsProvenanceRoundTrip() = runTest {
+        val repo = TaskRepository(source, clock, SequentialIds(), { CHICAGO }, ScheduleCoordinator.Direct)
+        val taskId = repo.createTask(NewTask("Choose a coffee grinder", status = TaskStatus.ACTIONABLE))
+        val sets = com.lifeadmin.autopilot.data.repository.ProposalSetRepository(source)
+        val applier = com.lifeadmin.autopilot.data.repository.ProposalApplier(source, repo, sets, clock, SequentialIds("x"))
+        val importer = com.lifeadmin.autopilot.share.applink.HandoffImporter(repo, sets, applier, clock)
+        val handoff = com.lifeadmin.autopilot.share.applink.LinkHandoff("Choose a coffee grinder", listOf("Choose Model A"), listOf("Check warranty"), emptyList(), taskId)
+        val setId = (importer.prepare(handoff, taskId) as com.lifeadmin.autopilot.share.applink.HandoffPrepared.Ready).setId
+        val step = sets.get(setId)!!.items.first { it.kind == com.lifeadmin.autopilot.domain.proposal.ItemKind.ADD_STEP }
+        applier.apply(setId, listOf(com.lifeadmin.autopilot.domain.proposal.ApplyChoice(step.id)))
+
+        val json = backup(source).exportJson()
+        assertTrue(json.contains("\"source\": \"HANDOFF\"") || json.contains("\"source\":\"HANDOFF\""))
+        backup(target).importJson(json)
+        val imported = com.lifeadmin.autopilot.data.repository.ProposalSetRepository(target)
+        val set = imported.get(setId)!!
+        assertEquals(com.lifeadmin.autopilot.domain.proposal.ProposalSource.HANDOFF, set.source)
+        assertEquals(sets.get(setId), set)
+        assertEquals(com.lifeadmin.autopilot.domain.proposal.ItemStatus.APPLIED, set.item(step.id)!!.status)
+        assertEquals(1, set.pending.size)
+        val applied = target.stepDao().getForTask(taskId).single { it.title == "Check warranty" }
+        assertEquals("USER", applied.origin)
+        assertEquals(com.lifeadmin.autopilot.domain.proposal.ProposalSource.HANDOFF, imported.provenance(applied.provenanceId!!)!!.source)
+        // The same link after a restore finds the restored set instead of proposing it again.
+        val targetRepo = TaskRepository(target, clock, SequentialIds("t"), { CHICAGO }, ScheduleCoordinator.Direct)
+        val targetImporter = com.lifeadmin.autopilot.share.applink.HandoffImporter(
+            targetRepo, imported, com.lifeadmin.autopilot.data.repository.ProposalApplier(target, targetRepo, imported, clock, SequentialIds("y")), clock,
+        )
+        assertEquals(com.lifeadmin.autopilot.share.applink.HandoffPrepared.Ready(taskId, setId, existed = true), targetImporter.prepare(handoff, taskId))
+    }
+
     @Test fun aProposalSetForAMissingTargetRejectsTheImport() = runTest {
         val json = seed()
         val tampered = json.replace("\"provenance\": []", "\"provenance\": []").replace(

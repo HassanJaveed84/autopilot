@@ -133,7 +133,7 @@ private fun ShareRow(label: String, value: String, checked: Boolean?, tag: Strin
     val c = AutopilotTheme.colors
     val base = Modifier.fillMaxWidth().heightIn(min = 52.dp)
     Row(
-        (if (checked == null) base else base.toggleable(value = checked, role = Role.Switch, onValueChange = onChange)).padding(vertical = 6.dp).testTag(tag),
+        (if (checked == null) base.semantics(mergeDescendants = true) {} else base.toggleable(value = checked, role = Role.Switch, onValueChange = onChange)).padding(vertical = 6.dp).testTag(tag),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Column(Modifier.weight(1f)) {

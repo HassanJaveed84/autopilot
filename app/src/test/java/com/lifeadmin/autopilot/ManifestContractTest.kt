@@ -73,7 +73,7 @@ class ManifestContractTest {
     /** The ChatGPT share target (proof of concept) accepts only plain-text SEND; the launcher entry is unchanged. */
     @Test fun shareTargetAcceptsOnlyPlainTextAndTheLauncherIsUnchanged() {
         val activities = elements("activity").associateBy { it.attr("name") }
-        assertEquals(setOf(".MainActivity", ".ui.share.ShareImportActivity", ".ui.applink.AppLinkTestActivity"), activities.keys)
+        assertEquals(setOf(".MainActivity", ".ui.share.ShareImportActivity", ".ui.applink.AppLinkTestActivity", ".ui.handoff.HandoffImportActivity"), activities.keys)
         fun filter(a: Element, tag: String) = a.getElementsByTagName(tag).let { nl -> (0 until nl.length).map { (nl.item(it) as Element) } }
         val main = activities.getValue(".MainActivity")
         assertEquals(listOf("android.intent.action.MAIN"), filter(main, "action").map { it.attr("name") })
@@ -87,8 +87,21 @@ class ManifestContractTest {
     }
 
     /** The App Link spike claims one https route on one host, verified, and nothing broader. */
-    @Test fun appLinkFilterClaimsOnlyTheVerifiedTestRoute() {
-        val activity = elements("activity").single { it.attr("name") == ".ui.applink.AppLinkTestActivity" }
+    @Test fun appLinkFilterClaimsOnlyTheVerifiedTestRoute() = assertAppLinkRoute(".ui.applink.AppLinkTestActivity", "/autopilot/test")
+
+    /** The ChatGPT round trip's import route: same host and shape, its own exact path, its own task. */
+    @Test fun importFilterClaimsOnlyTheImportRoute() = assertAppLinkRoute(".ui.handoff.HandoffImportActivity", "/autopilot/import")
+
+    /** "Discuss in ChatGPT" may see exactly one other package: the ChatGPT app. */
+    @Test fun onlyTheChatGptPackageIsQueried() {
+        val queries = elements("queries").single()
+        val packages = queries.getElementsByTagName("package").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).attr("name") } }
+        assertEquals(listOf("com.openai.chatgpt"), packages)
+        assertEquals(0, queries.getElementsByTagName("intent").length)
+    }
+
+    private fun assertAppLinkRoute(name: String, path: String) {
+        val activity = elements("activity").single { it.attr("name") == name }
         fun Element.all(tag: String) = getElementsByTagName(tag).let { nl -> (0 until nl.length).map { (nl.item(it) as Element) } }
         val filter = activity.all("intent-filter").single()
         assertEquals("true", filter.attr("autoVerify"))
@@ -97,7 +110,7 @@ class ManifestContractTest {
         val data = filter.all("data").single()
         assertEquals("https", data.attr("scheme"))
         assertEquals("\${appLinkHost}", data.attr("host"))
-        assertEquals("/autopilot/test", data.attr("path"))
+        assertEquals(path, data.attr("path"))
         listOf("pathPrefix", "pathPattern", "pathAdvancedPattern", "port").forEach { assertTrue(it, data.attr(it).isEmpty()) }
         assertEquals("singleTop", activity.attr("launchMode"))
         assertEquals("persistNever", activity.attr("persistableMode"))
