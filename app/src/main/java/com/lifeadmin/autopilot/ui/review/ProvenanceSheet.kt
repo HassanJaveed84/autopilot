@@ -28,7 +28,12 @@ import java.util.Locale
 fun ProvenanceSheet(record: ProvenanceRecord, zone: ZoneId, onDismiss: () -> Unit, onOpenInvestigation: ((String) -> Unit)?) {
     val c = AutopilotTheme.colors
     val fmt = DateTimeFormatter.ofPattern("d MMM uuuu, HH:mm", Locale.ENGLISH)
-    AutopilotSheet(title = if (record.source == ProposalSource.RESEARCH) "From research" else "From Plan with AI", onDismiss = onDismiss, modifier = Modifier.testTag("provenance_sheet")) {
+    val title = when (record.source) {
+        ProposalSource.RESEARCH -> "From research"
+        ProposalSource.PLANNING -> "From Plan with AI"
+        ProposalSource.HANDOFF -> "From ChatGPT"
+    }
+    AutopilotSheet(title = title, onDismiss = onDismiss, modifier = Modifier.testTag("provenance_sheet")) {
         Column(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
             if (record.appliedText.isNotBlank()) Text(record.appliedText, style = MaterialTheme.typography.bodyLarge, color = c.ink, modifier = Modifier.testTag("provenance_text"))
             Text(

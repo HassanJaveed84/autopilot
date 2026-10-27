@@ -6,23 +6,34 @@ import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 
 /*
- * Structured handoff experiment on the App Link test route (docs/CHATGPT_APP_LINK_HANDOFF.md).
- * Display-only: a decoded handoff is shown on the test screen and nowhere else. It is not the
- * `autopilot.handoff.v1` JSON format and never reaches HandoffParser or Proposal Review.
+ * Structured `ap=v1` handoff fragment (docs/CHATGPT_APP_LINK_HANDOFF.md, docs/CHATGPT_ROUND_TRIP_REPORT.md).
+ * On the test route it is display-only; on the import route (ImportLinkParser) a validated handoff
+ * becomes a pending proposal set through HandoffProposalBridge, never a direct task write.
+ * It is not the `autopilot.handoff.v1` JSON format and never reaches HandoffParser.
  *
  * Fragment contract, `ap=v1` first, then `key=value` pairs joined by `&`:
+ *   r  opaque task reference, optional, at most once (added for the round trip; links without it stay valid)
  *   t  task title, exactly once
  *   d  decision, s  step, n  note: each 0..n times, order kept, at least one item overall
  * Values are percent-encoded UTF-8, decoded exactly once. Keys are lowercase and case-sensitive.
  */
 
-data class LinkHandoff(val task: String, val decisions: List<String>, val steps: List<String>, val notes: List<String>) {
+data class LinkHandoff(
+    val task: String,
+    val decisions: List<String>,
+    val steps: List<String>,
+    val notes: List<String>,
+    /** Copied by ChatGPT from the prompt; only an identifier, never trusted on its own ([TaskRef]). */
+    val ref: String? = null,
+) {
     /** Every `key=value` pair in the fragment, including `ap=v1`. */
-    val fieldCount: Int get() = 2 + decisions.size + steps.size + notes.size
+    val fieldCount: Int get() = 2 + (if (ref != null) 1 else 0) + decisions.size + steps.size + notes.size
 
     /** The canonical link: every byte outside the URL-unreserved set is percent-encoded. */
-    fun toUrl(host: String): String = buildString {
-        append("https://").append(host).append(TestLinkParser.PATH).append("#ap=v1&t=").append(HandoffFragment.encode(task))
+    fun toUrl(host: String, path: String = TestLinkParser.PATH): String = buildString {
+        append("https://").append(host).append(path).append("#ap=v1")
+        ref?.let { append("&r=").append(HandoffFragment.encode(it)) }
+        append("&t=").append(HandoffFragment.encode(task))
         decisions.forEach { append("&d=").append(HandoffFragment.encode(it)) }
         steps.forEach { append("&s=").append(HandoffFragment.encode(it)) }
         notes.forEach { append("&n=").append(HandoffFragment.encode(it)) }
@@ -57,6 +68,7 @@ object HandoffFragment {
     const val PREFIX = "ap="
     const val MAX_TASK = 120
     const val MAX_ITEM = 200
+    const val MAX_REF = 64
     const val MAX_DECISIONS = 5
     const val MAX_STEPS = 10
     const val MAX_NOTES = 5
@@ -70,6 +82,7 @@ object HandoffFragment {
         fun invalid(problem: HandoffProblem, field: Int? = null) = HandoffParseResult.Invalid(HandoffIssue(problem, field, pairs.size))
         if (pairs.first() != "ap=v1") return invalid(HandoffProblem.UNSUPPORTED_VERSION, 1)
         var task: String? = null
+        var ref: String? = null
         val decisions = mutableListOf<String>()
         val steps = mutableListOf<String>()
         val notes = mutableListOf<String>()
@@ -78,19 +91,24 @@ object HandoffFragment {
             val pair = pairs[i]
             val eq = pair.indexOf('=')
             if (eq <= 0) return invalid(HandoffProblem.MALFORMED_FIELD, field)
-            val (list, cap) = when (pair.substring(0, eq)) {
-                "t" -> null to 1
+            val key = pair.substring(0, eq)
+            val (list, cap) = when (key) {
+                "t", "r" -> null to 1
                 "d" -> decisions to MAX_DECISIONS
                 "s" -> steps to MAX_STEPS
                 "n" -> notes to MAX_NOTES
                 "ap" -> return invalid(HandoffProblem.DUPLICATE_FIELD, field)
                 else -> return invalid(HandoffProblem.UNKNOWN_FIELD, field)
             }
-            val value = when (val decoded = decode(pair.substring(eq + 1), if (list == null) MAX_TASK else MAX_ITEM)) {
+            val max = when (key) { "t" -> MAX_TASK; "r" -> MAX_REF; else -> MAX_ITEM }
+            val value = when (val decoded = decode(pair.substring(eq + 1), max)) {
                 is Decoded.Ok -> decoded.value
                 is Decoded.Bad -> return invalid(decoded.problem, field)
             }
-            if (list == null) {
+            if (key == "r") {
+                if (ref != null) return invalid(HandoffProblem.DUPLICATE_FIELD, field)
+                ref = value
+            } else if (list == null) {
                 if (task != null) return invalid(HandoffProblem.DUPLICATE_FIELD, field)
                 task = value
             } else {
@@ -100,7 +118,7 @@ object HandoffFragment {
         }
         if (task == null) return invalid(HandoffProblem.MISSING_TASK)
         if (decisions.isEmpty() && steps.isEmpty() && notes.isEmpty()) return invalid(HandoffProblem.NO_ITEMS)
-        return HandoffParseResult.Valid(LinkHandoff(task, decisions, steps, notes))
+        return HandoffParseResult.Valid(LinkHandoff(task, decisions, steps, notes, ref))
     }
 
     /** Percent-encodes UTF-8, leaving only `A–Z a–z 0–9 - . _ ~` as they are. */

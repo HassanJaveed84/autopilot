@@ -43,6 +43,7 @@ class AppLinkTestViewModel(private val saved: SavedStateHandle, private val pars
         saved[KEY_PROBLEM] = (result as? TestLinkResult.Rejected)?.problem?.name
         val handoff = (result as? TestLinkResult.HandoffReceived)?.handoff
         saved[KEY_TASK] = handoff?.task
+        saved[KEY_REF] = handoff?.ref
         saved[KEY_DECISIONS] = handoff?.decisions?.let(::ArrayList)
         saved[KEY_STEPS] = handoff?.steps?.let(::ArrayList)
         saved[KEY_NOTES] = handoff?.notes?.let(::ArrayList)
@@ -66,7 +67,7 @@ class AppLinkTestViewModel(private val saved: SavedStateHandle, private val pars
         val result = when {
             message != null -> TestLinkResult.Received(message)
             problem != null -> TestLinkResult.Rejected(problem)
-            task != null -> TestLinkResult.HandoffReceived(LinkHandoff(task, list(KEY_DECISIONS), list(KEY_STEPS), list(KEY_NOTES)))
+            task != null -> TestLinkResult.HandoffReceived(LinkHandoff(task, list(KEY_DECISIONS), list(KEY_STEPS), list(KEY_NOTES), saved.get<String>(KEY_REF)))
             issue != null -> TestLinkResult.HandoffRejected(issue)
             else -> null
         }
@@ -80,6 +81,7 @@ class AppLinkTestViewModel(private val saved: SavedStateHandle, private val pars
         const val KEY_BY = "app_link_by"
         const val KEY_COUNT = "app_link_count"
         const val KEY_TASK = "app_link_handoff_task"
+        const val KEY_REF = "app_link_handoff_ref"
         const val KEY_DECISIONS = "app_link_handoff_decisions"
         const val KEY_STEPS = "app_link_handoff_steps"
         const val KEY_NOTES = "app_link_handoff_notes"

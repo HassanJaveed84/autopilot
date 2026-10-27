@@ -115,7 +115,7 @@ private fun Section(title: String, items: List<String>, tag: String, numbered: B
 
 internal fun fieldSummary(h: LinkHandoff): String {
     fun count(n: Int, one: String, many: String) = "$n ${if (n == 1) one else many}"
-    return "${h.fieldCount} (format, task, ${count(h.decisions.size, "decision", "decisions")}, " +
+    return "${h.fieldCount} (format, ${if (h.ref != null) "task reference, " else ""}task, ${count(h.decisions.size, "decision", "decisions")}, " +
         "${count(h.steps.size, "step", "steps")}, ${count(h.notes.size, "note", "notes")})"
 }
 
@@ -152,8 +152,8 @@ internal fun handoffIssueText(issue: HandoffIssue): String {
     val reason = when (issue.problem) {
         HandoffProblem.UNSUPPORTED_VERSION -> "The link must start with ap=v1."
         HandoffProblem.MALFORMED_FIELD -> "A field isn't in key=value form (empty or missing key, or a stray &)."
-        HandoffProblem.UNKNOWN_FIELD -> "A field has a key other than t, d, s or n."
-        HandoffProblem.DUPLICATE_FIELD -> "A field that may appear only once (ap or t) appears again."
+        HandoffProblem.UNKNOWN_FIELD -> "A field has a key other than r, t, d, s or n."
+        HandoffProblem.DUPLICATE_FIELD -> "A field that may appear only once (ap, r or t) appears again."
         HandoffProblem.EMPTY_VALUE -> "A field has no text."
         HandoffProblem.BAD_ENCODING -> "A field has a broken %-escape or isn't valid UTF-8."
         HandoffProblem.AMBIGUOUS_PLUS -> "A field contains a raw +. Write a space as %20 and a plus sign as %2B."

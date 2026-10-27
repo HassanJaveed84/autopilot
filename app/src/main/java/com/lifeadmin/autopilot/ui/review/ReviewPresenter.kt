@@ -5,6 +5,7 @@ import com.lifeadmin.autopilot.domain.model.TaskStatus
 import com.lifeadmin.autopilot.domain.proposal.ItemKind
 import com.lifeadmin.autopilot.domain.proposal.ItemValue
 import com.lifeadmin.autopilot.domain.proposal.ProposalItem
+import com.lifeadmin.autopilot.domain.proposal.ProposalSource
 import com.lifeadmin.autopilot.domain.proposal.TargetSnapshot
 import java.time.Instant
 import java.time.LocalDate
@@ -18,6 +19,20 @@ import java.util.Locale
 object ReviewPresenter {
     private val dateFmt = DateTimeFormatter.ofPattern("EEE d MMM uuuu", Locale.ENGLISH)
     private val dateTimeFmt = DateTimeFormatter.ofPattern("EEE d MMM uuuu, HH:mm", Locale.ENGLISH)
+
+    /** Where a set came from, in the words the review, banners and provenance use. */
+    fun sourceName(source: ProposalSource): String = when (source) {
+        ProposalSource.PLANNING -> "Plan with AI"
+        ProposalSource.RESEARCH -> "Research Online"
+        ProposalSource.HANDOFF -> "ChatGPT"
+    }
+
+    /** The review's heading when a set has no title of its own. */
+    fun defaultTitle(source: ProposalSource): String = when (source) {
+        ProposalSource.PLANNING -> "Plan next step"
+        ProposalSource.RESEARCH -> "From research"
+        ProposalSource.HANDOFF -> "From ChatGPT"
+    }
 
     fun kindLabel(item: ProposalItem): String = when (item.kind) {
         ItemKind.ADD_STEP -> if ((item.value as? ItemValue.Step)?.verify == true) "New step to verify" else "New step"

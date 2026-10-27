@@ -10,12 +10,18 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /*
- * One proposal model for every source (planning or research) and every target (draft or task),
+ * One proposal model for every source (planning, research or a ChatGPT handoff) and every target (draft or task),
  * per handoff §4.4. Nothing here writes anything: a proposal becomes a change only through
  * TaskRepository.applyProposalSet after an explicit accept (PLAN-071, INT-050).
  */
 
-enum class ProposalSource { PLANNING, RESEARCH }
+enum class ProposalSource {
+    PLANNING,
+    RESEARCH,
+
+    /** Decisions, steps and notes the user sent back from a ChatGPT conversation (an `ap=v1` App Link). */
+    HANDOFF,
+}
 
 enum class TargetKind { DRAFT, TASK }
 

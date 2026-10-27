@@ -29,6 +29,7 @@ object AutopilotIcons {
     val Research by lazy { stroke("research", "M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13Z M20 20l-4.8-4.8 M4 10.5h13 M10.5 4c-2.2 2-2.2 11 0 13 M10.5 4c2.2 2 2.2 11 0 13") }
     val Globe by lazy { stroke("globe", "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z M3 12h18 M12 3c-3 3-3 15 0 18 M12 3c3 3 3 15 0 18") }
     val OpenExternal by lazy { stroke("open_external", "M14 4h6v6 M20 4l-9 9 M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5") }
+    val Chat by lazy { stroke("chat", "M4 5h16v11H10l-6 4V5Z M8 9h8 M8 12.5h5") }
     val Copy by lazy { stroke("copy", "M9 9h10v11H9z M15 9V5H5v10h4") }
     val Stop by lazy { stroke("stop", "M7 7h10v10H7z") }
     val Bell by lazy { stroke("bell", "M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15L6 16Z M10 20.5a2 2 0 0 0 4 0") }

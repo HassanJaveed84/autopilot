@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -73,6 +74,10 @@ import java.util.Locale
  * default; "Select recommended" picks only recommended, non-material, non-conflicting items;
  * material changes have their own Accept; every item editable before acceptance; conflicts need an
  * explicit choice; Apply writes only the chosen items, once; undo while the task has not moved on.
+ *
+ * The ChatGPT import screen hosts the same composable: [exitLabel] and [onOpenTask] become
+ * "Return to ChatGPT", [backIcon]/[backDescription] a close button, and [headerExtra] its
+ * destination card. Behaviour is unchanged.
  */
 @Composable
 fun ProposalReviewScreen(
@@ -80,6 +85,10 @@ fun ProposalReviewScreen(
     onBack: () -> Unit,
     onOpenTask: () -> Unit,
     onOpenInvestigation: ((String) -> Unit)? = null,
+    exitLabel: String = "Back to task",
+    backIcon: ImageVector = AutopilotIcons.Back,
+    backDescription: String = "Back",
+    headerExtra: (@Composable () -> Unit)? = null,
 ) {
     val s by viewModel.state.collectAsStateWithLifecycle()
     val c = AutopilotTheme.colors
@@ -88,7 +97,7 @@ fun ProposalReviewScreen(
         contentWindowInsets = WindowInsets(0),
         topBar = {
             Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 8.dp, end = 16.dp, top = 4.dp).heightIn(min = 60.dp), verticalAlignment = Alignment.CenterVertically) {
-                RoundIconButton(AutopilotIcons.Back, contentDescription = "Back", onClick = onBack)
+                RoundIconButton(backIcon, contentDescription = backDescription, onClick = onBack)
                 Text(
                     if (s.applied != null) "Changes applied" else "Review changes",
                     style = MaterialTheme.typography.titleLarge.copy(fontSize = 22.sp), color = c.ink,
@@ -103,7 +112,7 @@ fun ProposalReviewScreen(
                     when {
                         s.applied != null -> ButtonPair(
                             secondary = { m -> SecondaryButton(if (s.undone) "Undone" else "Undo", onClick = viewModel::undo, enabled = s.canUndo, modifier = m.testTag("review_undo")) },
-                            primary = { m -> PrimaryButton("Back to task", onClick = onOpenTask, modifier = m.testTag("review_done")) },
+                            primary = { m -> PrimaryButton(exitLabel, onClick = onOpenTask, modifier = m.testTag("review_done")) },
                         )
                         s.set != null && s.pending.isNotEmpty() -> ButtonPair(
                             secondary = { m -> SecondaryButton("Reject all", onClick = viewModel::rejectAll, enabled = !s.applying, modifier = m.testTag("review_reject_all")) },
@@ -115,7 +124,7 @@ fun ProposalReviewScreen(
                                 )
                             },
                         )
-                        else -> PrimaryButton("Back to task", onClick = onOpenTask, modifier = Modifier.fillMaxWidth().testTag("review_done"))
+                        else -> PrimaryButton(exitLabel, onClick = onOpenTask, modifier = Modifier.fillMaxWidth().testTag("review_done"))
                     }
                 }
             }
@@ -128,13 +137,15 @@ fun ProposalReviewScreen(
                 set == null || s.missing -> item { Text("This proposal is no longer available.", style = MaterialTheme.typography.bodyLarge, color = c.ink2, modifier = Modifier.testTag("review_missing")) }
                 else -> {
                     item { Header(s) }
+                    headerExtra?.let { extra -> item { extra() } }
                     s.applied?.let { a -> item { AppliedSummary(s, a.appliedItemIds.size, a.declinedItemIds.size) } }
                     if (s.applied == null && s.stale.isNotEmpty()) item { StaleBanner(s) }
                     if (s.applied == null && s.pending.isNotEmpty()) {
                         item {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Text("${s.selectedCount} of ${s.pending.size} selected", style = MaterialTheme.typography.bodyMedium, color = c.ink2, modifier = Modifier.weight(1f).testTag("review_selected_count"))
-                                LinkButton("Select recommended", onClick = viewModel::selectRecommended, modifier = Modifier.testTag("review_select_recommended"))
+                                // Everything ChatGPT sends is what the user asked to send, so its sets read "Select all" (every item is recommended).
+                                LinkButton(if (set.source == ProposalSource.HANDOFF) "Select all" else "Select recommended", onClick = viewModel::selectRecommended, modifier = Modifier.testTag("review_select_recommended"))
                             }
                         }
                     }
@@ -178,8 +189,8 @@ private fun Header(s: ReviewUi) {
     val c = AutopilotTheme.colors
     val set = s.set ?: return
     Column(Modifier.padding(top = 6.dp)) {
-        Text(set.title.ifBlank { if (set.source == ProposalSource.PLANNING) "Plan next step" else "From research" }, style = MaterialTheme.typography.headlineSmall, color = c.ink, modifier = Modifier.semantics { heading() }.testTag("review_title"))
-        val who = if (set.source == ProposalSource.PLANNING) "Plan with AI" else "Research Online"
+        Text(set.title.ifBlank { ReviewPresenter.defaultTitle(set.source) }, style = MaterialTheme.typography.headlineSmall, color = c.ink, modifier = Modifier.semantics { heading() }.testTag("review_title"))
+        val who = if (set.source == ProposalSource.HANDOFF) "Your ChatGPT conversation" else ReviewPresenter.sourceName(set.source)
         Text(
             "$who${set.model.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""} · ${Instant.ofEpochMilli(set.madeAtMs).atZone(s.zone).toLocalDateTime().format(madeFmt)}",
             style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(top = 4.dp).testTag("review_meta"),
@@ -270,7 +281,7 @@ private fun ReviewRowCard(row: ReviewRow, s: ReviewUi, vm: ProposalReviewViewMod
             Column(Modifier.weight(1f).padding(top = 6.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(row.label, style = MaterialTheme.typography.labelLarge, color = c.ink2)
-                    if (row.item.recommended && !material) Text("Recommended", style = MaterialTheme.typography.labelSmall, color = c.route)
+                    if (row.item.recommended && !material && s.set?.source != ProposalSource.HANDOFF) Text("Recommended", style = MaterialTheme.typography.labelSmall, color = c.route)
                     if (row.edited != null) Text("Edited by you", style = MaterialTheme.typography.labelSmall, color = c.ink2)
                 }
                 row.currentText?.let { cur ->

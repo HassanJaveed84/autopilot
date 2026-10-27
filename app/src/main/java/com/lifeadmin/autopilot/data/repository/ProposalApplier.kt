@@ -304,7 +304,7 @@ class ProposalApplier(
         }
     }
 
-    /** Planning sets close on apply; research sets stay open while anything is still pending (OD-1). */
+    /** Planning sets close on apply; research and ChatGPT sets stay open while anything is still pending (OD-1). */
     private fun closeIfDone(set: ProposalSet): SetStatus = when {
         set.source == ProposalSource.PLANNING -> SetStatus.CLOSED
         set.pending.isEmpty() -> SetStatus.CLOSED
@@ -404,6 +404,8 @@ class ProposalApplier(
     private fun originOf(set: ProposalSet, requested: ContentOrigin): ContentOrigin = when (set.source) {
         ProposalSource.RESEARCH -> if (requested == ContentOrigin.UNVERIFIED) requested else ContentOrigin.RESEARCH
         ProposalSource.PLANNING -> if (requested == ContentOrigin.USER) ContentOrigin.USER else ContentOrigin.PLANNING
+        // The user's own decisions from their conversation, approved here: later AI edits to them count as material.
+        ProposalSource.HANDOFF -> ContentOrigin.USER
     }
 
     private fun elementKindOf(kind: ItemKind): ElementKind = when (kind) {
@@ -419,8 +421,16 @@ class ProposalApplier(
 
     private fun parseDate(s: String): LocalDate = runCatching { LocalDate.parse(s.trim()) }.getOrElse { throw ValidationException("Invalid date") }
     private fun parseTime(s: String): LocalTime = runCatching { LocalTime.parse(s.trim()) }.getOrElse { throw ValidationException("Invalid time") }
-    private fun sourceKey(set: ProposalSet) = if (set.source == ProposalSource.PLANNING) "ai_plan_proposal" else "ai_research_proposal"
-    private fun sourceLabel(set: ProposalSet) = if (set.source == ProposalSource.PLANNING) "Plan with AI" else "Research Online"
+    private fun sourceKey(set: ProposalSet) = when (set.source) {
+        ProposalSource.PLANNING -> "ai_plan_proposal"
+        ProposalSource.RESEARCH -> "ai_research_proposal"
+        ProposalSource.HANDOFF -> "chatgpt_handoff"
+    }
+    private fun sourceLabel(set: ProposalSet) = when (set.source) {
+        ProposalSource.PLANNING -> "Plan with AI"
+        ProposalSource.RESEARCH -> "Research Online"
+        ProposalSource.HANDOFF -> "ChatGPT"
+    }
 
     companion object {
         const val PROPOSAL_SET_KEY = "proposalSetId"

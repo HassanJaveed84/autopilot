@@ -7,6 +7,7 @@ is published yet.** Publishing needs the owner's approval.
 | --- | --- | --- |
 | `.well-known/assetlinks.json` | `https://hassanjaveed84.github.io/.well-known/assetlinks.json` | Tells Android this site trusts `com.lifeadmin.autopilot` signed with the personal key |
 | `autopilot/test.html` | `https://hassanjaveed84.github.io/autopilot/test` | Fallback page shown only when a browser keeps the link. It never sends the `#message=…` fragment anywhere |
+| `autopilot/import.html` | `https://hassanjaveed84.github.io/autopilot/import` | Fallback for the ChatGPT round trip's "Open in Autopilot" links, shown only when a browser keeps the link. It never displays or sends the `#ap=v1…` fragment; its button hands the fragment to the app by package name |
 | `.nojekyll` | — | Stops GitHub Pages' Jekyll step from dropping the `.well-known` directory, because Jekyll skips dot-folders |
 | `assetlinks-from-apk.sh` | not published | Builds `assetlinks.json` from the certificate an APK is actually signed with |
 

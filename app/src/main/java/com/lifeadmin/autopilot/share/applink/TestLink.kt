@@ -33,14 +33,10 @@ sealed interface TestLinkResult {
  */
 class TestLinkParser(private val host: String) {
     fun parse(raw: String?): TestLinkResult {
-        if (raw == null || raw.length > MAX_URL) return TestLinkResult.Rejected(TestLinkProblem.MALFORMED)
-        val uri = runCatching { URI(raw) }.getOrNull() ?: return TestLinkResult.Rejected(TestLinkProblem.MALFORMED)
-        if (!uri.scheme.equals("https", ignoreCase = true)) return TestLinkResult.Rejected(TestLinkProblem.NOT_HTTPS)
-        if (uri.rawUserInfo != null || uri.port.let { it != -1 && it != 443 } || !uri.host.equals(host, ignoreCase = true)) {
-            return TestLinkResult.Rejected(TestLinkProblem.WRONG_HOST)
+        val fragment = when (val e = AppLinkEnvelope.fragment(raw, host, PATH, MAX_URL)) {
+            is AppLinkEnvelope.Result.Ok -> e.fragment
+            is AppLinkEnvelope.Result.Refused -> return TestLinkResult.Rejected(e.problem)
         }
-        if (uri.rawPath != PATH) return TestLinkResult.Rejected(TestLinkProblem.WRONG_PATH)
-        val fragment = uri.rawFragment
         if (fragment != null && fragment.startsWith(HandoffFragment.PREFIX)) {
             return when (val r = HandoffFragment.parse(fragment)) {
                 is HandoffParseResult.Valid -> TestLinkResult.HandoffReceived(r.handoff)
@@ -61,5 +57,29 @@ class TestLinkParser(private val host: String) {
         private val MESSAGE = Regex("[A-Za-z0-9._~-]{1,64}")
 
         fun testUrl(host: String, message: String = TEST_MESSAGE) = "https://$host$PATH#$KEY$message"
+    }
+}
+
+/**
+ * The checks every App Link route shares: scheme exactly `https`, host exactly [host]
+ * (case-insensitive, no subdomains), no user info, default port, path exactly as given, and a
+ * length cap applied before parsing. A query string is ignored and never read. Returns the raw
+ * (still percent-encoded) fragment.
+ */
+internal object AppLinkEnvelope {
+    sealed interface Result {
+        data class Ok(val fragment: String?) : Result
+        data class Refused(val problem: TestLinkProblem) : Result
+    }
+
+    fun fragment(raw: String?, host: String, path: String, maxUrl: Int): Result {
+        if (raw == null || raw.length > maxUrl) return Result.Refused(TestLinkProblem.MALFORMED)
+        val uri = runCatching { URI(raw) }.getOrNull() ?: return Result.Refused(TestLinkProblem.MALFORMED)
+        if (!uri.scheme.equals("https", ignoreCase = true)) return Result.Refused(TestLinkProblem.NOT_HTTPS)
+        if (uri.rawUserInfo != null || uri.port.let { it != -1 && it != 443 } || !uri.host.equals(host, ignoreCase = true)) {
+            return Result.Refused(TestLinkProblem.WRONG_HOST)
+        }
+        if (uri.rawPath != path) return Result.Refused(TestLinkProblem.WRONG_PATH)
+        return Result.Ok(uri.rawFragment)
     }
 }

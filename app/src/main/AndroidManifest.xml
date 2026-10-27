@@ -21,6 +21,12 @@
     <!-- Lets AI planning say "you're offline" before attempting a request. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- "Discuss in ChatGPT": lets the app see whether the ChatGPT app is installed to hand it shared
+         text directly (Android 11+ package visibility). Nothing else about other apps is visible. -->
+    <queries>
+        <package android:name="com.openai.chatgpt" />
+    </queries>
+
     <application
         android:name=".LifeAdminApp"
         android:allowBackup="false"
@@ -81,6 +87,28 @@
                     android:scheme="https"
                     android:host="${appLinkHost}"
                     android:path="/autopilot/test" />
+            </intent-filter>
+        </activity>
+
+        <!-- ChatGPT round trip, production route: an "Open in Autopilot" link becomes a pending
+             proposal set shown in Proposal Review; nothing is written until the user applies.
+             Same shape as the test activity above, so Close/Back return to ChatGPT: its own task,
+             singleTop for repeat links, persistNever because the launch intent carries the handoff. -->
+        <activity
+            android:name=".ui.handoff.HandoffImportActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:persistableMode="persistNever"
+            android:taskAffinity=""
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="${appLinkHost}"
+                    android:path="/autopilot/import" />
             </intent-filter>
         </activity>
 

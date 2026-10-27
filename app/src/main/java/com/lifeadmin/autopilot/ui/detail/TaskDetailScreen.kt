@@ -268,6 +268,8 @@ private fun DetailContent(
     val pill = TaskPresentation.pill(summary, now, zone)
     val isDone = task.status.isTerminal
     var showHistory by rememberSaveable { mutableStateOf(false) }
+    var discussOpen by rememberSaveable { mutableStateOf(false) }
+    if (discussOpen) DiscussSheet(d, zone, onDismiss = { discussOpen = false })
 
     LazyColumn(modifier.fillMaxSize().testTag("detail_list"), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 40.dp)) {
         item {
@@ -334,6 +336,8 @@ private fun DetailContent(
         if (stallHint != null) item { StallHintCard(stallHint, vm, openDialog) }
         item { StepsCard(d, vm, state.provenance, onShowProvenance = { provenanceOpen = it }) }
         item { DeadlineAndPriorityCard(d, now, zone, vm, openDialog) }
+        // Always offered for an open task, whatever the AI settings: it needs no key and changes nothing.
+        if (!isDone) item { DiscussCard(onClick = { discussOpen = true }) }
         if (onMoveForward != null && !task.status.isTerminal) item { AiCard(aiEnabled, onMoveForward, onOpenAiSettings, research = research, researching = state.researching) }
         if (research != null && (state.briefs.isNotEmpty() || state.investigations.isNotEmpty() || state.researching)) item { ResearchCard(state, now, zone, research) }
         item {
@@ -357,7 +361,11 @@ private fun DetailContent(
 private fun ReviewBanner(set: com.lifeadmin.autopilot.domain.proposal.ProposalSet, onOpenReview: (String) -> Unit) {
     val c = AutopilotTheme.colors
     val n = set.pending.size
-    val from = if (set.source == com.lifeadmin.autopilot.domain.proposal.ProposalSource.PLANNING) "Plan with AI" else "research"
+    val from = when (set.source) {
+        com.lifeadmin.autopilot.domain.proposal.ProposalSource.PLANNING -> "Plan with AI"
+        com.lifeadmin.autopilot.domain.proposal.ProposalSource.RESEARCH -> "research"
+        com.lifeadmin.autopilot.domain.proposal.ProposalSource.HANDOFF -> "ChatGPT"
+    }
     Row(
         Modifier.fillMaxWidth().padding(top = 12.dp).clip(RoundedCornerShape(16.dp)).background(c.routeSoft)
             .clickable(role = Role.Button, onClickLabel = "Review $n proposed ${if (n == 1) "change" else "changes"}") { onOpenReview(set.id) }
@@ -500,7 +508,11 @@ private fun StepsCard(d: TaskDetails, vm: TaskDetailViewModel, provenance: Map<S
                     if (record != null && !editing) {
                         RoundIconButton(
                             AutopilotIcons.Info, tint = c.ink3, onClick = { onShowProvenance(pid) }, modifier = Modifier.size(40.dp).testTag("step_prov_${step.id}"),
-                            contentDescription = if (record.source == com.lifeadmin.autopilot.domain.proposal.ProposalSource.RESEARCH) "From research: where this step came from" else "From Plan with AI: where this step came from",
+                            contentDescription = when (record.source) {
+                                com.lifeadmin.autopilot.domain.proposal.ProposalSource.RESEARCH -> "From research"
+                                com.lifeadmin.autopilot.domain.proposal.ProposalSource.PLANNING -> "From Plan with AI"
+                                com.lifeadmin.autopilot.domain.proposal.ProposalSource.HANDOFF -> "From ChatGPT"
+                            } + ": where this step came from",
                         )
                     }
                 }

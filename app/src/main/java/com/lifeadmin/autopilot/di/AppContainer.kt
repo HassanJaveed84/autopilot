@@ -105,6 +105,10 @@ class AppContainer(
     val proposalApplier: com.lifeadmin.autopilot.data.repository.ProposalApplier =
         com.lifeadmin.autopilot.data.repository.ProposalApplier(database, taskRepository, proposalSets, clock, ids)
 
+    /** ChatGPT round trip: an incoming `ap=v1` link becomes a pending proposal set for review, never a direct write. */
+    val handoffImporter: com.lifeadmin.autopilot.share.applink.HandoffImporter =
+        com.lifeadmin.autopilot.share.applink.HandoffImporter(taskRepository, proposalSets, proposalApplier, clock)
+
     /** Legacy M3A.2 session proposals as canonical proposal sets (M2): still reviewable from a saved session. */
     val researchProposalSets: com.lifeadmin.autopilot.ai.research2.ResearchProposalSets =
         com.lifeadmin.autopilot.ai.research2.ResearchProposalSets(sessionRepository, proposalSets, proposalApplier, clock)
