@@ -62,8 +62,6 @@ class AppContainer(
     val researchCalls: com.lifeadmin.autopilot.ai.research2.ResearchCallProvider? = null,
     val networkStatus: NetworkStatus = AndroidNetworkStatus(context),
     val hintDismissals: HintDismissals = SharedPrefsHintDismissals(context),
-    /** ChatGPT share import (proof of concept): fetches only chatgpt.com/share links, on request. */
-    val shareImporter: com.lifeadmin.autopilot.share.chatgpt.ShareImporter = com.lifeadmin.autopilot.share.chatgpt.ShareImporter(),
 ) {
     val appScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 

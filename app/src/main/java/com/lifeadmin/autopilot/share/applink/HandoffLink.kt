@@ -9,7 +9,6 @@ import java.nio.charset.CodingErrorAction
  * Structured `ap=v1` handoff fragment (docs/CHATGPT_APP_LINK_HANDOFF.md, docs/CHATGPT_ROUND_TRIP_REPORT.md).
  * On the test route it is display-only; on the import route (ImportLinkParser) a validated handoff
  * becomes a pending proposal set through HandoffProposalBridge, never a direct task write.
- * It is not the `autopilot.handoff.v1` JSON format and never reaches HandoffParser.
  *
  * Fragment contract, `ap=v1` first, then `key=value` pairs joined by `&`:
  *   r  opaque task reference, optional, at most once (added for the round trip; links without it stay valid)

@@ -70,20 +70,16 @@ class ManifestContractTest {
         assertTrue(elements("provider").isEmpty())
     }
 
-    /** The ChatGPT share target (proof of concept) accepts only plain-text SEND; the launcher entry is unchanged. */
-    @Test fun shareTargetAcceptsOnlyPlainTextAndTheLauncherIsUnchanged() {
+    /** No share target: the only entry points are the launcher and the two App Link routes. */
+    @Test fun noShareTargetAndTheLauncherIsUnchanged() {
         val activities = elements("activity").associateBy { it.attr("name") }
-        assertEquals(setOf(".MainActivity", ".ui.share.ShareImportActivity", ".ui.applink.AppLinkTestActivity", ".ui.handoff.HandoffImportActivity"), activities.keys)
+        assertEquals(setOf(".MainActivity", ".ui.applink.AppLinkTestActivity", ".ui.handoff.HandoffImportActivity"), activities.keys)
         fun filter(a: Element, tag: String) = a.getElementsByTagName(tag).let { nl -> (0 until nl.length).map { (nl.item(it) as Element) } }
         val main = activities.getValue(".MainActivity")
         assertEquals(listOf("android.intent.action.MAIN"), filter(main, "action").map { it.attr("name") })
         assertEquals(listOf("android.intent.category.LAUNCHER"), filter(main, "category").map { it.attr("name") })
-        val share = activities.getValue(".ui.share.ShareImportActivity")
-        assertEquals(1, filter(share, "intent-filter").size)
-        assertEquals(listOf("android.intent.action.SEND"), filter(share, "action").map { it.attr("name") })
-        assertEquals(listOf("android.intent.category.DEFAULT"), filter(share, "category").map { it.attr("name") })
-        assertEquals(listOf("text/plain"), filter(share, "data").map { it.attr("mimeType") })
-        assertEquals("singleTop", share.attr("launchMode"))
+        val actions = activities.values.flatMap { filter(it, "action") }.map { it.attr("name") }
+        assertTrue(actions.none { it == "android.intent.action.SEND" || it == "android.intent.action.SEND_MULTIPLE" })
     }
 
     /** The App Link spike claims one https route on one host, verified, and nothing broader. */

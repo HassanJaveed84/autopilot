@@ -1,7 +1,6 @@
 package com.lifeadmin.autopilot.share.chatgpt
 
 import android.content.ActivityNotFoundException
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import com.lifeadmin.autopilot.domain.model.DeadlineType
@@ -9,7 +8,6 @@ import com.lifeadmin.autopilot.domain.model.Task
 import com.lifeadmin.autopilot.domain.model.TaskStep
 import com.lifeadmin.autopilot.share.applink.ImportLinkParser
 import com.lifeadmin.autopilot.share.applink.TaskRef
-import com.lifeadmin.autopilot.ui.share.ShareImportActivity
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -66,8 +64,7 @@ object ChatGptPrompt {
 /**
  * Hands the prepared message to ChatGPT with a plain `ACTION_SEND` `text/plain` intent, the same
  * mechanism as sharing from any app. ChatGPT prefills its composer and the user presses send; nothing
- * is submitted for them. When ChatGPT isn't installed, the system chooser opens instead, without
- * Autopilot's own share target in it.
+ * is submitted for them. When ChatGPT isn't installed, the system chooser opens instead.
  */
 object ChatGptShare {
     const val PACKAGE = "com.openai.chatgpt"
@@ -76,9 +73,7 @@ object ChatGptShare {
 
     fun directIntent(text: String): Intent = sendIntent(text).setPackage(PACKAGE)
 
-    fun chooserIntent(context: Context, text: String): Intent =
-        Intent.createChooser(sendIntent(text), "Discuss in…")
-            .putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS, arrayOf(ComponentName(context, ShareImportActivity::class.java)))
+    fun chooserIntent(text: String): Intent = Intent.createChooser(sendIntent(text), "Discuss in…")
 
     /** Needs the `<queries>` entry for [PACKAGE] in the manifest (Android 11+ package visibility). */
     fun isAvailable(context: Context): Boolean = directIntent("").resolveActivity(context.packageManager) != null
@@ -95,7 +90,7 @@ object ChatGptShare {
             }
         }
         return try {
-            context.startActivity(chooserIntent(context, text))
+            context.startActivity(chooserIntent(text))
             true
         } catch (_: ActivityNotFoundException) {
             false

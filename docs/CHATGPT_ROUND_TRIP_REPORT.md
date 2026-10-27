@@ -39,7 +39,7 @@ and no AI API call. UX design: `docs/CHATGPT_ROUND_TRIP_UX.md`. Earlier evidence
 | Static site | `applink-site/autopilot/import.html`, `applink-site/README.md` | Fallback page for the new path. It never shows or sends the fragment, and its button hands the fragment to the app by package name. `assetlinks.json` is unchanged |
 | Wiring | `di/AppContainer.kt` | `handoffImporter` |
 
-Not changed: Plan with AI, Research Online, `autopilot.handoff.v1` / `HandoffParser`, the share-import PoC, the
+Not changed (at the time; the share-import PoC and `HandoffParser` were later removed, §12): Plan with AI, Research Online, `autopilot.handoff.v1` / `HandoffParser`, the share-import PoC, the
 `/autopilot/test` route and screen (apart from naming `r` in its messages and field count), reminders,
 scheduling, Room schema and migrations (no new tables or columns), the signing config and `assetlinks.json`.
 
@@ -263,3 +263,38 @@ The test now waits until the Save button sits above the open keyboard before tap
 - Local (no KVM, so no emulator): `./gradlew lintDebug testDebugUnitTest assembleDebug assembleDebugAndroidTest` passed. **755 tests, 0 failures** (754 plus the new view-model test). The handoff suites passed: `HandoffImportViewModelTest` 6, `HandoffImportActivityTest` 11, `HandoffImporterTest` 10.
 - CI on `2d10c26`: run [#189](https://github.com/HassanJaveed84/autopilot/actions/runs/40545214808) passed on its first attempt with no reruns. Build job (lint, unit/Robolectric, APKs) **green**; emulator job (API 34) **28 tests, 0 failed**.
 - **Remaining risk.** One green emulator run shows these tests can pass, but it is not proof the failures are gone. The repeat-link failure is explained and reproduced. The Waiting-sheet tap remains a hypothesis: if it recurs, the new wait will fail with the button still behind the keyboard, which points to a different cause. The real-phone round trip (§8) was not repeated for this change.
+
+## 12. Share-import proof of concept removed (2026-10-27)
+
+The round trip passed its phone acceptance test (§8, §10), so the older share-page proof of concept
+(`docs/CHATGPT_SHARE_HANDOFF_POC.md`) was removed. It fetched public `chatgpt.com/share` pages and read
+undocumented page data; nothing in the round trip depended on it.
+
+**Removed.**
+
+| Area | Files |
+| --- | --- |
+| Share target | `ui/share/ShareImportActivity.kt`, `ShareImportScreen.kt`, `ShareImportViewModel.kt`; its `ACTION_SEND` `text/plain` manifest entry and the `share_import_label` string |
+| Fetch and extraction | `share/chatgpt/ShareFetcher.kt` (with `UrlConnectionTransport`), `ShareExtractor.kt`, `ShareImporter.kt`, `ShareLink.kt` (`ShareLink`, `SharedTextParser`) |
+| JSON handoff | `share/chatgpt/Handoff.kt` (`autopilot.handoff.v1`, `HandoffParser`); only the share import used it |
+| Wiring | `AppContainer.shareImporter` |
+| Tests | `ShareLinkTest`, `ShareFetcherTest`, `ShareExtractorTest`, `HandoffParserTest`, `SharePageFixtures`, `ShareImportViewModelTest`, `ShareImportActivityTest`, `ShareImportDeviceTest` (emulator) |
+
+**Changed.** `ChatGptShare.chooserIntent` no longer excludes Autopilot's share target, since there is none;
+it now takes only the text. `ChatGptShareTest` checks the chooser fallback and that no Autopilot activity
+accepts shared text; `ManifestContractTest` checks the activity set is the launcher plus the two App Link
+routes and that no activity declares `SEND`/`SEND_MULTIPLE`. Manifest and network-security comments now
+name only the optional AI requests as network use; `INTERNET` stays for them.
+
+**Kept.** `ChatGptPrompt` and `ChatGptShare` (direct `ACTION_SEND` to `com.openai.chatgpt`, chooser
+fallback, `<queries>` entry), `ChatGptShare.PACKAGE` for "Return to ChatGPT", the `/autopilot/import`
+App Link (`HandoffImportActivity`, `ImportLinkParser`, `HandoffLink`, `HandoffImporter`,
+`HandoffProposalBridge`), Proposal Review, `ProposalApplier` and undo, the `/autopilot/test` spike route,
+and all AI features. No migrations, backup format, signing or `assetlinks.json` changes.
+
+**Verification.** Local (no KVM, so no emulator): `./gradlew lintDebug testDebugUnitTest assembleDebug assembleRelease
+assembleDebugAndroidTest` passed: lint clean, **708 tests, 0 failures** (755 before, minus the 48 removed PoC tests,
+plus `autopilotIsNotAShareTarget`), debug, release and androidTest APKs built. The round-trip suites are unchanged
+and green (`HandoffImportActivityTest` 11, `HandoffImporterTest` 10, `ChatGptPromptTest` 5, `ChatGptShareTest` 4,
+`ManifestContractTest` 11). Emulator tests run in CI on push (`ShareImportDeviceTest` removed). The real-phone round
+trip was not repeated for this removal.

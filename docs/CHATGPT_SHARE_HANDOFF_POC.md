@@ -2,6 +2,12 @@
 
 Date: 2026-10-26 · Branch: `ccr-69eac4c4-5vsk4s` (from `right-time-nudges` @ `197d8e0`) · No PR opened · PR #8 untouched
 
+> **Retired 2026-10-27.** The code described here (share target, `ShareFetcher`, `ShareExtractor`,
+> `ShareImporter`, `ShareLink`, `autopilot.handoff.v1` / `HandoffParser` and their tests) was removed
+> from the app after the App Link round trip passed its phone acceptance test
+> (`docs/CHATGPT_ROUND_TRIP_REPORT.md` §12). Autopilot no longer fetches `chatgpt.com/share` pages
+> and no longer appears in the Android share sheet. This document is kept as historical evidence.
+
 **Scope (owner-approved for this session):** a feasibility experiment only. It proves whether a ChatGPT
 Android "Share" link can carry a structured handoff into Autopilot. It does **not** create, edit or
 propose task changes, does not call any AI provider, and is not connected to `ProposalApplier`.

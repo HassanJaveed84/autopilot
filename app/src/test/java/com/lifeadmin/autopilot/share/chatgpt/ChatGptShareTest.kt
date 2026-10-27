@@ -6,8 +6,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import androidx.activity.ComponentActivity
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.lifeadmin.autopilot.ui.share.ShareImportActivity
-import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -41,7 +39,7 @@ class ChatGptShareTest {
         assertEquals(0, i.flags and Intent.FLAG_ACTIVITY_NEW_TASK)
     }
 
-    @Test fun withoutChatGptTheChooserOpensWithoutAutopilotsOwnShareTarget() {
+    @Test fun withoutChatGptTheChooserOpens() {
         assertFalse(ChatGptShare.isAvailable(context))
         assertTrue(ChatGptShare.open(context, text))
         val started = shadowOf(context).nextStartedActivity
@@ -51,9 +49,12 @@ class ChatGptShareTest {
         assertEquals(Intent.ACTION_SEND, inner.action)
         assertEquals(text, inner.getStringExtra(Intent.EXTRA_TEXT))
         assertNull(inner.`package`)
-        @Suppress("DEPRECATION")
-        val excluded = started.getParcelableArrayExtra(Intent.EXTRA_EXCLUDE_COMPONENTS)!!.map { it as ComponentName }.toTypedArray()
-        assertArrayEquals(arrayOf(ComponentName(context, ShareImportActivity::class.java)), excluded)
+    }
+
+    /** Autopilot accepts no shared text, so the chooser can't offer it back to itself. */
+    @Test fun autopilotIsNotAShareTarget() {
+        val targets = context.packageManager.queryIntentActivities(ChatGptShare.sendIntent(text).addCategory(Intent.CATEGORY_DEFAULT), 0)
+        assertTrue(targets.none { it.activityInfo.packageName == context.packageName })
     }
 
     @Test fun withChatGptInstalledItOpensDirectly() {
