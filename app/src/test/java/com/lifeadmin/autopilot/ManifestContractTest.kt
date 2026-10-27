@@ -69,10 +69,10 @@ class ManifestContractTest {
         assertTrue(elements("provider").isEmpty())
     }
 
-    /** No share target: the only entry points are the launcher and the two App Link routes. */
+    /** No share target: the only entry points are the launcher and the one App Link route. */
     @Test fun noShareTargetAndTheLauncherIsUnchanged() {
         val activities = elements("activity").associateBy { it.attr("name") }
-        assertEquals(setOf(".MainActivity", ".ui.applink.AppLinkTestActivity", ".ui.handoff.HandoffImportActivity"), activities.keys)
+        assertEquals(setOf(".MainActivity", ".ui.handoff.HandoffImportActivity"), activities.keys)
         fun filter(a: Element, tag: String) = a.getElementsByTagName(tag).let { nl -> (0 until nl.length).map { (nl.item(it) as Element) } }
         val main = activities.getValue(".MainActivity")
         assertEquals(listOf("android.intent.action.MAIN"), filter(main, "action").map { it.attr("name") })
@@ -81,11 +81,14 @@ class ManifestContractTest {
         assertTrue(actions.none { it == "android.intent.action.SEND" || it == "android.intent.action.SEND_MULTIPLE" })
     }
 
-    /** The App Link spike claims one https route on one host, verified, and nothing broader. */
-    @Test fun appLinkFilterClaimsOnlyTheVerifiedTestRoute() = assertAppLinkRoute(".ui.applink.AppLinkTestActivity", "/autopilot/test")
-
-    /** The ChatGPT round trip's import route: same host and shape, its own exact path, its own task. */
+    /** The ChatGPT round trip's import route: one https path on one host, verified, nothing broader, its own task. */
     @Test fun importFilterClaimsOnlyTheImportRoute() = assertAppLinkRoute(".ui.handoff.HandoffImportActivity", "/autopilot/import")
+
+    /** The retired display-only spike route is gone; no filter may claim it again. */
+    @Test fun theRetiredTestRouteIsNotClaimed() {
+        val paths = doc.getElementsByTagName("data").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).attr("path") } }
+        assertEquals(listOf("/autopilot/import"), paths.filter { it.isNotEmpty() })
+    }
 
     /** "Discuss in ChatGPT" may see exactly one other package: the ChatGPT app. */
     @Test fun onlyTheChatGptPackageIsQueried() {

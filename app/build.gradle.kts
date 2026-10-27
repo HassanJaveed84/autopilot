@@ -18,8 +18,8 @@ val personalKeystorePassword: String? =
     System.getenv("AUTOPILOT_KEYSTORE_PASSWORD") ?: providers.gradleProperty("autopilot.keystorePassword").orNull
 val hasPersonalKey = personalKeystore.isFile && !personalKeystorePassword.isNullOrBlank()
 
-// ChatGPT → App Link spike (docs/CHATGPT_APP_LINK_SPIKE.md): the one host whose
-// /.well-known/assetlinks.json names this app. Shared by the manifest filter and the link validator.
+// ChatGPT round trip (docs/CHATGPT_ROUND_TRIP_REPORT.md): the one host whose
+// /.well-known/assetlinks.json names this app. Shared by the /autopilot/import filter and its parser.
 val appLinkHost: String = providers.gradleProperty("autopilot.appLinkHost").orNull ?: "hassanjaveed84.github.io"
 
 android {
@@ -30,8 +30,8 @@ android {
         applicationId = "com.lifeadmin.autopilot"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["appLinkHost"] = appLinkHost
         buildConfigField("String", "APP_LINK_HOST", "\"$appLinkHost\"")

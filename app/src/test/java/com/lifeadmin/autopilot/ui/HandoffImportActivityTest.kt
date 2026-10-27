@@ -20,8 +20,6 @@ import com.lifeadmin.autopilot.domain.model.TaskStatus
 import com.lifeadmin.autopilot.domain.proposal.ProposalSource
 import com.lifeadmin.autopilot.share.applink.ImportLinkParser
 import com.lifeadmin.autopilot.share.applink.LinkHandoff
-import com.lifeadmin.autopilot.share.applink.TestLinkParser
-import com.lifeadmin.autopilot.ui.applink.AppLinkTestActivity
 import com.lifeadmin.autopilot.ui.handoff.HandoffImportActivity
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -221,12 +219,13 @@ class HandoffImportActivityTest {
         ActivityScenario.launch<HandoffImportActivity>(Intent(app, HandoffImportActivity::class.java)).use { waitForTag("handoff_empty") }
     }
 
-    @Test fun eachRouteResolvesToItsOwnScreenAndTheTestRouteStillWorks() {
+    @Test fun onlyTheImportRouteResolvesAndTheRetiredTestRouteNoLongerOpensTheApp() {
         fun handlers(url: String) = app.packageManager.queryIntentActivities(view(url), 0).map { it.activityInfo }.filter { it.packageName == app.packageName }.map(ActivityInfo::name)
         assertEquals(listOf(HandoffImportActivity::class.java.name), handlers(link(grinder)))
-        assertEquals(listOf(AppLinkTestActivity::class.java.name), handlers(TestLinkParser.testUrl(host)))
-        assertEquals(listOf(AppLinkTestActivity::class.java.name), handlers(LinkHandoff.FIXED_EXAMPLE.toUrl(host)))
-        listOf("http://$host/autopilot/import#ap=v1&t=T&s=S", "https://$host/autopilot/import/x", "https://evil.example/autopilot/import#ap=v1&t=T&s=S")
+        listOf(
+            "https://$host/autopilot/test#message=hello-from-chatgpt", "https://$host/autopilot/test#ap=v1&t=T&s=S",
+            "http://$host/autopilot/import#ap=v1&t=T&s=S", "https://$host/autopilot/import/x", "https://evil.example/autopilot/import#ap=v1&t=T&s=S",
+        )
             .forEach { assertTrue(it, handlers(it).isEmpty()) }
     }
 

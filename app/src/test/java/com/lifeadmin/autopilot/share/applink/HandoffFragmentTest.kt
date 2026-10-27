@@ -17,14 +17,27 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/** The strict `ap=v1` fragment, end to end through the `/autopilot/import` route where it applies. */
 class HandoffFragmentTest {
     private val host = "links.example.org"
-    private val parser = TestLinkParser(host)
-    private val base = "https://$host/autopilot/test#"
+    private val parser = ImportLinkParser(host)
+    private val base = "https://$host/autopilot/import#"
+
+    /** The fixed example of the structured handoff (docs/CHATGPT_APP_LINK_HANDOFF.md). */
+    private val example = LinkHandoff(
+        task = "Choose a coffee grinder",
+        decisions = listOf("Choose Model A"),
+        steps = listOf("Check warranty", "Compare retailer prices"),
+        notes = listOf("Budget is \$1,000"),
+    )
 
     private fun link(fragment: String) = parser.parse(base + fragment)
-    private fun valid(fragment: String) = (link(fragment) as TestLinkResult.HandoffReceived).handoff
-    private fun refused(fragment: String) = (link(fragment) as TestLinkResult.HandoffRejected).issue
+    private fun valid(fragment: String) = (link(fragment) as ImportLinkResult.Valid).handoff
+
+    /** The parser's own issue, with its field position; the import route reports only its category. */
+    private fun refused(fragment: String) = (HandoffFragment.parse(fragment) as HandoffParseResult.Invalid).issue.also {
+        assertTrue(fragment, link(fragment) is ImportLinkResult.Refused)
+    }
 
     /** A one-task, one-step handoff whose step is [raw] (still encoded). */
     private fun step(raw: String) = valid("ap=v1&t=T&s=$raw").steps.single()
@@ -33,11 +46,11 @@ class HandoffFragmentTest {
     // 1. The fixed example
 
     @Test fun theFixedExampleDecodesExactly() {
-        val url = "https://$host/autopilot/test#ap=v1&t=Choose%20a%20coffee%20grinder&d=Choose%20Model%20A" +
+        val url = "https://$host/autopilot/import#ap=v1&t=Choose%20a%20coffee%20grinder&d=Choose%20Model%20A" +
             "&s=Check%20warranty&s=Compare%20retailer%20prices&n=Budget%20is%20%241%2C000"
-        assertEquals(url, LinkHandoff.FIXED_EXAMPLE.toUrl(host))
-        val h = (parser.parse(url) as TestLinkResult.HandoffReceived).handoff
-        assertEquals(LinkHandoff.FIXED_EXAMPLE, h)
+        assertEquals(url, example.toUrl(host))
+        val h = (parser.parse(url) as ImportLinkResult.Valid).handoff
+        assertEquals(example, h)
         assertEquals("Choose a coffee grinder", h.task)
         assertEquals(listOf("Choose Model A"), h.decisions)
         assertEquals(listOf("Check warranty", "Compare retailer prices"), h.steps)
@@ -48,13 +61,13 @@ class HandoffFragmentTest {
     @Test fun legalRawPunctuationNeedsNoEncodingAndOrderIsKept() {
         // What a model might write by hand: RFC 3986 allows $ , : ! ' ( ) * ; @ / ? in a fragment.
         val h = valid("ap=v1&t=Choose%20a%20coffee%20grinder&s=Check%20warranty&d=Choose%20Model%20A&n=Budget%20is%20$1,000&s=Compare%20retailer%20prices")
-        assertEquals(LinkHandoff.FIXED_EXAMPLE, h)
+        assertEquals(example, h)
         assertEquals("Ask: who's free (Mon/Tue)? *today*; @9:30!", step("Ask:%20who's%20free%20(Mon/Tue)?%20*today*;%20@9:30!"))
     }
 
     @Test fun aTrackingQueryIsIgnored() {
-        val url = LinkHandoff.FIXED_EXAMPLE.toUrl(host).replace("#", "?utm_source=chatgpt.com#")
-        assertEquals(TestLinkResult.HandoffReceived(LinkHandoff.FIXED_EXAMPLE), parser.parse(url))
+        val url = example.toUrl(host).replace("#", "?utm_source=chatgpt.com#")
+        assertEquals(ImportLinkResult.Valid(example), parser.parse(url))
     }
 
     // 2. Spaces, punctuation, ampersands, Unicode and percent encoding
@@ -89,7 +102,7 @@ class HandoffFragmentTest {
         )
         samples.forEach { s ->
             val h = LinkHandoff("Task $s".take(HandoffFragment.MAX_TASK), listOf(s), listOf(s, s), listOf(s))
-            assertEquals(s, TestLinkResult.HandoffReceived(h), parser.parse(h.toUrl(host)))
+            assertEquals(s, ImportLinkResult.Valid(h), parser.parse(h.toUrl(host)))
         }
     }
 
@@ -103,7 +116,7 @@ class HandoffFragmentTest {
         listOf("%", "%2", "a%G1", "%%41", "%٣٣").forEach {
             assertEquals(it, BAD_ENCODING, (HandoffFragment.parse("ap=v1&t=T&s=$it") as HandoffParseResult.Invalid).issue.problem)
         }
-        assertTrue(parser.parse(base + "ap=v1&t=T&s=a%G1") is TestLinkResult.Rejected)
+        assertTrue(parser.parse(base + "ap=v1&t=T&s=a%G1") is ImportLinkResult.Refused)
         // Valid escapes, invalid bytes: lone continuation, truncated sequence, overlong form, surrogate, out of range.
         listOf("%80", "%C3", "caf%C3", "%C0%AF", "%ED%A0%80", "%F4%90%80%80", "%FF").forEach { assertEquals(it, BAD_ENCODING, stepProblem(it)) }
     }
@@ -128,8 +141,8 @@ class HandoffFragmentTest {
         assertEquals(UNSUPPORTED_VERSION, refused("ap=&t=T&s=S").problem)
         assertEquals(UNSUPPORTED_VERSION, refused("ap=v1x&t=T").problem)
         assertEquals(HandoffIssue(DUPLICATE_FIELD, 3, 4), refused("ap=v1&t=T&ap=v1&s=S"))
-        // Not starting with ap= at all is not a handoff: the message route's rule applies.
-        assertEquals(TestLinkResult.Rejected(TestLinkProblem.NO_MESSAGE), link("t=T&ap=v1&s=S"))
+        // Not starting with ap= at all is not a handoff.
+        assertEquals(ImportLinkResult.Refused(ImportRefusal.NO_HANDOFF), link("t=T&ap=v1&s=S"))
     }
 
     @Test fun theTaskIsRequiredOnceAndSomethingMustFollowIt() {
@@ -182,31 +195,27 @@ class HandoffFragmentTest {
     @Test fun anOversizedLinkIsRefusedBeforeParsing() {
         // Each field within its own cap, but percent-encoded non-ASCII takes nine URL characters per symbol.
         val one = LinkHandoff("T", listOf("☕".repeat(HandoffFragment.MAX_ITEM)), emptyList(), emptyList())
-        assertTrue(one.toUrl(host).length < 2_048)
-        assertEquals(TestLinkResult.HandoffReceived(one), parser.parse(one.toUrl(host)))
-        val two = one.copy(decisions = one.decisions + one.decisions)
-        assertTrue(two.toUrl(host).length > 2_048)
-        assertEquals(TestLinkResult.Rejected(TestLinkProblem.MALFORMED), parser.parse(two.toUrl(host)))
+        assertTrue(one.toUrl(host).length < ImportLinkParser.MAX_URL)
+        assertEquals(ImportLinkResult.Valid(one), parser.parse(one.toUrl(host)))
+        val three = one.copy(decisions = List(3) { one.decisions.single() })
+        assertTrue(three.toUrl(host).length > ImportLinkParser.MAX_URL)
+        assertEquals(ImportLinkResult.Refused(ImportRefusal.TOO_BIG), parser.parse(three.toUrl(host)))
     }
 
-    // 5. Hosts, paths and schemes apply to handoff links exactly as to the message route
+    // 5. Hosts, paths and schemes
 
     @Test fun theEnvelopeRulesStillApply() {
-        val fragment = LinkHandoff.FIXED_EXAMPLE.toUrl(host).substringAfter('#')
-        assertEquals(TestLinkResult.Rejected(TestLinkProblem.NOT_HTTPS), parser.parse("http://$host/autopilot/test#$fragment"))
-        assertEquals(TestLinkResult.Rejected(TestLinkProblem.WRONG_HOST), parser.parse("https://evil.example/autopilot/test#$fragment"))
-        assertEquals(TestLinkResult.Rejected(TestLinkProblem.WRONG_HOST), parser.parse("https://sub.$host/autopilot/test#$fragment"))
-        assertEquals(TestLinkResult.Rejected(TestLinkProblem.WRONG_PATH), parser.parse("https://$host/autopilot/import#$fragment"))
-        assertEquals(TestLinkResult.Rejected(TestLinkProblem.MALFORMED), parser.parse("https://$host/autopilot/test#ap=v1&t=Raw space&s=S"))
-        assertEquals(TestLinkResult.Rejected(TestLinkProblem.MALFORMED), parser.parse("https://$host/autopilot/test#ap=v1&t=T&s=a#b"))
+        val fragment = example.toUrl(host).substringAfter('#')
+        val notALink = ImportLinkResult.Refused(ImportRefusal.NOT_A_LINK)
+        assertEquals(notALink, parser.parse("http://$host/autopilot/import#$fragment"))
+        assertEquals(notALink, parser.parse("https://evil.example/autopilot/import#$fragment"))
+        assertEquals(notALink, parser.parse("https://sub.$host/autopilot/import#$fragment"))
+        assertEquals(notALink, parser.parse("https://$host:8443/autopilot/import#$fragment"))
+        assertEquals(notALink, parser.parse("https://user@$host/autopilot/import#$fragment"))
+        assertEquals(notALink, parser.parse("https://$host/autopilot/test#$fragment"))
+        assertEquals(notALink, parser.parse("https://$host/autopilot/import#ap=v1&t=Raw space&s=S"))
+        assertEquals(notALink, parser.parse("https://$host/autopilot/import#ap=v1&t=T&s=a#b"))
         // Handoff data in the query is not read.
-        assertEquals(TestLinkResult.Rejected(TestLinkProblem.NO_MESSAGE), parser.parse("https://$host/autopilot/test?$fragment"))
-    }
-
-    // 8. The message route is unchanged
-
-    @Test fun theMessageRouteStillWorks() {
-        assertEquals(TestLinkResult.Received("hello-from-chatgpt"), parser.parse(TestLinkParser.testUrl(host)))
-        assertEquals(TestLinkResult.Rejected(TestLinkProblem.INVALID_MESSAGE), parser.parse("${base}message=ap=v1"))
+        assertEquals(ImportLinkResult.Refused(ImportRefusal.NO_HANDOFF), parser.parse("https://$host/autopilot/import?$fragment"))
     }
 }

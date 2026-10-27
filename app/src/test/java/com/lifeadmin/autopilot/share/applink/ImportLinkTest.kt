@@ -30,19 +30,18 @@ class ImportLinkTest {
         assertNull(valid("ap=v1&t=T&s=S").ref)
     }
 
-    @Test fun aRepeatedOrOversizedReferenceIsRefusedOnTheTestRouteToo() {
-        val test = TestLinkParser(host)
-        fun issue(fragment: String) = (test.parse("https://$host/autopilot/test#$fragment") as TestLinkResult.HandoffRejected).issue
+    @Test fun aRepeatedOrOversizedReferenceIsRefused() {
+        fun issue(fragment: String) = (HandoffFragment.parse(fragment) as HandoffParseResult.Invalid).issue
         assertEquals(HandoffIssue(DUPLICATE_FIELD, 4, 5), issue("ap=v1&r=a&t=T&r=b&s=S"))
         assertEquals(VALUE_TOO_LONG, issue("ap=v1&r=${"a".repeat(HandoffFragment.MAX_REF + 1)}&t=T&s=S").problem)
-        // A reference on the display-only route is shown in the field count and changes nothing else.
-        val h = (test.parse("https://$host/autopilot/test#ap=v1&r=$ref&t=T&s=S") as TestLinkResult.HandoffReceived).handoff
-        assertEquals(4, h.fieldCount)
+        assertEquals(ImportRefusal.MALFORMED, refused(base + "ap=v1&r=a&t=T&r=b&s=S"))
+        assertEquals(4, valid("ap=v1&r=$ref&t=T&s=S").fieldCount)
     }
 
     @Test fun refusalsAreCategorisedNotEchoed() {
         assertEquals(ImportRefusal.NOT_A_LINK, refused("https://evil.example/autopilot/import#ap=v1&t=T&s=S"))
         assertEquals(ImportRefusal.NOT_A_LINK, refused("http://$host/autopilot/import#ap=v1&t=T&s=S"))
+        // The retired display-only spike route is not accepted here (and no longer exists).
         assertEquals(ImportRefusal.NOT_A_LINK, refused("https://$host/autopilot/test#ap=v1&t=T&s=S"))
         assertEquals(ImportRefusal.NOT_A_LINK, refused("https://$host/autopilot/import/x#ap=v1&t=T&s=S"))
         assertEquals(ImportRefusal.NO_HANDOFF, refused("https://$host/autopilot/import"))
@@ -57,10 +56,10 @@ class ImportLinkTest {
         assertEquals(ImportRefusal.TOO_BIG, refused(base + "ap=v1&t=T&s=" + "%20a".repeat(1_100)))
     }
 
-    @Test fun aQueryIsIgnoredAndTheImportCapIsLongerThanTheTestRoutes() {
+    @Test fun aQueryIsIgnoredAndALongFullHandoffFits() {
         assertEquals("T", valid("ap=v1&t=T&s=S").task)
         assertTrue(parser.parse("https://$host/autopilot/import?utm_source=chatgpt.com#ap=v1&t=T&s=S") is ImportLinkResult.Valid)
-        // 10 steps of 189 characters, percent-encoded: over the test route's 2,048, inside the import route's 4,096.
+        // 10 steps of 189 characters, percent-encoded: over 2,048 characters, inside the route's 4,096.
         val full = LinkHandoff("T", emptyList(), List(10) { i -> "Step $i " + "x".repeat(180) + " é" }, emptyList(), ref).toUrl(host, ImportLinkParser.PATH)
         assertTrue(full.length in 2_049..ImportLinkParser.MAX_URL)
         assertEquals(10, (parser.parse(full) as ImportLinkResult.Valid).handoff.steps.size)

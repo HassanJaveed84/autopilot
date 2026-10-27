@@ -7,8 +7,8 @@ import java.nio.charset.CodingErrorAction
 
 /*
  * Structured `ap=v1` handoff fragment (docs/CHATGPT_APP_LINK_HANDOFF.md, docs/CHATGPT_ROUND_TRIP_REPORT.md).
- * On the test route it is display-only; on the import route (ImportLinkParser) a validated handoff
- * becomes a pending proposal set through HandoffProposalBridge, never a direct task write.
+ * On the import route (ImportLinkParser) a validated handoff becomes a pending proposal set through
+ * HandoffProposalBridge, never a direct task write.
  *
  * Fragment contract, `ap=v1` first, then `key=value` pairs joined by `&`:
  *   r  opaque task reference, optional, at most once (added for the round trip; links without it stay valid)
@@ -29,23 +29,13 @@ data class LinkHandoff(
     val fieldCount: Int get() = 2 + (if (ref != null) 1 else 0) + decisions.size + steps.size + notes.size
 
     /** The canonical link: every byte outside the URL-unreserved set is percent-encoded. */
-    fun toUrl(host: String, path: String = TestLinkParser.PATH): String = buildString {
+    fun toUrl(host: String, path: String = ImportLinkParser.PATH): String = buildString {
         append("https://").append(host).append(path).append("#ap=v1")
         ref?.let { append("&r=").append(HandoffFragment.encode(it)) }
         append("&t=").append(HandoffFragment.encode(task))
         decisions.forEach { append("&d=").append(HandoffFragment.encode(it)) }
         steps.forEach { append("&s=").append(HandoffFragment.encode(it)) }
         notes.forEach { append("&n=").append(HandoffFragment.encode(it)) }
-    }
-
-    companion object {
-        /** The fixed example the real-device test uses. */
-        val FIXED_EXAMPLE = LinkHandoff(
-            task = "Choose a coffee grinder",
-            decisions = listOf("Choose Model A"),
-            steps = listOf("Check warranty", "Compare retailer prices"),
-            notes = listOf("Budget is \$1,000"),
-        )
     }
 }
 
