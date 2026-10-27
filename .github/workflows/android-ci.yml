@@ -45,6 +45,7 @@ jobs:
       # signed with (public digest only). Without the personal-key secret it describes a throwaway key.
       - name: Release signing certificate for assetlinks.json
         run: |
+          set -o pipefail
           applink-site/assetlinks-from-apk.sh app/build/outputs/apk/release/app-release.apk | tee assetlinks.json
           { echo '### assetlinks.json for this release APK'; echo '```json'; cat assetlinks.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload assetlinks.json
