@@ -175,7 +175,11 @@ class BackupRepository(
                     }
                 }
                 .map { ProposalSetDto(it.id, it.source, it.targetKind, it.targetId, it.investigationId, it.madeAt.toString(), it.status, it.payload) }
-            val provenance = db.provenanceDao().getAll().map { ProvenanceDto(it.id, it.taskId, it.draftId, it.elementKind, it.elementId, it.proposalSetId, it.itemId, it.appliedAt.toString(), it.editedByUser, it.payload) }
+            // Applied content of a deleted task can leave provenance behind (no foreign key).
+            // Preserve only records whose associated task/draft is still in this backup.
+            val provenance = db.provenanceDao().getAll()
+                .filter { (it.taskId == null || it.taskId in existingTaskIds) && (it.draftId == null || it.draftId in existingDraftIds) }
+                .map { ProvenanceDto(it.id, it.taskId, it.draftId, it.elementKind, it.elementId, it.proposalSetId, it.itemId, it.appliedAt.toString(), it.editedByUser, it.payload) }
             val investigationRepo = InvestigationRepository(db)
             val investigationRows = db.investigationDao().getAll()
             val investigations = investigationRows.map { e ->
