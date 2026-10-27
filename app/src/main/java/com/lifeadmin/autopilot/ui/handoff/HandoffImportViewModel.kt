@@ -12,6 +12,7 @@ import com.lifeadmin.autopilot.share.applink.ImportLinkParser
 import com.lifeadmin.autopilot.share.applink.ImportLinkResult
 import com.lifeadmin.autopilot.share.applink.ImportRefusal
 import com.lifeadmin.autopilot.share.applink.LinkHandoff
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -59,7 +60,9 @@ data class ImportUi(
  * the chosen task and the pending set's id, all in [SavedStateHandle] so rotation and process death
  * come back to the same place. Every step after validation is idempotent (finding the set again by
  * its id), so a restored screen simply redoes it. It never writes a task: the review it opens does,
- * through ProposalApplier, when the user applies.
+ * through ProposalApplier, when the user applies. A newer link cancels the work of the one it
+ * replaces; that cancellation is rethrown, never shown as a failure, so the replaced work can't
+ * overwrite the newer link's screen.
  */
 class HandoffImportViewModel(
     private val saved: SavedStateHandle,
@@ -116,6 +119,8 @@ class HandoffImportViewModel(
         work = viewModelScope.launch {
             try {
                 previous?.let { importer.discardIfUntouched(it) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // Leaving the earlier pending set behind is harmless: it stays reviewable on its task.
             }
@@ -132,6 +137,8 @@ class HandoffImportViewModel(
             val taskId = try {
                 previous?.let { importer.discardIfUntouched(it) }
                 importer.createTask(handoff)
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 publish(_state.value.copy(stage = ImportStage.FAILED))
                 return@launch
@@ -162,6 +169,8 @@ class HandoffImportViewModel(
         work = viewModelScope.launch {
             val destination = try {
                 importer.resolve(handoff)
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 publish(_state.value.copy(stage = ImportStage.FAILED))
                 return@launch
@@ -183,6 +192,8 @@ class HandoffImportViewModel(
     private suspend fun prepareNow(handoff: LinkHandoff, taskId: String, titleDiffers: Boolean) {
         val result = try {
             importer.prepare(handoff, taskId)
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
             publish(_state.value.copy(stage = ImportStage.FAILED))
             return

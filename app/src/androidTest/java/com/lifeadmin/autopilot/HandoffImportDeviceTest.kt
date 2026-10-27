@@ -81,7 +81,12 @@ class HandoffImportDeviceTest {
         }
     }
 
-    /** A second link while the screen is open reaches the same instance (singleTop), and a repeat of the first adds nothing. */
+    /**
+     * A second link while the screen is open reaches the same instance (singleTop), and a repeat of
+     * the first finds its set again and adds nothing. Each link is given time to finish preparing
+     * before the next one arrives (its set saved); a link that arrives mid-preparation replaces the
+     * earlier one by design (HandoffImportViewModelTest covers that).
+     */
     @Test fun aRepeatedLinkReachesTheOpenScreenAndAddsNothing() {
         fun link(step: String) = LinkHandoff("Choose a coffee grinder", emptyList(), listOf(step), emptyList(), taskId).toUrl(BuildConfig.APP_LINK_HOST, ImportLinkParser.PATH)
         val first = link("Compare retailer prices")
@@ -94,8 +99,12 @@ class HandoffImportDeviceTest {
             context.startActivity(view(second).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             compose.waitUntil(15_000) { activity.intent?.dataString == second }
             assertTrue("the open screen took the link, no new instance", !activity.isFinishing && !activity.isDestroyed)
+            // Delivery is not preparation: wait for the second link's own set before sending the repeat.
+            compose.waitUntil(15_000) { runBlocking { container.proposalSets.getForTarget(taskId) }.size == 2 }
             context.startActivity(view(first).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             compose.waitUntil(15_000) { activity.intent?.dataString == first }
+            // The repeat reopens the first link's set and says so; only the third delivery can show this note.
+            waitFor("handoff_repeat", "already brought this in")
             waitFor("handoff_destination_title", "Choose a coffee grinder (device test)")
             // Two different links, three deliveries: the repeat found its set again instead of adding one.
             assertEquals(2, runBlocking { container.proposalSets.getForTarget(taskId) }.size)
