@@ -15,9 +15,9 @@ and no AI API call. UX design: `docs/CHATGPT_ROUND_TRIP_UX.md`. Earlier evidence
 | Discuss in ChatGPT (outbound) | **Done**, unit and Robolectric tests |
 | `ap=v1` + `r=` reference, `/autopilot/import` route | **Done**, unit, Robolectric and emulator tests |
 | `ProposalSource.HANDOFF` → canonical review / apply / undo | **Done**, Room-backed tests |
-| Local gate (lint, all unit tests, debug/release/androidTest builds) | See §7.1 |
-| CI on this branch | See §7.2 |
-| Release APK signed with the personal key | See §7.2 |
+| Local gate (lint, all unit tests, debug/release/androidTest builds) | **Green**: 751 tests, 0 failures. Lint: no issues (§7.1) |
+| CI on this branch | **Green**: run #180, including 28/28 emulator tests (§7.2) |
+| Release APK signed with the personal key | **Built by CI** run #180; certificate `A5:C5:…:21:46` matches the published `assetlinks.json` (§7.2) |
 | Real-phone acceptance test | **Not done**: owner (§8) |
 | Outbound intent from Autopilot to ChatGPT on the phone | **Not verified here**: owner (§8, step 4) |
 
@@ -144,12 +144,11 @@ explicit tap, keyed by the handoff so it's made once.
 | --- | --- | --- |
 | [#178](https://github.com/HassanJaveed84/autopilot/actions/runs/40459515226) | `d8e746f` | Build job **green**: lint, the full unit and Robolectric suite including `HardeningTest`, and debug, release and androidTest APKs. Signed with the personal key: `A5:C5:6F:43:16:77:81:B6:8B:5F:10:70:BF:36:A6:AF:17:76:D5:6C:1D:BB:B8:8D:C2:44:BD:BD:A2:56:21:46`, the published `assetlinks.json`. Emulator job **red: 2 of 28, both in the new `HandoffImportDeviceTest`**. (1) The exit read "Close" because the instrumentation, not ChatGPT, was the referrer. That's correct app behaviour, so the test now sets ChatGPT as the referrer. (2) `ActivityMonitor.hits` doesn't count system-started activities, so `singleTop` is now proven by the same instance receiving the next link |
 | [#179](https://github.com/HassanJaveed84/autopilot/actions/runs/40461702830) | `81655f5` | Build job **green**, same certificate. Emulator job **red: 2 of 28, the same new test**. (1) Its `waitFor` matched button text in the unmerged semantics tree; it now uses the merged tree, as the Robolectric tests do. (2) The repeat-link note wasn't found within 15 s after three warm deliveries. The same sequence passes in `HandoffImportViewModelTest.aDifferentLinkForTheSameTaskThenTheFirstAgainIsARepeat`, and the note itself is checked by `HandoffImportActivityTest.aRepeatedLinkReopensTheSameReview`. The device test now checks the device-level facts: the same instance takes each link, no set is duplicated, no step is written. **The repeat note on a real device stays a phone check (§8 step 11)** |
-| _next run_ | _see the latest commit_ | _pending at the time of writing_ |
+| [#180](https://github.com/HassanJaveed84/autopilot/actions/runs/40464545048) | `b4c675a` | **Green.** Build job: lint, the unit and Robolectric suite, and debug, release and androidTest APKs (BUILD SUCCESSFUL in 10m 18s). The release APK is signed with the personal key `A5:C5:6F:43:…:56:21:46`, identical to the published `assetlinks.json`. Emulator job (API 34): **28 tests, 0 failed** (the 26 from before plus the 2 new `HandoffImportDeviceTest` cases) |
 
-**Installable release APK:** take the latest green run's `apks` artifact → `release/app-release.apk`, signed with the
-personal key, package `com.lifeadmin.autopilot`. Run #179's build job already produced a personal-key release APK:
-[`apks`](https://github.com/HassanJaveed84/autopilot/actions/runs/40461702830/artifacts/12714884243). Its app code
-is identical to later commits that change only tests and docs. Downloading needs a GitHub login.
+**Installable release APK:** run #180 → artifact [`apks`](https://github.com/HassanJaveed84/autopilot/actions/runs/40464545048/artifacts/12716273694)
+→ `release/app-release.apk` (personal key, package `com.lifeadmin.autopilot`). Downloading needs a GitHub login.
+Later commits on this branch change only docs, which CI skips, so this is the APK for the branch head.
 
 ### 7.3 Coverage of the requested tests
 
