@@ -261,4 +261,5 @@ The test now waits until the Save button sits above the open keyboard before tap
 ### Verification
 
 - Local (no KVM, so no emulator): `./gradlew lintDebug testDebugUnitTest assembleDebug assembleDebugAndroidTest` passed. **755 tests, 0 failures** (754 plus the new view-model test). The handoff suites passed: `HandoffImportViewModelTest` 6, `HandoffImportActivityTest` 11, `HandoffImporterTest` 10.
-- CI on `2d10c26`: run [#189](https://github.com/HassanJaveed84/autopilot/actions/runs/40545214808), result pending at the time of this commit.
+- CI on `2d10c26`: run [#189](https://github.com/HassanJaveed84/autopilot/actions/runs/40545214808) passed on its first attempt with no reruns. Build job (lint, unit/Robolectric, APKs) **green**; emulator job (API 34) **28 tests, 0 failed**.
+- **Remaining risk.** One green emulator run shows these tests can pass, but it is not proof the failures are gone. The repeat-link failure is explained and reproduced. The Waiting-sheet tap remains a hypothesis: if it recurs, the new wait will fail with the button still behind the keyboard, which points to a different cause. The real-phone round trip (§8) was not repeated for this change.
