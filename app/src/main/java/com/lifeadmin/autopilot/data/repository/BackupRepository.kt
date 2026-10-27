@@ -162,7 +162,19 @@ class BackupRepository(
         val file = db.withTransaction {
             val slots = db.policyDao().getAllSlots().groupBy { it.policyId }
             val drafts = db.draftDao().getAll().map { DraftDto(it.id, it.createdAt.toString(), it.updatedAt.toString(), it.status, it.text, it.savedTaskId, it.payload) }
-            val proposals = db.proposalSetDao().getAll().map { ProposalSetDto(it.id, it.source, it.targetKind, it.targetId, it.investigationId, it.madeAt.toString(), it.status, it.payload) }
+            val existingTaskIds = db.taskDao().getAll().mapTo(hashSetOf()) { it.id }
+            val existingDraftIds = db.draftDao().getAll().mapTo(hashSetOf()) { it.id }
+            // Deleted tasks or drafts can leave old proposal sets behind. Do not export records
+            // whose targets are absent: importing those references would reject the backup.
+            val proposals = db.proposalSetDao().getAll()
+                .filter {
+                    when (it.targetKind) {
+                        "TASK" -> it.targetId in existingTaskIds
+                        "DRAFT" -> it.targetId in existingDraftIds
+                        else -> true // Unknown kinds must still fail explicit import validation.
+                    }
+                }
+                .map { ProposalSetDto(it.id, it.source, it.targetKind, it.targetId, it.investigationId, it.madeAt.toString(), it.status, it.payload) }
             val provenance = db.provenanceDao().getAll().map { ProvenanceDto(it.id, it.taskId, it.draftId, it.elementKind, it.elementId, it.proposalSetId, it.itemId, it.appliedAt.toString(), it.editedByUser, it.payload) }
             val investigationRepo = InvestigationRepository(db)
             val investigationRows = db.investigationDao().getAll()
