@@ -400,6 +400,9 @@ interface ProposalSetDao {
     @Upsert
     suspend fun upsert(set: ProposalSetEntity)
 
+    @Query("DELETE FROM proposal_sets WHERE targetKind = 'TASK' AND targetId = :taskId")
+    suspend fun deleteForTask(taskId: String)
+
     @Query("DELETE FROM proposal_sets WHERE id = :id")
     suspend fun delete(id: String)
 
@@ -429,6 +432,9 @@ interface ProvenanceDao {
 
     @Upsert
     suspend fun upsertAll(records: List<ProvenanceRecordEntity>)
+
+    @Query("DELETE FROM provenance_records WHERE taskId = :taskId")
+    suspend fun deleteForTask(taskId: String)
 
     @Query("DELETE FROM provenance_records WHERE id IN (:ids)")
     suspend fun deleteByIds(ids: List<String>)
