@@ -5,16 +5,17 @@ Single `:app` module, package `com.lifeadmin.autopilot`, minSdk 26 / target 36.
 ```
 LifeAdminApp ──creates──> AppContainer (manual DI)
                             ├─ AppClock, ZoneProvider, IdGenerator        (core: injectable seams)
-                            ├─ AppDatabase (Room, schema v3)              (data/local)
+                            ├─ AppDatabase (Room, schema v8)              (data/local)
                             ├─ SettingsRepository (DataStore)             (data/repository)
                             ├─ AlarmDriver → AndroidAlarmDriver           (reminders)
                             ├─ NotificationPublisher → AndroidNotificationPublisher (notifications)
                             ├─ ReminderEngine  (implements ScheduleCoordinator)
                             ├─ TaskRepository  (all task mutations go through the coordinator)
                             ├─ TaskActions, BackupRepository, Diagnostics
-                            ├─ ApiKeyStore → EncryptedApiKeyStore (Keystore)  (ai/security, M2)
-                            ├─ TaskPlanningProvider → AnthropicTaskPlanningProvider (ai/anthropic, M2)
-                            ├─ AiPlanningService (gates, caps, context, validation; never writes)
+                            ├─ ProposalSetRepository, ProposalApplier   (the one review → write path)
+                            ├─ HandoffImporter        (ChatGPT `/autopilot/import` link → proposal set)
+                            ├─ Saved-research readers (ResearchRepository, AfThreadRepository, …; read-only)
+                            ├─ LegacyApiKey           (detects / removes a key an earlier build stored)
 UI (Compose, Material 3) ── ViewModels (StateFlow) ── repositories
 Receivers (alarm / notification action / system) ── engine & repository
 ReconcileWorker (WorkManager, 1 h) ── engine.reconcileAll + ledger prune
@@ -34,11 +35,35 @@ ReconcileWorker (WorkManager, 1 h) ── engine.reconcileAll + ledger prune
 | `notifications` | `NotificationPublisher` + Android impl (channels, actions, deep links). |
 | `receivers` | `ReminderAlarmReceiver`, `NotificationActionReceiver`, `SystemEventReceiver`. |
 | `ui` | Root/navigation, Today, Inbox, Tasks, Task detail (+dialogs, policy editor), Capture sheet, Settings, Health panel, theme, shared components. |
-| `ai` | M2, optional: provider-neutral `TaskPlanningProvider` / `PlanningRequest` / `RawPlan` / `PlanningError`, `PlanSchema`, `PlanningPrompt`, `PhraseResolver`, `ProposalValidator`, `ProposalDraft`, `ProposalMapper`, `AiPlanningService`. |
-| `ai/anthropic` | The **only** package that imports `com.anthropic.*` (enforced by `ArchitectureBoundaryTest`). |
-| `ai/security` | `ApiKeyStore`: Keystore AES-GCM encrypted BYOK key, app-private, excluded from backup/export. |
-| `ui/plan`, `ui/ai` | Plan with AI / Move this forward (input → review → approve) and AI settings. |
+| `domain/proposal` | Canonical proposal sets, items, provenance, reconciliation, `MatchKey` (duplicate checks). |
+| `share/applink`, `share/chatgpt` | ChatGPT round trip: outbound prompt and share, `ap=v1` link parsing, `HandoffProposalBridge`, `HandoffImporter`. |
+| `ai` | **Data only, since 2026-10-27**: the stored formats of research saved by the retired built-in AI (`research` M3A briefs, `research2` M3A.2 sessions, `investigation` M4 threads, `aifirst` Research Online threads), the bridges that turn their saved proposals into canonical sets, `usage` (enums and the price table for saved usage rows) and `ModelNames`. No provider, prompt, network or engine code; no SDK (enforced by `ArchitectureBoundaryTest`). |
+| `ui/research`, `ui/research2`, `ui/investigation` | Read-only viewers for that saved research. |
+| `ui/review`, `ui/handoff` | The one Proposal Review; the App Link's own activity hosting it. |
 | `di` | `AppContainer`. |
+
+## Built-in AI retired (2026-10-27)
+
+Product decision: **Autopilot manages commitments; ChatGPT handles intelligence.** The embedded
+planning and research features, their Anthropic adapter and SDK, API-key setup, model/usage/billing
+screens and the live-evaluation harness were removed (`docs/RETIRE_EMBEDDED_AI_REPORT.md`). The only
+AI entry point is **Discuss in ChatGPT** on task detail; suggestions return through the
+`/autopilot/import` App Link into the one Proposal Review (`docs/CHATGPT_ROUND_TRIP_REPORT.md`).
+
+- **No schema change, nothing deleted.** Room stays at v8 with every historical migration. The
+  `research_briefs`, `investigations` / `investigation_turns`, `usage_records`, `drafts`,
+  `proposal_sets` and `provenance` tables keep their rows and still travel in backups (export and
+  import are unchanged).
+- **Saved research is read-only.** Viewers decode the stored JSON with the kept model classes; a
+  turn left running by an old process is settled to Interrupted at app start
+  (`AfThreadRepository.settleInterrupted`). Suggestion sets that research already saved stay
+  reviewable; nothing new is proposed.
+- **No network.** The `INTERNET` and `ACCESS_NETWORK_STATE` permissions were removed from the app
+  manifest (WorkManager still merges the latter). Old `ai_*` / `research_*` DataStore keys are left
+  unread; an encrypted key in `ai_secrets` is only detected and removed on request.
+
+The M2–M4 and AI-first sections below are **historical**: they describe code that no longer exists,
+kept as the record of the stored formats that the read-only viewers still decode.
 
 ## Key decisions (and why)
 

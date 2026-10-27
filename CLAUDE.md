@@ -12,6 +12,8 @@ This repository contains a native Android, local-first follow-through app. This 
 
 ## Milestone coordination as of 2026-10-20
 
+- **2026-10-27 product decision: Autopilot manages commitments; ChatGPT handles intelligence.** Built-in AI (Plan with AI, Move this forward, Research Online, the Anthropic adapter, API-key, model and usage screens) is retired on branch `retire-embedded-ai` (`docs/RETIRE_EMBEDDED_AI_REPORT.md`); *Discuss in ChatGPT* plus the `/autopilot/import` App Link and the one Proposal Review are the only AI path. Research saved by earlier versions stays readable, read-only. The M2/M3A/M3A.2 notes below are history.
+
 - M0–M1C offline MVP and M2 optional AI planning are implemented; Flight Plan UI redesign and stabilization have been merged. Automated and physical-device verification are separate gates.
 - **M3A (Action Brief / consented selected-task web research) is merged into `main` as PR #4.** User reports installing and testing the latest APK; keep live-provider and migration evidence distinct from code/CI status. Read the merged report and current code before making future claims.
 - **M3A.2 (Deep Research & Actionable Results)** is the proposed next priority: quality-oriented research, structured task-specific deliverables, flexible model/search budgets and usage-based cost estimates. It is not yet approved for implementation.
@@ -31,7 +33,7 @@ This repository contains a native Android, local-first follow-through app. This 
 
 ## AI, permissions and external information
 
-- M2 AI planning is optional and opt-in, with review-before-write. Only the `ai/anthropic` adapter imports Anthropic SDK types.
+- No AI provider SDK, API key or network access in the app (since 2026-10-27; `ArchitectureBoundaryTest`, `ManifestContractTest`). Reintroducing any needs a new, explicit product decision. Changes from ChatGPT arrive only as proposals through the Proposal Review.
 - Web research must be separately authorized per selected-task request and use **real structured citation metadata** for attributed claims; retrieved pages are untrusted inputs. No invented links, availability, costs or successful actions.
 - **An external AI review of multiple pending tasks is a new privacy boundary.** The user's consent to planning/research on one task never authorizes automatically uploading the full task list. Start with local deterministic review; multi-task AI needs explicit payload preview, per-field/task exclusions and separate opt-in.
 - No automatic paid web searches, hidden background token spending or unconstrained polling. User-approved operations should have usage caps and understandable run history.

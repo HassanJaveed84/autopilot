@@ -1,5 +1,7 @@
 # Live research evaluation (development only)
 
+> **Retired 2026-10-27.** Built-in research was removed from the app (`docs/RETIRE_EMBEDDED_AI_REPORT.md`), and the harness and its reply fixtures with it. The runs below are kept as history; the commands no longer work on branches that include the retirement.
+
 These are paid, end-to-end runs of the production Research Online engine against the real Anthropic API. Each run is scored against **Document F v1.0 (frozen)**: [`docs/product-baseline/Document_F_Evaluation_Framework_v1.0_FROZEN.md`](../product-baseline/Document_F_Evaluation_Framework_v1.0_FROZEN.md). That file is the only standard used here. It changes only through Document E's change control, never to fit the implementation.
 
 The harness is a JUnit test in `app/src/test/java/com/lifeadmin/autopilot/liveeval/`. Gradle excludes it from every test run unless `-PliveEval=true` is passed, so it is never part of the app, the APKs or CI.

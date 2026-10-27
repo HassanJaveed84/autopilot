@@ -1,31 +1,34 @@
 # Product Roadmap — Life Admin Autopilot
 
-Updated: 2026-10-25
+Updated: 2026-10-27
 
 This is the living **product-direction** document. It records milestone status, priorities, scope, decisions, open questions and evidence. It does not authorize implementation. The technical baseline remains in `docs/SPEC.md`; historical engineering results remain in `docs/PROGRESS.md` and milestone-specific reports.
 
 ## Vision
 
-**Capture a commitment → remember it reliably → recognize what deserves attention → research next steps → help complete the work, with explicit approvals.**
+**Capture a commitment → remember it reliably → recognize what deserves attention → think it through in ChatGPT → review and apply the result → follow through, with explicit approvals.**
 
-Autopilot is an Android-native, local-first follow-through assistant. Tasks and reminders should remain useful offline. AI is optional, transparent, privacy-conscious and bounded by user consent, cost controls and permission boundaries.
+Autopilot is an Android-native, local-first follow-through assistant. Tasks and reminders should remain useful offline.
+
+**Product decision (2026-10-27, approved): Autopilot manages commitments; ChatGPT handles intelligence.** Capture quickly and offline; tap *Discuss in ChatGPT* to plan, research, compare or decide; return suggestions through the verified `/autopilot/import` App Link; review and selectively apply them in the one Proposal Review; Autopilot handles reminders, nudges and completion. Autopilot no longer maintains its own AI system: Plan with AI, Move this forward, Research Online, the Anthropic integration, API-key setup and AI usage/billing screens are retired (`docs/RETIRE_EMBEDDED_AI_REPORT.md`). Research saved by earlier versions stays readable, read-only.
 
 ## Milestones
 
 | Milestone | Scope | Status (2026-10-20) | Next gate |
 | --- | --- | --- | --- |
 | M0–M1C | Native Android app, local task lifecycle, reminders, notification actions, diagnostic and recovery tools | Implemented | Continue physical-device validation |
-| M2 | Opt-in AI-assisted capture, review-before-write planning and per-task suggestions | Implemented | Live provider and phone validation separate from mock CI |
+| **Retire built-in AI** | **Remove Plan with AI, Move this forward, Research Online, the Anthropic adapter/SDK, API-key, model and usage screens and the live-eval harness; keep Discuss in ChatGPT, the App Link, Proposal Review, saved research (read-only), backups and migrations** | **Implemented 2026-10-27 on `retire-embedded-ai` (from `chatgpt-roundtrip-polish` @ `082ba59`), not merged, no PR** | Owner review of the simplified app; CI (incl. emulator) per `docs/RETIRE_EMBEDDED_AI_REPORT.md`; phone upgrade check over an install that has saved research and a stored key |
+| M2 | Opt-in AI-assisted capture, review-before-write planning and per-task suggestions | Implemented; **retired 2026-10-27** (removed on `retire-embedded-ai`) | None; applied plans and their provenance stay on tasks |
 | Flight Plan UI | Native redesign and stabilization | Merged | Field usability/upgrade checks |
 | **M3A** | **Action Brief: selected-task web research, real source attribution, saved research briefs, reviewed task updates** | **Merged into `main`** | [PR #4](../pull/4) (squash `4477ee6`); final automated CI green; user reports installing/testing latest APK; exact upgrade and paid live-API validation evidence tracked separately |
-| **M3A.2** | **Deep Research & Actionable Results: flexible investigation depth, model selection, evidence coverage, exact requested deliverables, cost intelligence** | **Implemented on branch `m3a2-deep-research` — draft PR open, not merged** | Code, Robolectric and MockWebServer tests, CI and screenshots on the branch (`docs/M3A2_IMPLEMENTATION_REPORT.md`); live paid-API runs and phone install not performed by the agent |
+| **M3A.2** | **Deep Research & Actionable Results: flexible investigation depth, model selection, evidence coverage, exact requested deliverables, cost intelligence** | **Implemented on branch `m3a2-deep-research` — draft PR open, not merged. Superseded 2026-10-27 by the decision to retire built-in AI** | Code, Robolectric and MockWebServer tests, CI and screenshots on the branch (`docs/M3A2_IMPLEMENTATION_REPORT.md`); live paid-API runs and phone install not performed by the agent |
 | **Production UX (approved)** | **Plan with AI Living Draft, Research Online Investigation Thread, one Proposal Review, integration — per the frozen specs A–D/J and `UX-implementation-handoff.md` v1.1** | **Kickoff 2026-10-23: audit + plan in `docs/PRODUCTION_KICKOFF_AUDIT_AND_PLAN.md`; M1 foundations (`prod-ux-m1-foundations`, PR #6), M2 Proposal Review (`prod-ux-m2-proposal-review`, PR #7) and M4 Research Online Investigation Thread (`prod-ux-m4-investigation-thread`, PR #8) implemented as stacked draft PRs, none merged. 2026-10-24: Research Online core replaced by the AI-first engine (A/B experiment on `ccr-205def5b-4gv9qp`, integration on `ccr-e03bf7f8-hvk42n`, not merged; PR #8 frozen as the M4 baseline)** | Owner-approved order (G6): M2 canonical Proposal Review → M4 Investigation thread → M3 Living Draft → M5 integration/spending → M6 hardening (see the plan and `docs/DECISION_LOG_ADDENDA.md`) |
-| **M3B** | **Autopilot Review: automatically review open tasks and detect overlooked obligations** | **Proposed — after the production UX milestones** | Focused design, privacy specification, phased implementation |
+| **M3B** | **Autopilot Review: automatically review open tasks and detect overlooked obligations** | **Proposed — after the production UX milestones. Since 2026-10-27 only the local, deterministic part (M3B.1) fits the product; M3B.2 (external AI over many tasks) is withdrawn** | Focused design, privacy specification, phased implementation |
 | M3C | Scoped calendar/email/service integrations and user-approved external actions | Proposed | Design permissions, OAuth, provider integrations and auditability |
 | M3D | Multi-step agent workflows with per-action approval and verified outcomes | Proposed | Reliable execution, scope, idempotency and recovery |
 | M4 | Optional household collaboration and sync | Deferred | Explicit approval and identity/sharing architecture |
 
-**Coordination:** M3A landed in `main` as PR #4. M3A.2 was implemented at the user's explicit request on `m3a2-deep-research` (draft PR against `main`, not merged). The production UX implementation was kicked off at the user's explicit request on 2026-10-23 (frozen specs A–D/J + handoff v1.1 are the authority; design exploration is closed); M1 lives on `prod-ux-m1-foundations`. M3B remains proposed; no implementation is authorized by this document.
+**Coordination:** 2026-10-27: built-in AI retired in favour of the ChatGPT round trip (branch `retire-embedded-ai`, not merged); the M3A/M3A.2/production-UX/AI-first entries below are kept as history. M3A landed in `main` as PR #4. M3A.2 was implemented at the user's explicit request on `m3a2-deep-research` (draft PR against `main`, not merged). The production UX implementation was kicked off at the user's explicit request on 2026-10-23 (frozen specs A–D/J + handoff v1.1 are the authority; design exploration is closed); M1 lives on `prod-ux-m1-foundations`. M3B remains proposed; no implementation is authorized by this document.
 
 ## M3A — Action Brief: consented task research (merged)
 
@@ -123,11 +126,12 @@ Optional sharing, identity, task ownership, member permissions, cross-device con
 | ChatGPT → Android App Link (spike) | **Experiment 2026-10-26 on `ccr-594b2954-khysx3` (base `ccr-69eac4c4-5vsk4s`), not merged, no PR** (`docs/CHATGPT_APP_LINK_SPIKE.md`). One verified-ready route `https://hassanjaveed84.github.io/autopilot/test#message=…` opens a display-only test screen; no task writes, no AI calls. Site **published 2026-10-27** on GitHub Pages (`HassanJaveed84.github.io`); `assetlinks.json` served without redirects and Google's Digital Asset Links API reports `linked: true`. **Owner confirmed 2026-10-27 on a Galaxy S24 Ultra**: tapping the link in ChatGPT opens the test screen directly, the message arrives intact and Close returns to the conversation. The real `autopilot.handoff.v1` link payload is not approved |
 | ChatGPT → App Link structured handoff (experiment) | **Experiment 2026-10-27 on `ccr-125b38a8-btl7ka` (from the spike), not merged, no PR** (`docs/CHATGPT_APP_LINK_HANDOFF.md`). Same route; a fragment `#ap=v1&t=…&d=…&s=…&n=…` (percent-encoded UTF-8, repeated keys, strict validation, no JSON/Base64) is decoded and shown on the test screen with diagnostics. Display only: no tasks, no proposals, no AI. `autopilot.handoff.v1` and Proposal Review unchanged. Phone Test A (known-good link) and Test B (ChatGPT writes the link) are outstanding; connecting to Proposal Review is not approved |
 | ChatGPT round trip (Discuss in ChatGPT → Open in Autopilot → Proposal Review) | **Approved and implemented 2026-10-27 on `claude/fervent-archimedes-5dhxmq` (from `ccr-125b38a8-btl7ka` @ `62af1cd`), not merged, no PR** (`docs/CHATGPT_ROUND_TRIP_UX.md`, `docs/CHATGPT_ROUND_TRIP_REPORT.md`). Owner confirmed Test A and Test B of the structured handoff on the S24 Ultra beforehand. Task detail → share sheet (notes off by default) → plain `ACTION_SEND` to ChatGPT; ChatGPT's `Open in Autopilot` link on the new `/autopilot/import` route carries `ap=v1` plus an optional `r=` task reference; Autopilot resolves the task by reference only, saves a `ProposalSource.HANDOFF` set and opens the canonical Proposal Review in the link's own task; Return to ChatGPT closes it. No API calls, no backend. Code and CI per the report; **owner phone acceptance passed on S24 Ultra** (share → ChatGPT → return link → review/apply two changes → same ChatGPT conversation). Follow-up polish branch `chatgpt-roundtrip-polish` fixes stale review copy and orphaned proposal/provenance cleanup; CI revalidation pending. Deadlines/reminders in the link deferred |
-| Automatic pending-task review | **Captured 2026-10-20; prioritized as M3B after the production UX milestones** |
+| Retire built-in AI (ChatGPT handles intelligence) | **Approved and implemented 2026-10-27 on `retire-embedded-ai` (from `chatgpt-roundtrip-polish` @ `082ba59`), not merged, no PR** (`docs/RETIRE_EMBEDDED_AI_REPORT.md`). Removed: Plan with AI (capture and Inbox), Move this forward, Research Online (new threads, follow-ups, suggestions), the Anthropic adapter and SDK, API-key setup, model selection, AI usage/billing, the live-eval harness and the `INTERNET` permission. Kept: Discuss in ChatGPT, `/autopilot/import`, Proposal Review/provenance/undo, all Room tables and migrations (v8, no new migration), backup format, saved research read-only from its task and Settings → Saved research. An API key an earlier build stored is only removed on request (Settings). Local gates and CI per the report; phone check outstanding |
+| Automatic pending-task review | **Captured 2026-10-20; prioritized as M3B after the production UX milestones** (local review only since 2026-10-27) |
 | Focused M3B design | Planned after M3A UX exists |
 | Real-device installation and reminder/keyboard checks | Verification outstanding |
-| Live Anthropic planning/research tests (incl. M3A.2 multi-stage runs, cache usage, real price reconciliation against the Console) | Verification outstanding |
-| Calibrate the 11k-tokens-per-search estimate from the local usage ledger after real runs | Open (M3A.2) |
+| Live Anthropic planning/research tests (incl. M3A.2 multi-stage runs, cache usage, real price reconciliation against the Console) | Withdrawn 2026-10-27 (built-in AI retired) |
+| Calibrate the 11k-tokens-per-search estimate from the local usage ledger after real runs | Withdrawn 2026-10-27 (built-in AI retired) |
 | Light-mode outline contrast polish | Small deferred UI issue |
 | Widgets, richer capture, recurring task regeneration | Idea bank, not scheduled |
 | Paid background research and financial transactions | Not approved |
@@ -143,6 +147,9 @@ Optional sharing, identity, task ownership, member permissions, cross-device con
 7. Preserve notification channel identity, alarm scheduling, stable signing, Room migrations, backup compatibility and local-first task behavior.
 
 ## Next checkpoint
+
+**2026-10-27:** owner review of the simplified app on `retire-embedded-ai` (built-in AI retired, ChatGPT round trip as the only AI entry point), then integration into the final release. Before merging: a phone upgrade over an install with saved research and a stored API key (saved research opens read-only; Settings offers to remove the key; reminders and the round trip unaffected). The entries below are history.
+
 
 **2026-10-24:** the Research Online core is being replaced by the AI-first engine (integration branch `ccr-e03bf7f8-hvk42n`, awaiting owner review; not merged). Next for it: owner review, the five-scenario live validation in `docs/AI_FIRST_RESEARCH_INTEGRATION_REPORT.md` §5 once authorized, and a phone run of §7. The M4 description below is historical.
 
