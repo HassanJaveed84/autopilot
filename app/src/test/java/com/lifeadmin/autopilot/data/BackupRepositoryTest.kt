@@ -426,6 +426,40 @@ class BackupRepositoryTest {
         assertEquals(com.lifeadmin.autopilot.share.applink.HandoffPrepared.Ready(taskId, setId, existed = true), targetImporter.prepare(handoff, taskId))
     }
 
+    @Test fun deletedTaskWithOrphanedProposalStillExportsRestorableBackup() = runTest {
+        val repo = TaskRepository(source, clock, SequentialIds(), { CHICAGO }, ScheduleCoordinator.Direct)
+        val deletedId = repo.createTask(NewTask("Temporary task", status = TaskStatus.ACTIONABLE))
+        val keptId = repo.createTask(NewTask("Keep this task", status = TaskStatus.ACTIONABLE))
+        val sets = com.lifeadmin.autopilot.data.repository.ProposalSetRepository(source)
+        val applier = com.lifeadmin.autopilot.data.repository.ProposalApplier(source, repo, sets, clock, SequentialIds("p"))
+        val deletedSnapshot = applier.snapshot(deletedId)!!
+        val keptSnapshot = applier.snapshot(keptId)!!
+        fun proposal(id: String, taskId: String, snapshot: com.lifeadmin.autopilot.domain.proposal.TargetSnapshot) =
+            com.lifeadmin.autopilot.domain.proposal.ProposalSet(
+                id, com.lifeadmin.autopilot.domain.proposal.ProposalSource.HANDOFF,
+                com.lifeadmin.autopilot.domain.proposal.TargetKind.TASK, taskId,
+                madeAtMs = clock.now().toEpochMilli(), baseOriginal = snapshot, base = snapshot,
+                items = listOf(
+                    com.lifeadmin.autopilot.domain.proposal.ProposalItem(
+                        "step-$id", com.lifeadmin.autopilot.domain.proposal.ItemKind.ADD_STEP,
+                        value = com.lifeadmin.autopilot.domain.proposal.ItemValue.Step("Compare prices"),
+                    ),
+                ),
+            )
+        sets.save(proposal("orphaned", deletedId, deletedSnapshot))
+        sets.save(proposal("valid", keptId, keptSnapshot))
+        repo.delete(deletedId)
+
+        val exported = backup(source).exportJson()
+        val payload = kotlinx.serialization.json.Json.parseToJsonElement(exported).jsonObject
+        val proposals = payload.getValue("proposals").jsonArray.map { it.jsonObject.getValue("id").toString().trim('"') }
+        assertEquals(listOf("valid"), proposals)
+        val result = backup(target).importJson(exported)
+        assertEquals(1, result.created)
+        assertNull(target.taskDao().get(deletedId))
+        assertEquals(keptId, com.lifeadmin.autopilot.data.repository.ProposalSetRepository(target).get("valid")!!.targetId)
+    }
+
     @Test fun aProposalSetForAMissingTargetRejectsTheImport() = runTest {
         val json = seed()
         val tampered = json.replace("\"provenance\": []", "\"provenance\": []").replace(
