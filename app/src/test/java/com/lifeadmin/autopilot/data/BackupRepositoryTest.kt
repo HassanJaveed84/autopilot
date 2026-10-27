@@ -448,12 +448,27 @@ class BackupRepositoryTest {
             )
         sets.save(proposal("orphaned", deletedId, deletedSnapshot))
         sets.save(proposal("valid", keptId, keptSnapshot))
+        // Applying a proposed step creates a provenance record, the missing case in the
+        // initial regression test. Capture both records to simulate a database from an
+        // older build that failed to clean them up after the task was deleted.
+        applier.apply("orphaned", listOf(com.lifeadmin.autopilot.domain.proposal.ApplyChoice("step-orphaned")))
+        val oldProposal = source.proposalSetDao().get("orphaned")!!
+        val oldProvenance = source.provenanceDao().getForTask(deletedId).single()
         repo.delete(deletedId)
 
+        // Current builds clean up atomically on task deletion.
+        assertNull(source.proposalSetDao().get("orphaned"))
+        assertTrue(source.provenanceDao().getForTask(deletedId).isEmpty())
+        assertEquals("valid", source.proposalSetDao().get("valid")!!.id)
+
+        // Older builds already left these behind. Export must filter both orphan types.
+        source.proposalSetDao().upsert(oldProposal)
+        source.provenanceDao().upsert(oldProvenance)
         val exported = backup(source).exportJson()
         val payload = kotlinx.serialization.json.Json.parseToJsonElement(exported).jsonObject
         val proposals = payload.getValue("proposals").jsonArray.map { it.jsonObject.getValue("id").toString().trim('"') }
         assertEquals(listOf("valid"), proposals)
+        assertTrue(payload.getValue("provenance").jsonArray.isEmpty())
         val result = backup(target).importJson(exported)
         assertEquals(1, result.created)
         assertNull(target.taskDao().get(deletedId))
