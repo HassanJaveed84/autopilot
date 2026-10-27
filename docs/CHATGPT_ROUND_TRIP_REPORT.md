@@ -140,7 +140,16 @@ explicit tap, keyed by the handoff so it's made once.
 
 ### 7.2 CI
 
-_filled in below_
+| Run | Commit | Result |
+| --- | --- | --- |
+| [#178](https://github.com/HassanJaveed84/autopilot/actions/runs/40459515226) | `d8e746f` | Build job **green**: lint, the full unit and Robolectric suite including `HardeningTest`, and debug, release and androidTest APKs. Signed with the personal key: `A5:C5:6F:43:16:77:81:B6:8B:5F:10:70:BF:36:A6:AF:17:76:D5:6C:1D:BB:B8:8D:C2:44:BD:BD:A2:56:21:46`, the published `assetlinks.json`. Emulator job **red: 2 of 28, both in the new `HandoffImportDeviceTest`**. (1) The exit read "Close" because the instrumentation, not ChatGPT, was the referrer. That's correct app behaviour, so the test now sets ChatGPT as the referrer. (2) `ActivityMonitor.hits` doesn't count system-started activities, so `singleTop` is now proven by the same instance receiving the next link |
+| [#179](https://github.com/HassanJaveed84/autopilot/actions/runs/40461702830) | `81655f5` | Build job **green**, same certificate. Emulator job **red: 2 of 28, the same new test**. (1) Its `waitFor` matched button text in the unmerged semantics tree; it now uses the merged tree, as the Robolectric tests do. (2) The repeat-link note wasn't found within 15 s after three warm deliveries. The same sequence passes in `HandoffImportViewModelTest.aDifferentLinkForTheSameTaskThenTheFirstAgainIsARepeat`, and the note itself is checked by `HandoffImportActivityTest.aRepeatedLinkReopensTheSameReview`. The device test now checks the device-level facts: the same instance takes each link, no set is duplicated, no step is written. **The repeat note on a real device stays a phone check (§8 step 11)** |
+| _next run_ | _see the latest commit_ | _pending at the time of writing_ |
+
+**Installable release APK:** take the latest green run's `apks` artifact → `release/app-release.apk`, signed with the
+personal key, package `com.lifeadmin.autopilot`. Run #179's build job already produced a personal-key release APK:
+[`apks`](https://github.com/HassanJaveed84/autopilot/actions/runs/40461702830/artifacts/12714884243). Its app code
+is identical to later commits that change only tests and docs. Downloading needs a GitHub login.
 
 ### 7.3 Coverage of the requested tests
 

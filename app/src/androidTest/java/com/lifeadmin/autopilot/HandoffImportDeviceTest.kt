@@ -43,7 +43,7 @@ class HandoffImportDeviceTest {
     private fun view(link: String) = Intent(Intent.ACTION_VIEW, Uri.parse(link)).addCategory(Intent.CATEGORY_BROWSABLE).setPackage(context.packageName)
         .putExtra(Intent.EXTRA_REFERRER, Uri.parse("android-app://com.openai.chatgpt"))
     private fun waitFor(tag: String, text: String) = compose.waitUntil(15_000) {
-        compose.onAllNodes(hasTestTag(tag) and hasText(text, substring = true), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        compose.onAllNodes(hasTestTag(tag) and hasText(text, substring = true)).fetchSemanticsNodes().isNotEmpty()
     }
 
     @Before fun seed() = runBlocking {
@@ -96,7 +96,8 @@ class HandoffImportDeviceTest {
             assertTrue("the open screen took the link, no new instance", !activity.isFinishing && !activity.isDestroyed)
             context.startActivity(view(first).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             compose.waitUntil(15_000) { activity.intent?.dataString == first }
-            compose.waitUntil(15_000) { compose.onAllNodes(hasTestTag("handoff_repeat"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+            waitFor("handoff_destination_title", "Choose a coffee grinder (device test)")
+            // Two different links, three deliveries: the repeat found its set again instead of adding one.
             assertEquals(2, runBlocking { container.proposalSets.getForTarget(taskId) }.size)
             assertTrue(runBlocking { container.taskRepository.getSteps(taskId) }.isEmpty())
         } finally {

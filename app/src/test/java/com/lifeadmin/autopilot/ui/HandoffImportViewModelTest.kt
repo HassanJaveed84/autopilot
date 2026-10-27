@@ -94,6 +94,18 @@ class HandoffImportViewModelTest {
         assertEquals(1, runBlocking { sets.getForTarget(grinder) }.size)
     }
 
+    @Test fun aDifferentLinkForTheSameTaskThenTheFirstAgainIsARepeat() {
+        val vm = vm()
+        vm.onLink(url(grinder, step = "A"), null)
+        val a = vm.await(ImportStage.REVIEW)
+        vm.onLink(url(grinder, step = "B"), null)
+        val b = vm.awaitState { it.stage == ImportStage.REVIEW && it.setId != a.setId }
+        assertFalse(b.existed)
+        vm.onLink(url(grinder, step = "A"), null)
+        val again = vm.awaitState { it.stage == ImportStage.REVIEW && it.setId == a.setId }
+        assertTrue(again.existed)
+    }
+
     @Test fun processDeathResumesFromTheValidatedFieldsAlone() {
         val saved = SavedStateHandle()
         val vm = vm(saved)
