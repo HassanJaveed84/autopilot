@@ -298,3 +298,6 @@ plus `autopilotIsNotAShareTarget`), debug, release and androidTest APKs built. T
 and green (`HandoffImportActivityTest` 11, `HandoffImporterTest` 10, `ChatGptPromptTest` 5, `ChatGptShareTest` 4,
 `ManifestContractTest` 11). Emulator tests run in CI on push (`ShareImportDeviceTest` removed). The real-phone round
 trip was not repeated for this removal.
+- CI on `3da78eb`: run [#191](https://github.com/HassanJaveed84/autopilot/actions/runs/40557571517) **green** on its
+  first attempt. Build job (lint, unit/Robolectric, APKs) passed; emulator job (API 34) **25 tests, 0 failed** (28 before,
+  minus the three `ShareImportDeviceTest` cases).
