@@ -7,6 +7,8 @@ import com.lifeadmin.autopilot.data.repository.ImportException
 import com.lifeadmin.autopilot.data.repository.NewTask
 import com.lifeadmin.autopilot.data.repository.TaskRepository
 import com.lifeadmin.autopilot.domain.model.Priority
+import com.lifeadmin.autopilot.domain.model.StepDetails
+import com.lifeadmin.autopilot.domain.model.StepLink
 import com.lifeadmin.autopilot.domain.model.ReminderPreset
 import com.lifeadmin.autopilot.domain.model.TaskStatus
 import com.lifeadmin.autopilot.domain.usecase.ScheduleCoordinator
@@ -82,6 +84,43 @@ class BackupRepositoryTest {
         assertEquals(1, r.updated)
         assertEquals("Renew car registration", target.taskDao().get(id)!!.title)
         assertEquals(2, target.taskDao().count())
+    }
+
+    @Test fun stepDetailsSurviveExportAndImport() = runTest {
+        val repo = TaskRepository(source, clock, SequentialIds("rich"), { CHICAGO }, ScheduleCoordinator.Direct)
+        val id = repo.createTask(NewTask("Thank-you gift", status = TaskStatus.ACTIONABLE))
+        val step = repo.addStep(id, "Buy Bleu de Chanel EDP 50 mL")
+        val links = listOf(StepLink("https://www.chanel.com/us/p/107460/?size=50ml", "Product page"), StepLink("https://www.nordstrom.com/s/1"))
+        repo.updateStep(step, "Buy Bleu de Chanel EDP 50 mL", "About \$135.\nAsk for gift wrap.", links)
+        val json = backup(source).exportJson()
+        assertTrue(json.contains("\"schemaVersion\": 2"))
+        backup(target).importJson(json)
+        val imported = target.stepDao().get(step)!!
+        assertEquals("About \$135.\nAsk for gift wrap.", imported.description)
+        assertEquals(links, StepDetails.decodeLinks(imported.links))
+    }
+
+    @Test fun aSchema1BackupFrom020ImportsWithStepsAndNoDetails() = runTest {
+        val json = seed().replace("\"schemaVersion\": 2", "\"schemaVersion\": 1")
+        // A 0.2.0 file has no step details at all.
+        val stripped = json.replace(Regex(",\\s*\"description\": null"), "").replace(Regex(",\\s*\"links\": \\[\\s*]"), "")
+        assertTrue(stripped.contains("\"schemaVersion\": 1") && !stripped.contains("\"links\""))
+        val r = backup(target).importJson(stripped)
+        assertEquals(2, r.created)
+        val s = target.stepDao().getAll().single()
+        assertEquals("Find dates", s.title)
+        assertEquals(null, s.description)
+        assertEquals(null, s.links)
+    }
+
+    @Test fun aNewerBackupOrABadStepLinkIsRefusedAndChangesNothing() = runTest {
+        val json = seed()
+        expectImportFailure(json.replace("\"schemaVersion\": 2", "\"schemaVersion\": 3"))
+        val bad = json.replace(Regex(",\\s*\"links\": \\[\\s*]"), ", \"links\": [{\"url\": \"javascript:alert(1)\"}]")
+        assertTrue(bad.contains("javascript:alert(1)"))
+        expectImportFailure(bad)
+        assertEquals(0, target.taskDao().count())
+        assertEquals(0, target.stepDao().getAll().size)
     }
 
     @Test fun malformedJsonIsRejected() = runTest {

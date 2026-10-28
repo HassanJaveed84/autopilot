@@ -43,7 +43,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun provenanceDao(): ProvenanceDao
 
     companion object {
-        const val VERSION = 8
+        const val VERSION = 9
         const val NAME = "life_admin.db"
 
         /** No destructive fallback: a missing migration must fail loudly rather than drop tasks. */

@@ -1,6 +1,7 @@
 package com.lifeadmin.autopilot.data.local
 
 import com.lifeadmin.autopilot.domain.model.ContentOrigin
+import com.lifeadmin.autopilot.domain.model.StepDetails
 import com.lifeadmin.autopilot.domain.model.ReminderOccurrence
 import com.lifeadmin.autopilot.domain.model.ReminderPolicy
 import com.lifeadmin.autopilot.domain.model.Task
@@ -34,8 +35,9 @@ fun Task.toEntity() = TaskEntity(
 fun TaskStepEntity.toDomain() = TaskStep(
     id, taskId, sortOrder, title, isDone, completedAt,
     origin = ContentOrigin.entries.firstOrNull { it.name == origin } ?: ContentOrigin.USER, provenanceId = provenanceId,
+    description = description, links = StepDetails.decodeLinks(links),
 )
-fun TaskStep.toEntity() = TaskStepEntity(id, taskId, sortOrder, title, isDone, completedAt, origin.name, provenanceId)
+fun TaskStep.toEntity() = TaskStepEntity(id, taskId, sortOrder, title, isDone, completedAt, origin.name, provenanceId, description, StepDetails.encodeLinks(links))
 
 fun ReminderPolicyEntity.toDomain(slots: List<ReminderTimeSlotEntity>) = ReminderPolicy(
     id = id, taskId = taskId, enabled = enabled, kind = kind, startLocalDate = startLocalDate,

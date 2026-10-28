@@ -2,6 +2,8 @@ package com.lifeadmin.autopilot.share.applink
 
 import com.lifeadmin.autopilot.domain.proposal.MatchKey
 import com.lifeadmin.autopilot.domain.model.ContentOrigin
+import com.lifeadmin.autopilot.domain.model.StepDetails
+import com.lifeadmin.autopilot.domain.model.StepLink
 import com.lifeadmin.autopilot.domain.proposal.ItemKind
 import com.lifeadmin.autopilot.domain.proposal.ItemValue
 import com.lifeadmin.autopilot.domain.proposal.ProposalItem
@@ -16,7 +18,12 @@ import java.security.MessageDigest
  * handoff goes through the one review and the one write path (Proposal Review → ProposalApplier).
  * Pure mapping, no AI and no second parser:
  * - each step → ADD_STEP, unless the task or the handoff already has it (same normalisation as
- *   planning). Steps are never added as done, and existing steps, done or not, are never touched;
+ *   planning). Steps are never added as done. A v2 step carries its description and links in the
+ *   same item, so it is reviewed and applied as one unit;
+ * - a v2 step whose name is already on the task, with details → ADD_STEP_DETAILS holding only the
+ *   paragraphs and links that aren't there yet (nothing new → no item). Its wording, done state and
+ *   existing details are never touched. Matching uses the task's step ids once found: exactly one
+ *   step with that name → that step; more than one → the user picks one in review, never a guess;
  * - each decision → APPEND_NOTE "Decided: …"; each note → APPEND_NOTE as written. A line the notes
  *   already contain is skipped;
  * - the title only identifies the task and is never proposed as a rename.
@@ -36,7 +43,14 @@ object HandoffProposalBridge {
         val canonical = buildString {
             append(taskId)
             handoff.decisions.forEach { append("\u0000d").append(it) }
-            handoff.steps.forEach { append("\u0000s").append(it) }
+            handoff.steps.forEachIndexed { i, step ->
+                append("\u0000s").append(step)
+                // Only rich steps add to the key, so a v1 link and its plain v2 twin reopen the same set.
+                handoff.stepDetails[i]?.let { d ->
+                    d.description.forEach { append("\u0000sd").append(it) }
+                    d.links.forEach { append("\u0000sl").append(it.label.orEmpty()).append(' ').append(it.url) }
+                }
+            }
             handoff.notes.forEach { append("\u0000n").append(it) }
         }
         val digest = MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray(Charsets.UTF_8))
@@ -50,10 +64,44 @@ object HandoffProposalBridge {
         val items = ArrayList<ProposalItem>()
         fun nextId() = "$id-${items.size}"
 
-        val stepKeys = snapshot.steps.map { key(it.title) }.toMutableSet()
-        for (step in handoff.steps) {
-            if (!stepKeys.add(key(step))) continue
-            items += ProposalItem(nextId(), ItemKind.ADD_STEP, value = ItemValue.Step(step, ContentOrigin.USER), recommended = true)
+        // One group per distinct step name, in first-mention order; a name repeated in the link merges its details.
+        class Group(val title: String, val paragraphs: MutableList<String> = mutableListOf(), val links: MutableList<StepLink> = mutableListOf())
+        val groups = LinkedHashMap<String, Group>()
+        handoff.steps.forEachIndexed { i, step ->
+            val g = groups.getOrPut(key(step)) { Group(step) }
+            val d = handoff.details(i)
+            g.paragraphs += StepDetails.newParagraphs(g.paragraphs.joinToString("\n"), d.description, ::key)
+            g.links += StepDetails.newLinks(g.links, d.links)
+        }
+        for ((k, g) in groups) {
+            val matches = snapshot.steps.filter { key(it.title) == k }
+            when {
+                matches.isEmpty() -> items += ProposalItem(
+                    nextId(), ItemKind.ADD_STEP,
+                    value = ItemValue.Step(g.title, ContentOrigin.USER, description = g.paragraphs.joinToString("\n").ifEmpty { null }, links = g.links.toList()),
+                    recommended = true,
+                )
+                // Already on the task and nothing to add: as in v1, nothing is proposed.
+                g.paragraphs.isEmpty() && g.links.isEmpty() -> Unit
+                matches.size == 1 -> {
+                    val m = matches.single()
+                    val paragraphs = StepDetails.newParagraphs(m.description, g.paragraphs, ::key)
+                    val links = StepDetails.newLinks(m.links, g.links)
+                    if (paragraphs.isNotEmpty() || links.isNotEmpty()) {
+                        items += ProposalItem(
+                            nextId(), ItemKind.ADD_STEP_DETAILS,
+                            value = ItemValue.StepDetails(stepId = m.id, stepTitle = g.title, description = paragraphs.joinToString("\n").ifEmpty { null }, links = links),
+                            recommended = true,
+                        )
+                    }
+                }
+                // Two or more steps share the name: the user chooses which one gets the details.
+                else -> items += ProposalItem(
+                    nextId(), ItemKind.ADD_STEP_DETAILS,
+                    value = ItemValue.StepDetails(stepId = null, choices = matches.map { it.id }, stepTitle = g.title, description = g.paragraphs.joinToString("\n").ifEmpty { null }, links = g.links.toList()),
+                    recommended = true,
+                )
+            }
         }
         val noteKeys = snapshot.notes.orEmpty().lines().map(::key).filter { it.isNotEmpty() }.toMutableSet()
         val lines = handoff.decisions.map(::decisionLine) + handoff.notes

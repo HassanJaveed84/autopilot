@@ -67,6 +67,10 @@ data class TaskStepEntity(
     /** Added in schema v6: [com.lifeadmin.autopilot.domain.model.ContentOrigin] name. */
     @ColumnInfo(defaultValue = "USER") val origin: String = "USER",
     val provenanceId: String? = null,
+    /** Added in schema v9 (Rich Steps): optional plain-text description. */
+    val description: String? = null,
+    /** Added in schema v9 (Rich Steps): links as a JSON array of [com.lifeadmin.autopilot.domain.model.StepLink]; null when none. */
+    val links: String? = null,
 )
 
 @Entity(

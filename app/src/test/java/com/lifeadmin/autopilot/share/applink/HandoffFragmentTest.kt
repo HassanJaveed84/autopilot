@@ -136,7 +136,8 @@ class HandoffFragmentTest {
     // 3. Missing, duplicated, malformed and unknown fields
 
     @Test fun theVersionComesFirstAndOnlyOnce() {
-        assertEquals(HandoffIssue(UNSUPPORTED_VERSION, 1, 3), refused("ap=v2&t=T&s=S"))
+        // v2 (Rich Steps) is read since 0.2.1; the next version is not.
+        assertEquals(HandoffIssue(UNSUPPORTED_VERSION, 1, 3), refused("ap=v3&t=T&s=S"))
         assertEquals(UNSUPPORTED_VERSION, refused("ap=V1&t=T&s=S").problem)
         assertEquals(UNSUPPORTED_VERSION, refused("ap=&t=T&s=S").problem)
         assertEquals(UNSUPPORTED_VERSION, refused("ap=v1x&t=T").problem)
@@ -197,9 +198,10 @@ class HandoffFragmentTest {
         val one = LinkHandoff("T", listOf("☕".repeat(HandoffFragment.MAX_ITEM)), emptyList(), emptyList())
         assertTrue(one.toUrl(host).length < ImportLinkParser.MAX_URL)
         assertEquals(ImportLinkResult.Valid(one), parser.parse(one.toUrl(host)))
-        val three = one.copy(decisions = List(3) { one.decisions.single() })
-        assertTrue(three.toUrl(host).length > ImportLinkParser.MAX_URL)
-        assertEquals(ImportLinkResult.Refused(ImportRefusal.TOO_BIG), parser.parse(three.toUrl(host)))
+        // 8,192 since Rich Steps: five such decisions are over it.
+        val five = one.copy(decisions = List(5) { one.decisions.single() })
+        assertTrue(five.toUrl(host).length > ImportLinkParser.MAX_URL)
+        assertEquals(ImportLinkResult.Refused(ImportRefusal.TOO_BIG), parser.parse(five.toUrl(host)))
     }
 
     // 5. Hosts, paths and schemes

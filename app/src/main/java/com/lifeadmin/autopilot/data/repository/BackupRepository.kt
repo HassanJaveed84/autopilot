@@ -22,6 +22,8 @@ import com.lifeadmin.autopilot.domain.model.ReminderKind
 import com.lifeadmin.autopilot.domain.model.TaskStatus
 import com.lifeadmin.autopilot.domain.model.ZoneMode
 import kotlinx.serialization.Serializable
+import com.lifeadmin.autopilot.domain.model.StepDetails
+import com.lifeadmin.autopilot.domain.model.StepLink
 import kotlinx.serialization.json.Json
 import java.io.InputStream
 import java.time.Instant
@@ -54,7 +56,12 @@ data class BackupFile(
 ) {
     companion object {
         const val FORMAT = "life-admin-autopilot-backup"
-        const val SCHEMA_VERSION = 1
+        /**
+         * 2 since v0.2.1 (Rich Steps): steps carry a description and links. Older app versions ignore
+         * unknown fields, so without the bump they would import a newer file and silently drop them;
+         * with it they refuse the file. Schema 1 files still import, their steps without details.
+         */
+        const val SCHEMA_VERSION = 2
     }
 }
 
@@ -75,7 +82,13 @@ data class TaskDto(
 data class StepDto(
     val id: String, val taskId: String, val sortOrder: Int, val title: String, val isDone: Boolean, val completedAt: String? = null,
     val origin: String = "USER", val provenanceId: String? = null,
+    /** Backup schema 2 (Rich Steps). Absent in schema 1 files. */
+    val description: String? = null,
+    val links: List<LinkDto> = emptyList(),
 )
+
+@Serializable
+data class LinkDto(val url: String, val label: String? = null)
 
 /** Opaque payloads are encoded by their own codecs (ProposalJson / DraftJson) and validated by decoding on import. */
 @Serializable
@@ -193,7 +206,12 @@ class BackupRepository(
                 exportedAt = clock.now().toString(),
                 appVersion = appVersion,
                 tasks = db.taskDao().getAll().map { it.toDto() },
-                steps = db.stepDao().getAll().map { StepDto(it.id, it.taskId, it.sortOrder, it.title, it.isDone, it.completedAt?.toString(), it.origin, it.provenanceId) },
+                steps = db.stepDao().getAll().map {
+                    StepDto(
+                        it.id, it.taskId, it.sortOrder, it.title, it.isDone, it.completedAt?.toString(), it.origin, it.provenanceId,
+                        it.description, StepDetails.decodeLinks(it.links).map { l -> LinkDto(l.url, l.label) },
+                    )
+                },
                 policies = db.policyDao().getAll().map { p -> p.toDto(slots[p.id].orEmpty()) },
                 events = db.eventDao().getAll().map {
                     EventDto(it.id, it.taskId, it.at.toString(), it.eventType.name, it.summary, com.lifeadmin.autopilot.data.local.decodeMetadata(it.structuredMetadata))
@@ -308,7 +326,12 @@ class BackupRepository(
             if (s.taskId !in taskIds) throw ImportException("Step refers to a missing task")
             val title = try { TaskRepository.validateStep(s.title) } catch (e: ValidationException) { throw ImportException("Invalid step title") }
             val origin = com.lifeadmin.autopilot.domain.model.ContentOrigin.entries.firstOrNull { it.name == s.origin } ?: throw ImportException("Invalid step origin")
-            TaskStepEntity(s.id, s.taskId, s.sortOrder, title, s.isDone, instant(s.completedAt, "step completed"), origin.name, s.provenanceId?.let { id(it, "provenance") })
+            val description = try { TaskRepository.validateStepDescription(s.description) } catch (e: ValidationException) { throw ImportException("Step description too long") }
+            val links = try { TaskRepository.validateStepLinks(s.links.map { StepLink(it.url, it.label) }) } catch (e: ValidationException) { throw ImportException("Invalid step link") }
+            TaskStepEntity(
+                s.id, s.taskId, s.sortOrder, title, s.isDone, instant(s.completedAt, "step completed"), origin.name, s.provenanceId?.let { id(it, "provenance") },
+                description, StepDetails.encodeLinks(links),
+            )
         }
         val policies = f.policies.map { p ->
             id(p.id, "policy")

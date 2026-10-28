@@ -52,6 +52,10 @@ data class TaskStep(
     val origin: ContentOrigin = ContentOrigin.USER,
     /** Provenance record id when the step came from an applied proposal (INT-031). */
     val provenanceId: String? = null,
+    /** Rich Steps (v0.2.1): optional plain-text description; line breaks allowed. */
+    val description: String? = null,
+    /** Rich Steps (v0.2.1): labelled web links; the first is the main link shown on the row. */
+    val links: List<StepLink> = emptyList(),
 )
 
 data class ReminderPolicy(

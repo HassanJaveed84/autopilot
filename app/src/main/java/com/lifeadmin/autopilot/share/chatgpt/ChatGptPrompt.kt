@@ -54,10 +54,14 @@ object ChatGptPrompt {
         append("Start its URL with exactly\n")
         append(ImportLinkParser.prefix(host, TaskRef.of(task.id), task.title)).append('\n')
         append("then add one field per item: &d= a decision I actually made, &s= a next step, &n= a useful note (a budget, a model, a contact, a date). ")
-        append("Use only what we agreed; never say something is done unless I told you. Leave out steps already on my list.\n")
+        append("Use only what we agreed; never say something is done unless I told you. Leave out steps already on my list, unless you add details to one.\n")
+        append("Right after a step you may add its details: &sd= one short paragraph on how to do it (up to 4), and &sl= a link written as a short label, a space, then the full web address (up to 5, the most useful first). ")
+        append("Only use web addresses you actually found or I gave you, without tracking parameters. To add details to a step already on my list, repeat its exact name in &s= and put the &sd= and &sl= right after it.\n")
+        append("Finish the link with exactly ").append(ImportLinkParser.END_MARKER).append('\n')
         append("Encoding: percent-encode each value as UTF-8. Keep A–Z a–z 0–9 - . _ ~ and write everything else as %XX: ")
-        append("space %20 (never +), & %26, = %3D, + %2B, # %23, % %25, ' %27, , %2C, \$ %24, é %C3%A9.\n")
-        append("Limits: up to 5 d, 10 s and 5 n, each under 200 characters on one line; the whole link under 2,000 characters. If something doesn't fit, tell me what you left out.")
+        append("space %20 (never +), & %26, = %3D, + %2B, # %23, % %25, ' %27, , %2C, \$ %24, é %C3%A9. ")
+        append("That includes web addresses: their : / ? & = # % become %3A %2F %3F %26 %3D %23 %25.\n")
+        append("Limits: up to 5 d, 10 s and 5 n, each under 200 characters on one line; per step up to 4 sd of 300 characters and 5 sl; the whole link under 4,000 characters. If something doesn't fit, tell me what you left out.")
     }
 }
 

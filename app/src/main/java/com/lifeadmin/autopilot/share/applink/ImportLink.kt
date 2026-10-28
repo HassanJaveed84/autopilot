@@ -4,7 +4,7 @@ import java.net.URI
 
 /*
  * The App Link route of the ChatGPT round trip (docs/CHATGPT_ROUND_TRIP_REPORT.md):
- * `https://<host>/autopilot/import#ap=v1&r=<task ref>&t=…&d=…&s=…&n=…`.
+ * `https://<host>/autopilot/import#ap=v2&r=<task ref>&t=…&d=…&s=…&sd=…&sl=…&n=…&end=1` (v1 links, without sd/sl/end, still read).
  * Strict envelope checks ([AppLinkEnvelope]) and the strict [HandoffFragment] parser. A valid link
  * only ever becomes a pending proposal set for the user to review; nothing here touches a task.
  */
@@ -45,6 +45,7 @@ class ImportLinkParser(private val host: String) {
             is HandoffParseResult.Invalid -> ImportLinkResult.Refused(
                 when (r.issue.problem) {
                     HandoffProblem.UNSUPPORTED_VERSION -> ImportRefusal.NEWER_VERSION
+                    // A v2 link cut short, a detail out of place or a bad web address: all "didn't come through right".
                     HandoffProblem.VALUE_TOO_LONG, HandoffProblem.TOO_MANY_ITEMS -> ImportRefusal.TOO_BIG
                     else -> ImportRefusal.MALFORMED
                 },
@@ -55,15 +56,19 @@ class ImportLinkParser(private val host: String) {
     companion object {
         const val PATH = "/autopilot/import"
 
+        /** What every `ap=v2` link ends with (see [HandoffFragment.END]). */
+        const val END_MARKER = "&" + HandoffFragment.END
+
         /**
-         * A full handoff (10 steps, 5 decisions, 5 notes) is long once percent-encoded. The prompt
-         * asks ChatGPT to stay under 2,000 characters, so this is headroom.
+         * A handoff with rich steps is long once percent-encoded: about 300 characters per step with a
+         * description and a link (measured, docs/experiments/rich-steps-handoff). The prompt asks
+         * ChatGPT to stay under 4,000 characters, so this is headroom. Over it, the link is refused, never cut.
          */
-        const val MAX_URL = 4_096
+        const val MAX_URL = 8_192
 
         /** The start of every return link: route, version, the task's reference and its title, already encoded. */
         fun prefix(host: String, ref: String, title: String): String =
-            "https://$host$PATH#ap=v1&r=${HandoffFragment.encode(ref)}&t=${HandoffFragment.encode(linkTitle(title))}"
+            "https://$host$PATH#ap=v2&r=${HandoffFragment.encode(ref)}&t=${HandoffFragment.encode(linkTitle(title))}"
 
         /** The title only identifies the task, so a long one is shortened to fit `t` rather than making the link invalid. */
         fun linkTitle(title: String): String {

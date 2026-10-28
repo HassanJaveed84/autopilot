@@ -349,4 +349,63 @@ class MigrationTest {
         room.close()
         context.deleteDatabase(name)
     }
+
+    @Test fun migrateV8ToV9AddsStepDetailsAndKeepsEveryStepAsItWas() = runTest {
+        context.deleteDatabase(name)
+        val file = context.getDatabasePath(name).also { it.parentFile?.mkdirs() }
+        SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+            schemaStatements(8).forEach(db::execSQL)
+            db.execSQL(
+                "INSERT INTO tasks (id,title,notes,status,priority,createdAt,updatedAt,completedAt,archivedAt,deadlineType,deadlineLocalDate,deadlineInstant,deadlineZoneId,snoozedUntil,snoozeRemindAtEnd,waitingReason,waitingCheckInAt,rev,eventLocalDate,eventLabel,intendedLocalDate,targetLocalDate,targetBasis,cycleDoneUntil) " +
+                    "VALUES ('t1','Renew passport','Expires in March','ACTIONABLE','NORMAL',1,2,NULL,NULL,'NONE',NULL,NULL,NULL,NULL,1,NULL,NULL,7,NULL,NULL,NULL,NULL,NULL,NULL)",
+            )
+            db.execSQL("INSERT INTO task_steps (id,taskId,sortOrder,title,isDone,completedAt,origin,provenanceId) VALUES ('s1','t1',0,'Find old passport',1,1500,'USER',NULL)")
+            db.execSQL("INSERT INTO task_steps (id,taskId,sortOrder,title,isDone,completedAt,origin,provenanceId) VALUES ('s2','t1',1,'Take photo',0,NULL,'RESEARCH','prov-1')")
+            db.version = 8
+        }
+        val room = Room.databaseBuilder(context, AppDatabase::class.java, name)
+            .addMigrations(*Migrations.ALL)
+            .setQueryCoroutineContext(Dispatchers.IO)
+            .build()
+        val steps = room.stepDao().getForTask("t1")
+        assertEquals(listOf("Find old passport", "Take photo"), steps.map { it.title })
+        assertEquals(listOf(true, false), steps.map { it.isDone })
+        assertEquals(1500L, steps[0].completedAt!!.toEpochMilli())
+        assertEquals(listOf("USER", "RESEARCH"), steps.map { it.origin })
+        assertEquals("prov-1", steps[1].provenanceId)
+        assertEquals("existing steps get no description", listOf(null, null), steps.map { it.description })
+        assertEquals("existing steps get no links", listOf(null, null), steps.map { it.links })
+        assertEquals(7, room.taskDao().get("t1")!!.rev)
+        // The new columns are writable.
+        room.stepDao().upsert(steps[1].copy(description = "2 x 2 in", links = """[{"url":"https://example.gov/photos","label":"Rules"}]"""))
+        assertEquals("2 x 2 in", room.stepDao().get("s2")!!.description)
+        room.close()
+        context.deleteDatabase(name)
+    }
+
+    @Test fun aSchemaV1DatabaseMigratesAllTheWayToTheCurrentVersionWithItsSteps() = runTest {
+        context.deleteDatabase(name)
+        val file = context.getDatabasePath(name).also { it.parentFile?.mkdirs() }
+        SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+            schemaV1Statements().forEach(db::execSQL)
+            db.execSQL(
+                "INSERT INTO tasks (id,title,notes,status,priority,createdAt,updatedAt,completedAt,archivedAt,deadlineType,deadlineLocalDate,deadlineInstant,deadlineZoneId,snoozedUntil,waitingReason,waitingCheckInAt) " +
+                    "VALUES ('t1','Book train ride',NULL,'ACTIONABLE','NORMAL',1,1,NULL,NULL,'NONE',NULL,NULL,NULL,NULL,NULL,NULL)",
+            )
+            db.execSQL("INSERT INTO task_steps (id,taskId,sortOrder,title,isDone,completedAt) VALUES ('s1','t1',0,'Find dates',0,NULL)")
+            db.version = 1
+        }
+        val room = Room.databaseBuilder(context, AppDatabase::class.java, name)
+            .addMigrations(*Migrations.ALL)
+            .setQueryCoroutineContext(Dispatchers.IO)
+            .build()
+        assertEquals(AppDatabase.VERSION, room.openHelper.readableDatabase.version)
+        val step = room.stepDao().get("s1")!!
+        assertEquals("Find dates", step.title)
+        assertEquals("USER", step.origin)
+        assertEquals(null, step.description)
+        assertEquals(null, step.links)
+        room.close()
+        context.deleteDatabase(name)
+    }
 }
