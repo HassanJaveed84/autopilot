@@ -16,6 +16,7 @@ import com.lifeadmin.autopilot.domain.usecase.ScheduleCoordinator
 import com.lifeadmin.autopilot.share.applink.HandoffDestination
 import com.lifeadmin.autopilot.share.applink.HandoffImporter
 import com.lifeadmin.autopilot.share.applink.ImportLinkParser
+import com.lifeadmin.autopilot.share.applink.HandoffStepDetails
 import com.lifeadmin.autopilot.share.applink.ImportRefusal
 import com.lifeadmin.autopilot.share.applink.LinkHandoff
 import com.lifeadmin.autopilot.testing.CHICAGO
@@ -132,6 +133,22 @@ class HandoffImportViewModelTest {
         val restored = vm(SavedStateHandle(saved.keys().associateWith { saved.get<Any>(it) }))
         assertEquals(review, restored.state.value)
         // A screen that died mid-step redoes it and lands on the same set.
+        val mid = SavedStateHandle(saved.keys().associateWith { saved.get<Any>(it) }).apply { set("handoff_import_stage", ImportStage.WORKING.name) }
+        assertEquals(review.setId, vm(mid).await(ImportStage.REVIEW).setId)
+    }
+
+    @Test fun richStepDetailsSurviveProcessDeathAndReachTheSameSet() {
+        val rich = LinkHandoff(
+            "Choose a coffee grinder", emptyList(), listOf("Buy the Encore ESP"), emptyList(), grinder, version = 2,
+            stepDetails = mapOf(0 to HandoffStepDetails(listOf("About \$200."), listOf(com.lifeadmin.autopilot.domain.model.StepLink("https://baratza.com/encore-esp/?finish=black", "Product page")))),
+        )
+        val saved = SavedStateHandle()
+        val vm = vm(saved)
+        vm.onLink(rich.toUrl(host, ImportLinkParser.PATH), null)
+        val review = vm.await(ImportStage.REVIEW)
+        assertEquals(rich, review.handoff)
+        val restored = vm(SavedStateHandle(saved.keys().associateWith { saved.get<Any>(it) }))
+        assertEquals(review, restored.state.value)
         val mid = SavedStateHandle(saved.keys().associateWith { saved.get<Any>(it) }).apply { set("handoff_import_stage", ImportStage.WORKING.name) }
         assertEquals(review.setId, vm(mid).await(ImportStage.REVIEW).setId)
     }

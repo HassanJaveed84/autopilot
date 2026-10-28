@@ -49,6 +49,14 @@ import com.lifeadmin.autopilot.domain.model.OccurrenceStatus
 import com.lifeadmin.autopilot.domain.model.ReminderPreset
 import com.lifeadmin.autopilot.domain.model.ReminderKind
 import com.lifeadmin.autopilot.domain.model.TaskStatus
+import com.lifeadmin.autopilot.domain.model.ContentOrigin
+import com.lifeadmin.autopilot.domain.model.StepLink
+import com.lifeadmin.autopilot.domain.proposal.ItemKind
+import com.lifeadmin.autopilot.domain.proposal.ItemValue
+import com.lifeadmin.autopilot.domain.proposal.ProposalItem
+import com.lifeadmin.autopilot.domain.proposal.ProposalSet
+import com.lifeadmin.autopilot.domain.proposal.ProposalSource
+import com.lifeadmin.autopilot.domain.proposal.TargetKind
 import com.lifeadmin.autopilot.ui.LifeAdminRoot
 import com.lifeadmin.autopilot.ui.theme.LifeAdminTheme
 import kotlinx.coroutines.CompletableDeferred
@@ -641,6 +649,76 @@ class ScreenshotTour {
             compose.scrollTo("health_list", "test_result")
             screenshot("f9b-health-test-sent")
             instrumentation.targetContext.getSystemService(NotificationManager::class.java).cancelAll()
+        }
+    }
+
+    /**
+     * Rich Steps (v0.2.1): the compact checklist with a main link on the row, the step sheet, the
+     * step editor and a rich step from ChatGPT in Proposal Review. Addresses are realistic shapes;
+     * nothing is opened.
+     */
+    @Test fun r_richSteps() {
+        val title = "Thank-you gift for Omar"
+        runBlocking {
+            val repo = container.taskRepository
+            if (container.database.taskDao().getAll().none { it.title == title }) {
+                val id = repo.createTask(NewTask(title, notes = "For being best man. Give it at dinner on Nov 14.", status = TaskStatus.ACTIONABLE))
+                val asked = repo.addStep(id, "Ask Leila which scent Omar wears")
+                repo.updateStep(asked, "Ask Leila which scent Omar wears", "She said the blue one.", emptyList())
+                repo.setStepDone(asked, true)
+                val buy = repo.addStep(id, "Buy Bleu de Chanel EDP 50 mL")
+                repo.updateStep(
+                    buy, "Buy Bleu de Chanel EDP 50 mL",
+                    "Estimated price: about \$135 before tax; check the total at checkout.\nGift packaging: choose the complimentary gift wrap.\nCard: “Omar, thank you for standing next to me. — Sam”",
+                    listOf(
+                        StepLink("https://www.chanel.com/us/fragrance/p/107460/bleu-de-chanel-eau-de-parfum-spray/", "Product page"),
+                        StepLink("https://www.nordstrom.com/s/bleu-de-chanel-eau-de-parfum/4224960", "Compare price"),
+                    ),
+                )
+                val dentist = repo.addStep(id, "Call dentist")
+                val snap = container.proposalApplier.snapshot(id)!!
+                container.proposalSets.save(
+                    ProposalSet(
+                        "tour-rich-steps", ProposalSource.HANDOFF, TargetKind.TASK, id, madeAtMs = container.clock.now().toEpochMilli(), baseOriginal = snap, base = snap, title = "From ChatGPT",
+                        items = listOf(
+                            ProposalItem(
+                                "a", ItemKind.ADD_STEP, recommended = true,
+                                value = ItemValue.Step(
+                                    "Book dinner for Nov 14", ContentOrigin.USER, description = "Table for 4 at 7:30 pm. Omar likes Italian; ask for a quiet table.",
+                                    links = listOf(StepLink("https://resy.com/cities/new-york-ny/venues/carbone", "Reserve on Resy"), StepLink("https://www.opentable.com/r/carbone-new-york", "OpenTable")),
+                                ),
+                            ),
+                            ProposalItem("d", ItemKind.ADD_STEP_DETAILS, recommended = true, value = ItemValue.StepDetails(stepId = dentist, stepTitle = "Call dentist", description = "Ask whether X-rays are due.")),
+                        ),
+                    ),
+                )
+            }
+        }
+        launch()
+        openTask(title)
+        compose.soft("rich steps checklist") {
+            compose.waitAndScrollTo("detail_list", "steps_edit")
+            screenshot("r1-rich-steps-checklist")
+        }
+        val buy = runBlocking { container.database.stepDao().getAll().first { it.title == "Buy Bleu de Chanel EDP 50 mL" }.id }
+        compose.soft("step sheet") {
+            compose.onNodeWithTag("step_open_$buy").tap()
+            compose.waitForTag("step_sheet_main_link")
+            screenshot("r2-step-sheet")
+        }
+        compose.soft("step editor") {
+            compose.onNodeWithTag("step_sheet_edit").tap()
+            compose.waitForTag("step_editor_description")
+            screenshot("r3-step-editor")
+            compose.onNodeWithTag("step_editor_cancel").tap()
+        }
+        compose.soft("rich review") {
+            compose.waitForTag("detail_review_banner_tour-rich-steps")
+            compose.scrollTo("detail_list", "detail_review_banner_tour-rich-steps")
+            compose.onNodeWithTag("detail_review_banner_tour-rich-steps").tap()
+            compose.waitForTag("review_list")
+            compose.scrollTo("review_list", "review_links_a")
+            screenshot("r4-review-rich-step")
         }
     }
 

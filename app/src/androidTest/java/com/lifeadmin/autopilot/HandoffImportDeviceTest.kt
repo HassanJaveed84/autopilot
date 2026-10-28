@@ -13,6 +13,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.lifeadmin.autopilot.data.repository.NewTask
 import com.lifeadmin.autopilot.domain.model.TaskStatus
 import com.lifeadmin.autopilot.share.applink.ImportLinkParser
+import com.lifeadmin.autopilot.share.applink.HandoffStepDetails
+import com.lifeadmin.autopilot.domain.model.StepLink
 import com.lifeadmin.autopilot.share.applink.LinkHandoff
 import com.lifeadmin.autopilot.ui.handoff.HandoffImportActivity
 import kotlinx.coroutines.runBlocking
@@ -112,6 +114,43 @@ class HandoffImportDeviceTest {
         } finally {
             instrumentation.removeMonitor(monitor)
             instrumentation.runOnMainSync { activity.finishAndRemoveTask() }
+        }
+    }
+
+    /**
+     * Rich Steps: an `ap=v2` link with a description and labelled links, delivered through the real
+     * resolver, becomes one reviewable step that applies with its details; opening nothing on the way.
+     */
+    @Test fun aRichV2LinkAppliesItsStepWithDescriptionAndLinks() {
+        val link = LinkHandoff(
+            "Choose a coffee grinder", emptyList(), listOf("Buy the Baratza Encore ESP"), emptyList(), taskId, version = 2,
+            stepDetails = mapOf(
+                0 to HandoffStepDetails(
+                    listOf("About \$200; check the total at checkout.", "Ask for the 2-year warranty."),
+                    listOf(StepLink("https://baratza.com/grinder/encore-esp/?finish=black", "Product page"), StepLink("https://www.wholelattelove.com/products/baratza-encore-esp")),
+                ),
+            ),
+        ).toUrl(BuildConfig.APP_LINK_HOST, ImportLinkParser.PATH)
+        assertTrue(link.endsWith("&end=1"))
+        val monitor = instrumentation.addMonitor(HandoffImportActivity::class.java.name, null, false)
+        context.startActivity(view(link).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        val activity = checkNotNull(instrumentation.waitForMonitorWithTimeout(monitor, 15_000))
+        try {
+            waitFor("handoff_destination_title", "Choose a coffee grinder (device test)")
+            compose.onNodeWithTag("review_list").performScrollToNode(hasTestTag("review_select_recommended"))
+            compose.onNodeWithTag("review_select_recommended").performClick()
+            waitFor("review_apply", "Apply 1 change")
+            compose.onNodeWithTag("review_apply").performClick()
+            waitFor("review_done", "Return to ChatGPT")
+            val step = runBlocking { container.taskRepository.getSteps(taskId) }.single()
+            assertEquals("Buy the Baratza Encore ESP", step.title)
+            assertEquals("About \$200; check the total at checkout.\nAsk for the 2-year warranty.", step.description)
+            assertEquals(listOf("https://baratza.com/grinder/encore-esp/?finish=black", "https://www.wholelattelove.com/products/baratza-encore-esp"), step.links.map { it.url })
+            assertEquals("Product page", step.links.first().label)
+            assertTrue("applying never ticks the step", !step.isDone)
+        } finally {
+            instrumentation.removeMonitor(monitor)
+            if (!activity.isFinishing) instrumentation.runOnMainSync { activity.finishAndRemoveTask() }
         }
     }
 }
