@@ -2,6 +2,12 @@
 
 Date: 2026-10-27 · Branch: `claude/fervent-archimedes-5dhxmq` (from `ccr-125b38a8-btl7ka` @ `62af1cd`) · No PR opened · Nothing merged
 
+
+> **Later change (0.2.0, branch `retire-embedded-ai`):** the display-only `/autopilot/test` spike
+> route, its screen, `TestLinkParser` and their tests were removed; `AppLinkEnvelope` moved into
+> `ImportLink.kt` and `HandoffFragmentTest` now runs on `/autopilot/import`. `/autopilot/import`,
+> `assetlinks.json` and the round trip are unchanged. References to the test route below are history.
+
 **Goal.** Autopilot task → Discuss in ChatGPT → natural conversation → "Send this to Autopilot" → **Open in
 Autopilot** → Proposal Review → Apply → Return to ChatGPT. There's no backend, no copying or pasting, no scraping
 and no AI API call. UX design: `docs/CHATGPT_ROUND_TRIP_UX.md`. Earlier evidence: `docs/CHATGPT_APP_LINK_SPIKE.md`,
