@@ -73,7 +73,14 @@ Maven Central mirror (an untracked `~/.gradle/init.d` script) because Maven Cent
 | Baseline `./gradlew testDebugUnitTest` at `8463ca0` (clean worktree) | BUILD SUCCESSFUL, 459 tests, 0 failures |
 | `./gradlew lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest` on the final code (before the version bump) | BUILD SUCCESSFUL in 6m 13s. Lint: *No issues found*. **501 unit/Robolectric tests, 0 failures** (459 at baseline; 42 new). Debug, release and androidTest APKs built |
 | `./gradlew assembleRelease` after the bump + `.github/scripts/verify-release-apk.sh … 3 0.2.1` | Every check OK: application ID, versionCode 3, versionName 0.2.1, no `INTERNET`, `/autopilot/import` present, no `/autopilot/test`, signature verifies. **Exit 2 as expected:** signed with this container's debug key, not the personal certificate, so no locally built APK is offered for the phone |
-| Emulator (`connectedDebugAndroidTest`) and the screenshot tour | Not runnable here (no emulator); CI only |
+| Emulator (`connectedDebugAndroidTest`) and the screenshot tour | Not runnable here (no emulator); CI only, below |
+
+**CI on `e20854d`** (all green):
+
+| Run | Result |
+| --- | --- |
+| [Android CI #199](https://github.com/HassanJaveed84/autopilot/actions/runs/40747991449) (push) and [#200](https://github.com/HassanJaveed84/autopilot/actions/runs/40748048554) (pull request) | Build job: lint, unit/Robolectric, debug/release/androidTest APKs. **Verify release APK** passed with the personal certificate, so the artifact **`autopilot-0.2.1-release`** was uploaded. Emulator job (API 34): **14 instrumented tests, 0 failed**, including `HandoffImportDeviceTest.aRichV2LinkAppliesItsStepWithDescriptionAndLinks` and `InstrumentedDatabaseTest.migrate8To9AddsStepDetailsAndKeepsSteps` |
+| [Screenshots #41](https://github.com/HassanJaveed84/autopilot/actions/runs/40747990448) | `r_richSteps` on phone light 1.0, phone dark 1.0, phone light 1.3 and small light 2.0. Checklist, step sheet and step editor were captured in every variant; the review screen in all but small 2.0, where the tour waited for the banner without scrolling (a tour bug, fixed in the next commit and re-requested). The light 1.0 run also skipped `c_taskDetail`'s *edit dialog* (a timeout in an area this change doesn't touch; the other variants captured it) |
 
 Existing tests changed only where the behaviour changed on purpose:
 - `ap=v2` is now a supported version, so the "unsupported version" cases use `ap=v3`.
@@ -111,4 +118,5 @@ Install the CI release artifact `autopilot-0.2.1-release` over 0.2.0 (same signi
 
 - The ChatGPT app's handling of a 3–4 KB link, and how reliably ChatGPT encodes addresses with query strings, are only provable on the phone (§5 steps 6–8).
 - Emulator results come from CI; they don't prove real-device notification behaviour or App Link verification. This change touches neither.
+- Seen in the 320 dp / 200 % screenshots, **not changed by this PR:** the Steps card header squeezes the word *Steps* into one letter per line because *1 of 3 done* and *Edit* share the row, and the action tiles wrap (*Snooz e*). Both rows are existing code; a follow-up could stack the count under the heading at large text.
 - Descriptions and links are not sent *to* ChatGPT by *Discuss in ChatGPT*; only step titles are shared, as before (privacy default from the feasibility study).

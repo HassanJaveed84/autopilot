@@ -696,11 +696,12 @@ class ScreenshotTour {
         }
         launch()
         openTask(title)
+        val buy = runBlocking { container.database.stepDao().getAll().first { it.title == "Buy Bleu de Chanel EDP 50 mL" }.id }
         compose.soft("rich steps checklist") {
-            compose.waitAndScrollTo("detail_list", "steps_edit")
+            // Frame the rows themselves, main-link pill included, not just the card's header.
+            compose.waitAndScrollTo("detail_list", "step_main_link_$buy")
             screenshot("r1-rich-steps-checklist")
         }
-        val buy = runBlocking { container.database.stepDao().getAll().first { it.title == "Buy Bleu de Chanel EDP 50 mL" }.id }
         compose.soft("step sheet") {
             compose.onNodeWithTag("step_open_$buy").tap()
             compose.waitForTag("step_sheet_main_link")
@@ -713,11 +714,11 @@ class ScreenshotTour {
             compose.onNodeWithTag("step_editor_cancel").tap()
         }
         compose.soft("rich review") {
-            compose.waitForTag("detail_review_banner_tour-rich-steps")
-            compose.scrollTo("detail_list", "detail_review_banner_tour-rich-steps")
+            // Below the fold on a small screen at 200 % text, so it is scrolled into composition first.
+            compose.waitAndScrollTo("detail_list", "detail_review_banner_tour-rich-steps")
             compose.onNodeWithTag("detail_review_banner_tour-rich-steps").tap()
             compose.waitForTag("review_list")
-            compose.scrollTo("review_list", "review_links_a")
+            compose.waitAndScrollTo("review_list", "review_links_a")
             screenshot("r4-review-rich-step")
         }
     }

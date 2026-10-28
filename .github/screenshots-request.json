@@ -1,10 +1,16 @@
 {
-  "reason": "Rich Steps (v0.2.1): checklist with main links, step sheet, step editor and a rich ChatGPT step in Proposal Review — light, dark and large text",
+  "reason": "Rich Steps (v0.2.1) tour framing fix: r1 shows the main-link pill; r4 reaches the review on a small screen at 200 % text",
   "variants": [
-    { "display": "phone", "theme": "light", "font_scale": "1.0" },
-    { "display": "phone", "theme": "dark", "font_scale": "1.0" },
-    { "display": "phone", "theme": "light", "font_scale": "1.3" },
-    { "display": "small", "theme": "light", "font_scale": "2.0" }
+    {
+      "display": "phone",
+      "theme": "light",
+      "font_scale": "1.0"
+    },
+    {
+      "display": "small",
+      "theme": "light",
+      "font_scale": "2.0"
+    }
   ],
-  "tests": "com.lifeadmin.autopilot.ScreenshotTour#r_richSteps,com.lifeadmin.autopilot.ScreenshotTour#c_taskDetail"
+  "tests": "com.lifeadmin.autopilot.ScreenshotTour#r_richSteps"
 }
