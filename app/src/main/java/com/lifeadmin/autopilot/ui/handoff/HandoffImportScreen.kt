@@ -214,7 +214,7 @@ private fun Outcome(title: String, body: String, tag: String, extra: (@Composabl
 
 internal fun refusal(reason: ImportRefusal?): Pair<String, String> = when (reason) {
     ImportRefusal.TOO_BIG -> "That's more than one link can carry" to
-        "Ask ChatGPT for fewer or shorter items: up to 10 steps, 5 decisions and 5 notes, each under 200 characters. Nothing was cut short or saved."
+        "Ask ChatGPT for fewer or shorter items: up to 10 steps, 5 decisions and 5 notes, with short descriptions and up to 5 links per step. Nothing was cut short or saved."
     ImportRefusal.NEWER_VERSION -> "This link needs a newer Autopilot" to "Update Autopilot, then tap the link again. Nothing was changed."
     ImportRefusal.NOT_A_LINK, ImportRefusal.NO_HANDOFF, ImportRefusal.MALFORMED, null ->
         "This link didn't come through right" to "Ask ChatGPT to send it to Autopilot again. Nothing was changed."

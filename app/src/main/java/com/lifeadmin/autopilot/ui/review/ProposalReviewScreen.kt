@@ -54,7 +54,17 @@ import com.lifeadmin.autopilot.domain.proposal.CheckOutcome
 import com.lifeadmin.autopilot.domain.proposal.ConflictResolution
 import com.lifeadmin.autopilot.domain.proposal.ItemStatus
 import com.lifeadmin.autopilot.domain.proposal.ProposalSource
+import com.lifeadmin.autopilot.domain.model.StepLink
+import com.lifeadmin.autopilot.domain.proposal.ItemValue
+import com.lifeadmin.autopilot.domain.proposal.ProposalReconciler
 import com.lifeadmin.autopilot.ui.components.AutopilotIcons
+import com.lifeadmin.autopilot.ui.components.LinkList
+import com.lifeadmin.autopilot.ui.components.StepDraft
+import com.lifeadmin.autopilot.ui.components.StepEditorSheet
+import com.lifeadmin.autopilot.ui.components.openWebLink
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import com.lifeadmin.autopilot.ui.components.ButtonPair
 import com.lifeadmin.autopilot.ui.components.ChoiceChip
 import com.lifeadmin.autopilot.ui.components.DateSelectDialog
@@ -258,7 +268,13 @@ private fun ReviewRowCard(row: ReviewRow, s: ReviewUi, vm: ProposalReviewViewMod
     val c = AutopilotTheme.colors
     val id = row.item.id
     var editing by rememberSaveable(id) { mutableStateOf(false) }
+    var stepEditor by rememberSaveable("step-editor-$id") { mutableStateOf(false) }
     var pickDate by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val source = s.set?.source
+    val stepValue = row.value as? ItemValue.Step
+    val detailsValue = row.value as? ItemValue.StepDetails
+    val choosing = detailsValue != null && detailsValue.stepId == null && row.check?.reason == ProposalReconciler.CHOOSE_STEP
     val tone = when {
         row.blocked -> c.dangerSoft
         row.conflict -> c.signalSoft
@@ -287,7 +303,7 @@ private fun ReviewRowCard(row: ReviewRow, s: ReviewUi, vm: ProposalReviewViewMod
                 row.currentText?.let { cur ->
                     Text("Now: $cur", style = MaterialTheme.typography.bodyMedium, color = c.ink2, textDecoration = if (row.item.kind.name == "REMOVE_STEP") TextDecoration.LineThrough else null, modifier = Modifier.padding(top = 4.dp).testTag("review_current_$id"))
                 }
-                if (editing && ReviewPresenter.isTextEditable(row.item)) {
+                if (editing && ReviewPresenter.isTextEditable(row.item, source)) {
                     OutlinedTextField(
                         value = ReviewPresenter.editableText(row.value).orEmpty(), onValueChange = { vm.editText(id, it) }, label = { Text("Proposed") },
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("review_edit_$id"), shape = RoundedCornerShape(12.dp), maxLines = 4,
@@ -297,6 +313,27 @@ private fun ReviewRowCard(row: ReviewRow, s: ReviewUi, vm: ProposalReviewViewMod
                         (if (row.currentText != null && row.item.kind.name != "REMOVE_STEP") "Proposed: " else "") + row.proposedText,
                         style = MaterialTheme.typography.bodyLarge, color = c.ink, modifier = Modifier.padding(top = 4.dp).testTag("review_proposed_$id"),
                     )
+                }
+                // Rich Steps: a proposed step's description and links, or the details for an existing step.
+                if (stepValue != null && (stepValue.description != null || stepValue.links.isNotEmpty())) {
+                    RichPreview(id, stepValue.description, stepValue.links, markMain = true, onOpen = { if (!openWebLink(context, it.url)) Unit })
+                }
+                if (detailsValue != null) {
+                    Text(
+                        "Your wording, done state and what's already on the step stay as they are.",
+                        style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(top = 2.dp),
+                    )
+                    RichPreview(id, detailsValue.description, detailsValue.links, markMain = false, onOpen = { if (!openWebLink(context, it.url)) Unit })
+                }
+                if (choosing) {
+                    Text("Which step gets these details?", style = MaterialTheme.typography.titleSmall, color = c.ink, modifier = Modifier.padding(top = 6.dp))
+                    FlowRow(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        detailsValue!!.choices.forEachIndexed { n, stepId ->
+                            val st = s.snapshot?.step(stepId)
+                            val text = (st?.title ?: "(step no longer exists)") + if (st?.isDone == true) " · done" else ""
+                            ChoiceChip(text, selected = false, enabled = st != null, onClick = { vm.chooseStep(id, stepId) }, modifier = Modifier.testTag("review_choose_${id}_$n"))
+                        }
+                    }
                 }
                 row.item.value.let { v ->
                     val basis = (v as? com.lifeadmin.autopilot.domain.proposal.ItemValue.Date)?.basis
@@ -308,7 +345,7 @@ private fun ReviewRowCard(row: ReviewRow, s: ReviewUi, vm: ProposalReviewViewMod
                         style = MaterialTheme.typography.bodySmall, color = if (row.blocked) c.danger else if (row.conflict) c.onSignalSoft else c.ink2, modifier = Modifier.padding(top = 4.dp).testTag("review_check_note_$id"),
                     )
                 }
-                if (row.conflict) {
+                if (row.conflict && !choosing) {
                     Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         ChoiceChip("Apply anyway", selected = row.resolution == ConflictResolution.APPLY_ANYWAY, onClick = { vm.resolve(id, ConflictResolution.APPLY_ANYWAY) }, modifier = Modifier.testTag("review_apply_anyway_$id"))
                         ChoiceChip("Keep yours", selected = false, onClick = { vm.resolve(id, ConflictResolution.KEEP_YOURS) }, modifier = Modifier.testTag("review_keep_yours_$id"))
@@ -324,7 +361,8 @@ private fun ReviewRowCard(row: ReviewRow, s: ReviewUi, vm: ProposalReviewViewMod
                 }
                 if (!row.blocked) {
                     Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        if (ReviewPresenter.isTextEditable(row.item)) LinkButton(if (editing) "Done editing" else "Edit", onClick = { editing = !editing }, modifier = Modifier.testTag("review_edit_toggle_$id"))
+                        if (ReviewPresenter.isTextEditable(row.item, source)) LinkButton(if (editing) "Done editing" else "Edit", onClick = { editing = !editing }, modifier = Modifier.testTag("review_edit_toggle_$id"))
+                        if (source != null && ReviewPresenter.isStepEditable(row.item, source)) LinkButton("Edit", onClick = { stepEditor = true }, modifier = Modifier.testTag("review_step_edit_$id"))
                         if (ReviewPresenter.isDateEditable(row.item)) LinkButton("Change date", onClick = { pickDate = true }, modifier = Modifier.testTag("review_date_$id"))
                         if (row.edited != null) LinkButton("Reset", onClick = { vm.resetEdit(id) }, modifier = Modifier.testTag("review_reset_$id"))
                         LinkButton("Reject", onClick = { vm.reject(id) }, modifier = Modifier.testTag("review_reject_$id"))
@@ -333,10 +371,44 @@ private fun ReviewRowCard(row: ReviewRow, s: ReviewUi, vm: ProposalReviewViewMod
             }
         }
     }
+    if (stepEditor) {
+        when {
+            stepValue != null -> StepEditorSheet(
+                heading = "Edit proposed step",
+                initial = StepDraft.of(stepValue.text, stepValue.description, stepValue.links),
+                onDismiss = { stepEditor = false },
+                onSave = { e -> vm.editValue(id, stepValue.copy(text = e.title, description = e.description, links = e.links)); stepEditor = false },
+            )
+            detailsValue != null -> StepEditorSheet(
+                heading = "Edit step details",
+                initial = StepDraft.of(detailsValue.stepId?.let { s.snapshot?.step(it)?.title } ?: detailsValue.stepTitle, detailsValue.description, detailsValue.links),
+                titleLocked = true,
+                lockedHint = "Your wording stays. These details are added after what's already on the step.",
+                onDismiss = { stepEditor = false },
+                onSave = { e -> vm.editValue(id, detailsValue.copy(description = e.description, links = e.links)); stepEditor = false },
+            )
+            else -> stepEditor = false
+        }
+    }
     if (pickDate) {
         val initial = (row.value as? com.lifeadmin.autopilot.domain.proposal.ItemValue.Date)?.date?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: LocalDate.now()
         DateSelectDialog(initial = initial, onDismiss = { pickDate = false }, onConfirm = { d -> vm.editDate(id, d); pickDate = false })
     }
+}
+
+/** A proposed step's description (three lines, then "Read all") and its links with their domains; tapping a link opens the browser only. */
+@Composable
+private fun RichPreview(id: String, description: String?, links: List<StepLink>, markMain: Boolean, onOpen: (StepLink) -> Unit) {
+    val c = AutopilotTheme.colors
+    var all by rememberSaveable("rich-$id") { mutableStateOf(false) }
+    description?.takeIf { it.isNotBlank() }?.let { d ->
+        Text(
+            d, style = MaterialTheme.typography.bodyMedium, color = c.ink2, maxLines = if (all) Int.MAX_VALUE else 3,
+            overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp).testTag("review_description_$id"),
+        )
+        if (d.length > 140 || d.count { it == '\n' } >= 3) LinkButton(if (all) "Show less" else "Read all", onClick = { all = !all }, modifier = Modifier.testTag("review_read_all_$id"))
+    }
+    if (links.isNotEmpty()) LinkList(links, onOpen = onOpen, markMain = markMain, modifier = Modifier.padding(top = 6.dp).testTag("review_links_$id"))
 }
 
 @Composable
