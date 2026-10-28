@@ -64,7 +64,8 @@ fun stepHint(step: TaskStep, mainLinkShown: Boolean): String? {
 @Composable
 fun MainLinkPill(link: StepLink, onOpen: () -> Unit, modifier: Modifier = Modifier) {
     val c = AutopilotTheme.colors
-    val twoLines = LocalDensity.current.fontScale >= 1.3f
+    // At large text the label gets its own line(s) and the domain goes under it, so neither is cut to a letter.
+    val stacked = LocalDensity.current.fontScale >= 1.3f
     Row(
         modifier
             .padding(vertical = 2.dp)
@@ -78,11 +79,22 @@ fun MainLinkPill(link: StepLink, onOpen: () -> Unit, modifier: Modifier = Modifi
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Icon(AutopilotIcons.OpenExternal, contentDescription = null, tint = c.ink, modifier = Modifier.size(16.dp))
-        Text(
-            link.title, style = MaterialTheme.typography.labelLarge, color = c.ink, maxLines = if (twoLines) 2 else 1, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false),
-        )
-        if (link.label != null) Text("· ${link.host}", style = MaterialTheme.typography.bodySmall, color = c.ink2, maxLines = 1)
+        if (stacked) {
+            Column(Modifier.weight(1f, fill = false)) {
+                Text(link.title, style = MaterialTheme.typography.labelLarge, color = c.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (link.label != null) Text(link.host, style = MaterialTheme.typography.bodySmall, color = c.ink2, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        } else {
+            // Both weighted, so a long domain can never squeeze the label away (and vice versa).
+            Text(
+                link.title, style = MaterialTheme.typography.labelLarge, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            if (link.label != null) Text(
+                "· ${link.host}", style = MaterialTheme.typography.bodySmall, color = c.ink2, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(0.6f, fill = false),
+            )
+        }
     }
 }
 
@@ -125,11 +137,12 @@ fun LinkRow(link: StepLink, onOpen: () -> Unit, modifier: Modifier = Modifier, m
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Column(Modifier.weight(1f)) {
+            // The label has the full width; the "Main" tag sits on the domain line.
+            Text(link.title, style = MaterialTheme.typography.titleSmall, color = c.ink)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(link.title, style = MaterialTheme.typography.titleSmall, color = c.ink, modifier = Modifier.weight(1f, fill = false))
                 if (main) Text("Main", style = MaterialTheme.typography.labelSmall, color = c.ink, modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(c.sunken).padding(horizontal = 8.dp, vertical = 2.dp))
+                Text(link.host, style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.weight(1f, fill = false))
             }
-            Text(link.host, style = MaterialTheme.typography.bodySmall, color = c.ink2)
         }
         Icon(AutopilotIcons.OpenExternal, contentDescription = null, tint = c.ink3, modifier = Modifier.size(20.dp))
     }

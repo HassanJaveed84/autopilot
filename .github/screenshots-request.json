@@ -1,15 +1,20 @@
 {
-  "reason": "Rich Steps (v0.2.1) tour framing fix: r1 shows the main-link pill; r4 reaches the review on a small screen at 200 % text",
+  "reason": "Rich Steps (v0.2.1) large-text fixes: main-link pill stacks label and domain, review link labels keep their width, no chevron at large text",
   "variants": [
-    {
-      "display": "phone",
-      "theme": "light",
-      "font_scale": "1.0"
-    },
     {
       "display": "small",
       "theme": "light",
       "font_scale": "2.0"
+    },
+    {
+      "display": "phone",
+      "theme": "light",
+      "font_scale": "1.3"
+    },
+    {
+      "display": "phone",
+      "theme": "light",
+      "font_scale": "1.0"
     }
   ],
   "tests": "com.lifeadmin.autopilot.ScreenshotTour#r_richSteps"

@@ -118,5 +118,6 @@ Install the CI release artifact `autopilot-0.2.1-release` over 0.2.0 (same signi
 
 - The ChatGPT app's handling of a 3–4 KB link, and how reliably ChatGPT encodes addresses with query strings, are only provable on the phone (§5 steps 6–8).
 - Emulator results come from CI; they don't prove real-device notification behaviour or App Link verification. This change touches neither.
+- Screenshots #42 (after the tour fix) showed three Rich Steps problems at 320 dp / 200 %: the main-link pill cut its label to one letter, review link labels broke into syllables beside the *Main* tag, and the row chevron narrowed the title. **Fixed:** at large text the pill stacks label and domain, the *Main* tag moves to the domain line, and the decorative chevron is hidden. At normal size the label and domain share the pill's width, so neither can squeeze the other away.
 - Seen in the 320 dp / 200 % screenshots, **not changed by this PR:** the Steps card header squeezes the word *Steps* into one letter per line because *1 of 3 done* and *Edit* share the row, and the action tiles wrap (*Snooz e*). Both rows are existing code; a follow-up could stack the count under the heading at large text.
 - Descriptions and links are not sent *to* ChatGPT by *Discuss in ChatGPT*; only step titles are shared, as before (privacy default from the feasibility study).

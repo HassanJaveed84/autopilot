@@ -550,7 +550,8 @@ private fun StepsCard(
                         if (firstOpen?.id == step.id) {
                             Text("Next", style = MaterialTheme.typography.labelSmall, color = c.onSignalSoft, modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(c.signalSoft).padding(horizontal = 8.dp, vertical = 4.dp))
                         }
-                        if (rich && !editing) Icon(AutopilotIcons.ChevronRight, contentDescription = null, tint = c.ink3, modifier = Modifier.size(20.dp))
+                        // Decorative only; at large text it would cost the title its width, and the title is the target anyway.
+                        if (rich && !editing && LocalDensity.current.fontScale < 1.3f) Icon(AutopilotIcons.ChevronRight, contentDescription = null, tint = c.ink3, modifier = Modifier.size(20.dp))
                     }
                     mainLink?.let { link -> MainLinkPill(link, onOpen = { onOpenLink(link) }, modifier = Modifier.padding(bottom = 8.dp).testTag("step_main_link_${step.id}")) }
                 }
