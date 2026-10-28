@@ -246,6 +246,9 @@ class RichStepsUiTest {
         compose.onNodeWithTag("detail_list").performScrollToNode(hasTestTag("detail_review_banner_set1"))
         compose.onNodeWithTag("detail_review_banner_set1").performClick()
         waitFor("review_list")
+        // The list exists before the set has loaded (one placeholder row); wait for the loaded review.
+        waitFor("review_apply")
+        waitFor("review_item_a")
         compose.onNodeWithTag("review_list").performScrollToNode(hasTestTag("review_links_a"))
         compose.onNodeWithTag("review_description_a", useUnmergedTree = true).assertIsDisplayed()
         save("review-rich-step")
