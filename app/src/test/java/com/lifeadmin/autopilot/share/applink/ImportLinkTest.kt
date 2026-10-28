@@ -46,14 +46,14 @@ class ImportLinkTest {
         assertEquals(ImportRefusal.NOT_A_LINK, refused("https://$host/autopilot/import/x#ap=v1&t=T&s=S"))
         assertEquals(ImportRefusal.NO_HANDOFF, refused("https://$host/autopilot/import"))
         assertEquals(ImportRefusal.NO_HANDOFF, refused("https://$host/autopilot/import#message=hello-from-chatgpt"))
-        assertEquals(ImportRefusal.NEWER_VERSION, refused(base + "ap=v2&t=T&s=S"))
+        assertEquals(ImportRefusal.NEWER_VERSION, refused(base + "ap=v3&t=T&s=S"))
         assertEquals(ImportRefusal.MALFORMED, refused(base + "ap=v1&t=T&s=a+b"))
         assertEquals(ImportRefusal.MALFORMED, refused(base + "ap=v1&t=T&s=%E2%28"))
         assertEquals(ImportRefusal.MALFORMED, refused(base + "ap=v1&t=T&x=1"))
         assertEquals(ImportRefusal.MALFORMED, refused(base + "ap=v1&s=S"))
         assertEquals(ImportRefusal.TOO_BIG, refused(base + "ap=v1&t=T&s=${"a".repeat(HandoffFragment.MAX_ITEM + 1)}"))
         assertEquals(ImportRefusal.TOO_BIG, refused(base + "ap=v1&t=T" + "&s=S".repeat(HandoffFragment.MAX_STEPS + 1)))
-        assertEquals(ImportRefusal.TOO_BIG, refused(base + "ap=v1&t=T&s=" + "%20a".repeat(1_100)))
+        assertEquals(ImportRefusal.TOO_BIG, refused(base + "ap=v1&t=T&s=" + "%20a".repeat(2_100)))
     }
 
     @Test fun aQueryIsIgnoredAndALongFullHandoffFits() {
@@ -72,15 +72,15 @@ class ImportLinkTest {
 
     @Test fun thePromptPrefixIsAValidStartAndKeepsLongTitlesWithinTheLimit() {
         val prefix = ImportLinkParser.prefix(host, ref, "Choose a coffee grinder")
-        assertEquals("https://$host/autopilot/import#ap=v1&r=$ref&t=Choose%20a%20coffee%20grinder", prefix)
-        val h = (parser.parse("$prefix&s=Check%20warranty") as ImportLinkResult.Valid).handoff
+        assertEquals("https://$host/autopilot/import#ap=v2&r=$ref&t=Choose%20a%20coffee%20grinder", prefix)
+        val h = (parser.parse("$prefix&s=Check%20warranty&end=1") as ImportLinkResult.Valid).handoff
         assertEquals(ref, h.ref)
         val long = "Plan the " + "very ".repeat(60) + "long trip"
         val clipped = ImportLinkParser.linkTitle(long)
         assertTrue(clipped.codePointCount(0, clipped.length) <= HandoffFragment.MAX_TASK)
         assertTrue(clipped.startsWith("Plan the very very"))
         assertTrue(clipped.endsWith("…"))
-        assertTrue(parser.parse(ImportLinkParser.prefix(host, ref, long) + "&s=S") is ImportLinkResult.Valid)
+        assertTrue(parser.parse(ImportLinkParser.prefix(host, ref, long) + "&s=S&end=1") is ImportLinkResult.Valid)
     }
 
     @Test fun aTaskReferenceIsOnlyAnIdShapedValue() {

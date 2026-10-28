@@ -43,4 +43,29 @@ class InstrumentedDatabaseTest {
         }
         room.close()
     }
+
+    /** Rich Steps: v8 → v9 on real SQLite, validated against the exported 9.json; steps keep everything. */
+    @Test fun migrate8To9AddsStepDetailsAndKeepsSteps() {
+        val name = "instrumented-migration-8-9.db"
+        helper.createDatabase(name, 8).use { db ->
+            db.execSQL(
+                "INSERT INTO tasks (id,title,notes,status,priority,createdAt,updatedAt,completedAt,archivedAt,deadlineType,deadlineLocalDate,deadlineInstant,deadlineZoneId,snoozedUntil,snoozeRemindAtEnd,waitingReason,waitingCheckInAt,rev,eventLocalDate,eventLabel,intendedLocalDate,targetLocalDate,targetBasis,cycleDoneUntil) " +
+                    "VALUES ('t1','Renew passport',NULL,'ACTIONABLE','NORMAL',1,1,NULL,NULL,'NONE',NULL,NULL,NULL,NULL,1,NULL,NULL,3,NULL,NULL,NULL,NULL,NULL,NULL)",
+            )
+            db.execSQL("INSERT INTO task_steps (id,taskId,sortOrder,title,isDone,completedAt,origin,provenanceId) VALUES ('s1','t1',0,'Take photo',1,500,'USER',NULL)")
+        }
+        helper.runMigrationsAndValidate(name, 9, true, *Migrations.ALL).close()
+
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val room = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(*Migrations.ALL).build()
+        runBlocking {
+            val step = room.stepDao().get("s1")!!
+            assertEquals("Take photo", step.title)
+            assertEquals(true, step.isDone)
+            assertEquals(null, step.description)
+            assertEquals(null, step.links)
+        }
+        room.close()
+        context.deleteDatabase(name)
+    }
 }

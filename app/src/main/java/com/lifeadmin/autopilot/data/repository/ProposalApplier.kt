@@ -13,6 +13,7 @@ import com.lifeadmin.autopilot.domain.model.EventType
 import com.lifeadmin.autopilot.domain.model.QuietHoursBehavior
 import com.lifeadmin.autopilot.domain.model.ReminderKind
 import com.lifeadmin.autopilot.domain.model.ReminderPolicy
+import com.lifeadmin.autopilot.domain.model.StepDetails
 import com.lifeadmin.autopilot.domain.model.TaskStatus
 import com.lifeadmin.autopilot.domain.model.ZoneMode
 import com.lifeadmin.autopilot.domain.proposal.ApplyChoice
@@ -25,6 +26,7 @@ import com.lifeadmin.autopilot.domain.proposal.ItemCheck
 import com.lifeadmin.autopilot.domain.proposal.ItemKind
 import com.lifeadmin.autopilot.domain.proposal.ItemStatus
 import com.lifeadmin.autopilot.domain.proposal.ItemValue
+import com.lifeadmin.autopilot.domain.proposal.MatchKey
 import com.lifeadmin.autopilot.domain.proposal.PolicyRestore
 import com.lifeadmin.autopilot.domain.proposal.ProposalItem
 import com.lifeadmin.autopilot.domain.proposal.ProposalReconciler
@@ -107,7 +109,9 @@ class ProposalApplier(
     private suspend fun applyNow(set: ProposalSet, chosen: List<ApplyChoice>): ApplyResult {
         val task = taskDao.get(set.targetId) ?: return ApplyResult.Rejected("This task no longer exists")
         val before = snapshot(task.id)!!
-        val checks = ProposalReconciler.reconcile(set, before).associateBy { it.itemId }
+        // Check what will actually be written: the user's edit (a chosen step, a trimmed link list) where there is one.
+        val effective = set.copy(items = set.items.map { item -> chosen.firstOrNull { it.itemId == item.id }?.value?.let { v -> item.copy(value = v) } ?: item })
+        val checks = ProposalReconciler.reconcile(effective, before).associateBy { it.itemId }
         // A conflict the user has not decided, or anything blocked, sends the whole set back to review: nothing is written.
         val undecided = chosen.filter { c ->
             val check = checks[c.itemId] ?: return@filter true
@@ -131,6 +135,7 @@ class ProposalApplier(
         val steps = stepDao.getForTask(task.id).sortedBy { it.sortOrder }.toMutableList()
         val changed = linkedSetOf<String>()
         val addedStepIds = mutableListOf<String>()
+        val detailStepIds = mutableListOf<String>()
         val records = mutableListOf<ProvenanceRecord>()
         var policyWritten = false
 
@@ -144,10 +149,12 @@ class ProposalApplier(
                 ItemKind.ADD_STEP -> {
                     val v = value as? ItemValue.Step ?: throw ValidationException("A step needs its wording")
                     val text = TaskRepository.validateStep(v.text)
+                    val description = TaskRepository.validateStepDescription(v.description)
+                    val links = TaskRepository.validateStepLinks(v.links)
                     val id = ids.newId()
                     val origin = if (v.verify) ContentOrigin.UNVERIFIED else originOf(set, v.origin)
                     val insertAt = v.afterStepId?.let { a -> steps.indexOfFirst { it.id == a } }?.takeIf { it >= 0 }?.plus(1) ?: steps.size
-                    steps.add(insertAt, TaskStepEntity(id, task.id, insertAt, text, false, null, origin.name, recordId))
+                    steps.add(insertAt, TaskStepEntity(id, task.id, insertAt, text, false, null, origin.name, recordId, description, StepDetails.encodeLinks(links)))
                     addedStepIds += id
                     elementId = id
                     appliedText = text
@@ -162,6 +169,28 @@ class ProposalApplier(
                     steps[idx] = steps[idx].copy(title = text, origin = origin.name, provenanceId = recordId)
                     elementId = steps[idx].id
                     appliedText = text
+                    changed += "steps"
+                }
+                ItemKind.ADD_STEP_DETAILS -> {
+                    val v = value as? ItemValue.StepDetails ?: throw ValidationException("Nothing to add to the step")
+                    val stepId = v.stepId ?: throw ValidationException("Choose which step gets these details")
+                    val idx = steps.indexOfFirst { it.id == stepId }
+                    if (idx < 0) throw ValidationException("That step no longer exists")
+                    val s0 = steps[idx]
+                    val mine = StepDetails.decodeLinks(s0.links)
+                    // Re-checked against the step as it is now: only what's new is added, nothing of the user's changes.
+                    val paragraphs = StepDetails.newParagraphs(s0.description, StepDetails.paragraphs(v.description), MatchKey::of)
+                    val links = StepDetails.newLinks(mine, TaskRepository.validateStepLinks(v.links))
+                    val description = TaskRepository.validateStepDescription(StepDetails.appendDescription(s0.description, paragraphs))
+                    val allLinks = TaskRepository.validateStepLinks(mine + links)
+                    // Wording, done state, order, origin and provenance stay the user's.
+                    steps[idx] = s0.copy(description = description, links = StepDetails.encodeLinks(allLinks))
+                    detailStepIds += stepId
+                    elementId = stepId
+                    appliedText = listOfNotNull(
+                        paragraphs.takeIf { it.isNotEmpty() }?.let { "a description" },
+                        links.takeIf { it.isNotEmpty() }?.let { "${it.size} ${if (it.size == 1) "link" else "links"}" },
+                    ).joinToString(" and ").ifEmpty { "nothing new" }.let { "Added $it to “${s0.title}”" }
                     changed += "steps"
                 }
                 ItemKind.REMOVE_STEP -> {
@@ -278,7 +307,7 @@ class ProposalApplier(
             base = after,
             lastApply = ApplyRecord(
                 atMs = now.toEpochMilli(), revBefore = before.rev, revAfter = after.rev, appliedItemIds = applied, declinedItemIds = declined,
-                addedStepIds = addedStepIds, provenanceIds = records.map { it.id }, previous = before, previousPolicy = previousPolicy?.let { PolicyRestore.of(it) },
+                addedStepIds = addedStepIds, provenanceIds = records.map { it.id }, detailStepIds = detailStepIds.distinct(), previous = before, previousPolicy = previousPolicy?.let { PolicyRestore.of(it) },
             ),
         )
         val finalSet = updatedSet.copy(status = closeIfDone(updatedSet))
@@ -342,14 +371,21 @@ class ProposalApplier(
                     entity = entity.copy(status = back, waitingReason = prev.waitingReason, waitingCheckInAt = prev.waitingCheckInAtMs?.let(Instant::ofEpochMilli))
                     statusRestored = true
                 }
-                if (ItemKind.ADD_STEP in kinds || ItemKind.EDIT_STEP in kinds || ItemKind.REMOVE_STEP in kinds) {
+                if (kinds.any { it.touchesSteps }) {
                     val current = stepDao.getForTask(task.id)
                     for (s in current) if (s.id in la.addedStepIds) stepDao.delete(s)
                     val keep = current.filter { it.id !in la.addedStepIds }.associateBy { it.id }
                     // Restore the previous order, wording and origin of every step that existed before the apply.
+                    // Description and links come back from the snapshot for the steps this apply enriched; every
+                    // other step keeps exactly what it has (records from before Rich Steps carry no details).
                     val restored = prev.steps.map { ps ->
                         val now0 = keep[ps.id]
-                        TaskStepEntity(ps.id, task.id, ps.sortOrder, ps.title, now0?.isDone ?: ps.isDone, now0?.completedAt, ps.origin, ps.provenanceId)
+                        val fromSnapshot = now0 == null || ps.id in la.detailStepIds
+                        TaskStepEntity(
+                            ps.id, task.id, ps.sortOrder, ps.title, now0?.isDone ?: ps.isDone, now0?.completedAt, ps.origin, ps.provenanceId,
+                            description = if (fromSnapshot) ps.description else now0!!.description,
+                            links = if (fromSnapshot) StepDetails.encodeLinks(ps.links) else now0!!.links,
+                        )
                     }
                     stepDao.upsertAll(restored.mapIndexed { i, s -> s.copy(sortOrder = i) })
                 }
@@ -409,7 +445,7 @@ class ProposalApplier(
     }
 
     private fun elementKindOf(kind: ItemKind): ElementKind = when (kind) {
-        ItemKind.ADD_STEP, ItemKind.EDIT_STEP, ItemKind.REMOVE_STEP -> ElementKind.STEP
+        ItemKind.ADD_STEP, ItemKind.EDIT_STEP, ItemKind.REMOVE_STEP, ItemKind.ADD_STEP_DETAILS -> ElementKind.STEP
         ItemKind.APPEND_NOTE, ItemKind.SET_NOTES -> ElementKind.NOTES
         ItemKind.SET_TITLE -> ElementKind.TITLE
         ItemKind.SET_DEADLINE -> ElementKind.DEADLINE

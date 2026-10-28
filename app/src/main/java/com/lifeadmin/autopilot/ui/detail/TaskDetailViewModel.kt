@@ -150,6 +150,16 @@ class TaskDetailViewModel(
         runCatching { repository.addStep(taskId, title) }.onFailure { onError(it.userMessage()) }
     }
     fun toggleStep(stepId: String, done: Boolean) = run { repository.setStepDone(stepId, done) }
+
+    /** The step editor's save (Rich Steps). [onSaved] closes the editor; a validation problem shows as a message. */
+    fun updateStep(stepId: String, title: String, description: String?, links: List<com.lifeadmin.autopilot.domain.model.StepLink>, onSaved: () -> Unit) = viewModelScope.launch {
+        runCatching { repository.updateStep(stepId, title, description, links) }
+            .onSuccess { onSaved() }
+            .onFailure { events.send(DetailEvent.Message(it.userMessage())) }
+    }
+
+    /** Opening a link never touches the step; when no browser can take it, say so. */
+    fun linkFailed() = viewModelScope.launch { events.send(DetailEvent.Message("No app on this phone could open that link")) }
     fun deleteStep(stepId: String) = run { repository.deleteStep(stepId) }
     fun moveStep(stepId: String, delta: Int) = run { repository.moveStep(stepId, delta) }
 

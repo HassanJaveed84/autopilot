@@ -12,6 +12,8 @@ import com.lifeadmin.autopilot.data.local.TaskStepEntity
 import com.lifeadmin.autopilot.data.local.encodeMetadata
 import com.lifeadmin.autopilot.data.local.toDomain
 import com.lifeadmin.autopilot.data.local.toEntity
+import com.lifeadmin.autopilot.domain.model.StepDetails
+import com.lifeadmin.autopilot.domain.model.StepLink
 import com.lifeadmin.autopilot.domain.model.DeadlineSpec
 import com.lifeadmin.autopilot.domain.model.DeadlineType
 import com.lifeadmin.autopilot.domain.model.DiagnosticEntry
@@ -641,14 +643,39 @@ class TaskRepository(
             if (s.title == clean) return@withTransaction
             val now = clock.now()
             stepDao.upsert(s.copy(title = clean))
-            // The user is now the latest editor; the research/planning origin stays (INT-030).
-            s.provenanceId?.let { pid ->
-                provenanceDao.get(pid)?.let { e ->
-                    val record = com.lifeadmin.autopilot.domain.proposal.ProposalJson.decodeRecord(e.payload)?.copy(editedByUser = true, editedAtMs = now.toEpochMilli())
-                    if (record != null) provenanceDao.upsert(e.copy(editedByUser = true, payload = com.lifeadmin.autopilot.domain.proposal.ProposalJson.encodeRecord(record)))
-                }
-            }
+            markStepEditedByUser(s, now)
             touch(s.taskId, now)
+        }
+    }
+
+    /**
+     * The step editor's save (Rich Steps): wording, description and links in one write. Done state,
+     * order, origin and provenance are kept; links are validated and only recognised tracking
+     * parameters are removed. Opening a link never comes through here.
+     */
+    suspend fun updateStep(stepId: String, title: String, description: String?, links: List<StepLink>) {
+        val clean = validateStep(title)
+        val desc = validateStepDescription(description)
+        val cleanLinks = validateStepLinks(links, allowMissingScheme = true)
+        db.withTransaction {
+            val s = stepDao.get(stepId) ?: return@withTransaction
+            val next = s.copy(title = clean, description = desc, links = StepDetails.encodeLinks(cleanLinks))
+            if (next == s) return@withTransaction
+            val now = clock.now()
+            stepDao.upsert(next)
+            markStepEditedByUser(s, now)
+            touch(s.taskId, now)
+            log(s.taskId, now, EventType.EDITED, "Step edited: $clean", mapOf("fields" to "step"))
+        }
+    }
+
+    /** The user is now the latest editor of an applied step; its research/planning/ChatGPT origin stays (INT-030). */
+    private suspend fun markStepEditedByUser(s: TaskStepEntity, now: Instant) {
+        s.provenanceId?.let { pid ->
+            provenanceDao.get(pid)?.let { e ->
+                val record = com.lifeadmin.autopilot.domain.proposal.ProposalJson.decodeRecord(e.payload)?.copy(editedByUser = true, editedAtMs = now.toEpochMilli())
+                if (record != null) provenanceDao.upsert(e.copy(editedByUser = true, payload = com.lifeadmin.autopilot.domain.proposal.ProposalJson.encodeRecord(record)))
+            }
         }
     }
 
@@ -766,6 +793,11 @@ class TaskRepository(
         }
 
         fun validateStepOrNull(raw: String): String? = try { validateStep(raw) } catch (e: ValidationException) { null }
+
+        fun validateStepDescription(raw: String?): String? = try { StepDetails.cleanDescription(raw) } catch (e: IllegalArgumentException) { throw ValidationException(e.message ?: "Invalid description") }
+
+        fun validateStepLinks(raw: List<StepLink>, allowMissingScheme: Boolean = false): List<StepLink> =
+            try { StepDetails.cleanLinks(raw, allowMissingScheme) } catch (e: IllegalArgumentException) { throw ValidationException(e.message ?: "Invalid link") }
 
         fun validateDeadline(type: DeadlineType, date: LocalDate?, instant: Instant?) {
             when (type) {

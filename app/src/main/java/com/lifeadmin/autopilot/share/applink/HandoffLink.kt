@@ -1,12 +1,15 @@
 package com.lifeadmin.autopilot.share.applink
 
+import com.lifeadmin.autopilot.domain.model.StepLink
+import com.lifeadmin.autopilot.domain.model.WebLink
+import kotlinx.serialization.Serializable
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 
 /*
- * Structured `ap=v1` handoff fragment (docs/CHATGPT_APP_LINK_HANDOFF.md, docs/CHATGPT_ROUND_TRIP_REPORT.md).
+ * Structured `ap=v1` / `ap=v2` handoff fragment (docs/CHATGPT_APP_LINK_HANDOFF.md, docs/CHATGPT_ROUND_TRIP_REPORT.md).
  * On the import route (ImportLinkParser) a validated handoff becomes a pending proposal set through
  * HandoffProposalBridge, never a direct task write.
  *
@@ -15,7 +18,20 @@ import java.nio.charset.CodingErrorAction
  *   t  task title, exactly once
  *   d  decision, s  step, n  note: each 0..n times, order kept, at least one item overall
  * Values are percent-encoded UTF-8, decoded exactly once. Keys are lowercase and case-sensitive.
+ *
+ * `ap=v2` (Rich Steps, v0.2.1, docs/experiments/rich-steps-handoff/REPORT.md) is v1 plus:
+ *   sd  one paragraph of a step's description, 0..4, directly after its `s` (or another detail of it)
+ *   sl  "<label> <http(s) address>" or "<address>", 0..5, directly after its `s`; the first is the main link
+ *   end=1, exactly once and last, so a link cut short anywhere is refused instead of read as shorter
+ * and one tolerance: a raw `=` inside a value is kept (the key already ended at the first `=`).
+ * `ap=v1` is read exactly as before: sd/sl/end are unknown fields there.
  */
+
+/** A step's details from an `ap=v2` link: description paragraphs and links, in the order ChatGPT wrote them. */
+@Serializable
+data class HandoffStepDetails(val description: List<String> = emptyList(), val links: List<StepLink> = emptyList()) {
+    val isEmpty: Boolean get() = description.isEmpty() && links.isEmpty()
+}
 
 data class LinkHandoff(
     val task: String,
@@ -24,18 +40,32 @@ data class LinkHandoff(
     val notes: List<String>,
     /** Copied by ChatGPT from the prompt; only an identifier, never trusted on its own ([TaskRef]). */
     val ref: String? = null,
+    /** The `ap=` version the link was written in: 1 or 2. */
+    val version: Int = 1,
+    /** v2 only: details of the step at that index of [steps]; plain steps have no entry. */
+    val stepDetails: Map<Int, HandoffStepDetails> = emptyMap(),
 ) {
-    /** Every `key=value` pair in the fragment, including `ap=v1`. */
-    val fieldCount: Int get() = 2 + (if (ref != null) 1 else 0) + decisions.size + steps.size + notes.size
+    fun details(stepIndex: Int): HandoffStepDetails = stepDetails[stepIndex] ?: HandoffStepDetails()
+
+    /** Every `key=value` pair in the fragment, including `ap=` and v2's `end=1`. */
+    val fieldCount: Int get() = 2 + (if (ref != null) 1 else 0) + decisions.size + steps.size + notes.size +
+        stepDetails.values.sumOf { it.description.size + it.links.size } + (if (version >= 2) 1 else 0)
 
     /** The canonical link: every byte outside the URL-unreserved set is percent-encoded. */
     fun toUrl(host: String, path: String = ImportLinkParser.PATH): String = buildString {
-        append("https://").append(host).append(path).append("#ap=v1")
+        append("https://").append(host).append(path).append("#ap=v").append(version)
         ref?.let { append("&r=").append(HandoffFragment.encode(it)) }
         append("&t=").append(HandoffFragment.encode(task))
         decisions.forEach { append("&d=").append(HandoffFragment.encode(it)) }
-        steps.forEach { append("&s=").append(HandoffFragment.encode(it)) }
+        steps.forEachIndexed { i, step ->
+            append("&s=").append(HandoffFragment.encode(step))
+            stepDetails[i]?.let { d ->
+                d.description.forEach { append("&sd=").append(HandoffFragment.encode(it)) }
+                d.links.forEach { l -> append("&sl=").append(HandoffFragment.encode(listOfNotNull(l.label, l.url).joinToString(" "))) }
+            }
+        }
         notes.forEach { append("&n=").append(HandoffFragment.encode(it)) }
+        if (version >= 2) append("&").append(HandoffFragment.END)
     }
 }
 
@@ -43,6 +73,15 @@ data class LinkHandoff(
 enum class HandoffProblem {
     UNSUPPORTED_VERSION, MALFORMED_FIELD, UNKNOWN_FIELD, DUPLICATE_FIELD, EMPTY_VALUE, BAD_ENCODING,
     AMBIGUOUS_PLUS, DISALLOWED_CHARACTER, EDGE_WHITESPACE, VALUE_TOO_LONG, TOO_MANY_ITEMS, MISSING_TASK, NO_ITEMS,
+
+    /** v2: a `sd`/`sl` that doesn't directly follow its step. */
+    DETAIL_WITHOUT_STEP,
+
+    /** v2: a `sl` whose address isn't an http(s) web address (or whose label is too long). */
+    BAD_LINK,
+
+    /** v2: the link doesn't end with `end=1` (cut short, or not finished). */
+    INCOMPLETE,
 }
 
 /** [field] is the 1-based position of the offending `key=value` pair, when one pair is to blame. */
@@ -61,6 +100,10 @@ object HandoffFragment {
     const val MAX_DECISIONS = 5
     const val MAX_STEPS = 10
     const val MAX_NOTES = 5
+    const val MAX_PARAGRAPH = 300
+    const val MAX_PARAGRAPHS = 4
+    const val MAX_LINKS_PER_STEP = 5
+    const val END = "end=1"
 
     /**
      * Parses a raw (still percent-encoded) fragment that starts with [PREFIX]. Splitting on `&` and the
@@ -69,28 +112,62 @@ object HandoffFragment {
     fun parse(rawFragment: String): HandoffParseResult {
         val pairs = rawFragment.split('&')
         fun invalid(problem: HandoffProblem, field: Int? = null) = HandoffParseResult.Invalid(HandoffIssue(problem, field, pairs.size))
-        if (pairs.first() != "ap=v1") return invalid(HandoffProblem.UNSUPPORTED_VERSION, 1)
+        val version = when (pairs.first()) {
+            "ap=v1" -> 1
+            "ap=v2" -> 2
+            else -> return invalid(HandoffProblem.UNSUPPORTED_VERSION, 1)
+        }
+        // v2 ends with exactly `end=1`; anything else means the link was cut short or never finished.
+        val last = if (version == 2) {
+            if (pairs.size < 2 || pairs.last() != END) return invalid(HandoffProblem.INCOMPLETE)
+            pairs.size - 1
+        } else {
+            pairs.size
+        }
         var task: String? = null
         var ref: String? = null
         val decisions = mutableListOf<String>()
         val steps = mutableListOf<String>()
         val notes = mutableListOf<String>()
-        for (i in 1 until pairs.size) {
+        val details = linkedMapOf<Int, HandoffStepDetails>()
+        // True right after an `s` and its details: `sd`/`sl` may only appear there.
+        var detailsOpen = false
+        for (i in 1 until last) {
             val field = i + 1
             val pair = pairs[i]
             val eq = pair.indexOf('=')
             if (eq <= 0) return invalid(HandoffProblem.MALFORMED_FIELD, field)
             val key = pair.substring(0, eq)
+            if (version == 2 && (key == "sd" || key == "sl")) {
+                if (!detailsOpen) return invalid(HandoffProblem.DETAIL_WITHOUT_STEP, field)
+                val max = if (key == "sd") MAX_PARAGRAPH else WebLink.MAX_LABEL + 1 + WebLink.MAX_URL
+                val value = when (val decoded = decode(pair.substring(eq + 1), max, allowRawEquals = true)) {
+                    is Decoded.Ok -> decoded.value
+                    is Decoded.Bad -> return invalid(decoded.problem, field)
+                }
+                val index = steps.lastIndex
+                val d = details[index] ?: HandoffStepDetails()
+                details[index] = if (key == "sd") {
+                    if (d.description.size == MAX_PARAGRAPHS) return invalid(HandoffProblem.TOO_MANY_ITEMS, field)
+                    d.copy(description = d.description + value)
+                } else {
+                    if (d.links.size == MAX_LINKS_PER_STEP) return invalid(HandoffProblem.TOO_MANY_ITEMS, field)
+                    d.copy(links = d.links + (parseLink(value) ?: return invalid(HandoffProblem.BAD_LINK, field)))
+                }
+                continue
+            }
             val (list, cap) = when (key) {
                 "t", "r" -> null to 1
                 "d" -> decisions to MAX_DECISIONS
                 "s" -> steps to MAX_STEPS
                 "n" -> notes to MAX_NOTES
                 "ap" -> return invalid(HandoffProblem.DUPLICATE_FIELD, field)
+                "end" -> return invalid(if (version == 2) HandoffProblem.DUPLICATE_FIELD else HandoffProblem.UNKNOWN_FIELD, field)
                 else -> return invalid(HandoffProblem.UNKNOWN_FIELD, field)
             }
+            detailsOpen = key == "s"
             val max = when (key) { "t" -> MAX_TASK; "r" -> MAX_REF; else -> MAX_ITEM }
-            val value = when (val decoded = decode(pair.substring(eq + 1), max)) {
+            val value = when (val decoded = decode(pair.substring(eq + 1), max, allowRawEquals = version >= 2)) {
                 is Decoded.Ok -> decoded.value
                 is Decoded.Bad -> return invalid(decoded.problem, field)
             }
@@ -107,7 +184,17 @@ object HandoffFragment {
         }
         if (task == null) return invalid(HandoffProblem.MISSING_TASK)
         if (decisions.isEmpty() && steps.isEmpty() && notes.isEmpty()) return invalid(HandoffProblem.NO_ITEMS)
-        return HandoffParseResult.Valid(LinkHandoff(task, decisions, steps, notes, ref))
+        return HandoffParseResult.Valid(LinkHandoff(task, decisions, steps, notes, ref, version, details))
+    }
+
+    /** `sl`: "<label> <address>" or "<address>". The address is the last space-separated token and must be http(s). */
+    fun parseLink(value: String): StepLink? {
+        val cut = value.lastIndexOf(' ')
+        val rawUrl = if (cut < 0) value else value.substring(cut + 1)
+        val label = if (cut < 0) null else WebLink.cleanLabel(value.substring(0, cut))
+        if (label != null && label.codePointCount(0, label.length) > WebLink.MAX_LABEL) return null
+        val url = (WebLink.check(rawUrl) as? WebLink.Checked.Ok)?.url ?: return null
+        return StepLink(url, label)
     }
 
     /** Percent-encodes UTF-8, leaving only `A–Z a–z 0–9 - . _ ~` as they are. */
@@ -128,7 +215,7 @@ object HandoffFragment {
      * UTF-8, and the bytes must form valid UTF-8. A raw `+` is refused rather than guessed: form
      * encoding reads it as a space, RFC 3986 as a plus sign.
      */
-    private fun decode(raw: String, maxCodePoints: Int): Decoded {
+    private fun decode(raw: String, maxCodePoints: Int, allowRawEquals: Boolean = false): Decoded {
         if (raw.isEmpty()) return Decoded.Bad(HandoffProblem.EMPTY_VALUE)
         val bytes = ByteArrayOutputStream()
         var i = 0
@@ -144,6 +231,7 @@ object HandoffFragment {
                     continue
                 }
                 c == '+' -> return Decoded.Bad(HandoffProblem.AMBIGUOUS_PLUS)
+                c == '=' && allowRawEquals -> bytes.write(c.code)
                 c.isUnreserved() || c in RAW_ALLOWED -> bytes.write(c.code)
                 c.code >= 0x80 && !c.isSurrogate() -> bytes.write(c.toString().toByteArray(Charsets.UTF_8))
                 c.isHighSurrogate() && raw.getOrNull(i + 1)?.isLowSurrogate() == true -> {

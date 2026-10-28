@@ -125,7 +125,9 @@ class ProposalReviewViewModel(
         val zone = zoneProvider.current()
         if (set == null) return@combine ReviewUi(loading = false, missing = true, zone = zone)
         val snapshot = details?.let { TargetSnapshot.of(it.task, it.steps, it.policy, clock.now().toEpochMilli()) }
-        val checks = snapshot?.let { ProposalReconciler.reconcile(set, it) }?.associateBy { it.itemId }.orEmpty()
+        // Checked as the user has edited them: a chosen destination step, a trimmed list of links.
+        val effective = set.copy(items = set.items.map { item -> l.edits[item.id]?.let { item.copy(value = it) } ?: item })
+        val checks = snapshot?.let { ProposalReconciler.reconcile(effective, it) }?.associateBy { it.itemId }.orEmpty()
         val rows = set.items.map { item ->
             val edited = l.edits[item.id]
             ReviewRow(
@@ -167,6 +169,22 @@ class ProposalReviewViewModel(
     fun editDate(id: String, date: LocalDate) {
         val item = state.value.set?.item(id) ?: return
         local.update { l -> l.copy(edits = l.edits + (id to ReviewPresenter.withDate(l.edits[id] ?: item.value, date))) }
+        persist()
+    }
+
+    /** The step editor's result for a proposed step or step details (Rich Steps). Editing never selects. */
+    fun editValue(id: String, value: ItemValue) {
+        if (state.value.set?.item(id) == null) return
+        local.update { l -> l.copy(edits = l.edits + (id to value), message = null) }
+        persist()
+    }
+
+    /** An ambiguous match: the user names the step that gets the details, which also selects the change. */
+    fun chooseStep(id: String, stepId: String) {
+        val item = state.value.set?.item(id) ?: return
+        val current = (local.value.edits[id] ?: item.value) as? ItemValue.StepDetails ?: return
+        if (stepId !in current.choices) return
+        local.update { l -> l.copy(edits = l.edits + (id to current.copy(stepId = stepId)), selected = l.selected + id, message = null) }
         persist()
     }
 

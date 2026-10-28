@@ -72,13 +72,13 @@ class ChatGptPromptTest {
 
     @Test fun theLinkStartCarriesTheTaskReferenceAndAValidEncodedTitle() {
         val p = prompt()
-        val start = "https://$host/autopilot/import#ap=v1&r=${task.id}&t=Choose%20a%20coffee%20grinder"
+        val start = "https://$host/autopilot/import#ap=v2&r=${task.id}&t=Choose%20a%20coffee%20grinder"
         assertTrue(p.contains("\n$start\n"))
         assertTrue(p.contains("space %20 (never +)"))
         assertTrue(p.contains("up to 5 d, 10 s and 5 n"))
         // What ChatGPT is asked to write parses, with the reference intact, once it appends encoded fields.
         val written = start + "&d=" + HandoffFragment.encode("Choose Model A") + "&s=" + HandoffFragment.encode("Compare retailer prices") +
-            "&n=" + HandoffFragment.encode("Budget is \$1,000")
+            "&n=" + HandoffFragment.encode("Budget is \$1,000") + ImportLinkParser.END_MARKER
         val h = (ImportLinkParser(host).parse(written) as ImportLinkResult.Valid).handoff
         assertEquals(task.id, h.ref)
         assertEquals("Choose a coffee grinder", h.task)

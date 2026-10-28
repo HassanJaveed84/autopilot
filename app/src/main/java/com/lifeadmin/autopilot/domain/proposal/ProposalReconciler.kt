@@ -1,5 +1,6 @@
 package com.lifeadmin.autopilot.domain.proposal
 
+import com.lifeadmin.autopilot.domain.model.StepDetails
 import com.lifeadmin.autopilot.domain.model.TaskStatus
 import com.lifeadmin.autopilot.domain.usecase.TaskStateMachine
 
@@ -36,6 +37,7 @@ object ProposalReconciler {
         return when (item.kind) {
             ItemKind.ADD_STEP -> addStep(item, base, current)
             ItemKind.EDIT_STEP, ItemKind.REMOVE_STEP -> anchoredStep(item, base, current)
+            ItemKind.ADD_STEP_DETAILS -> stepDetails(item, current)
             ItemKind.APPEND_NOTE -> if (base.notes != current.notes) note(item, "Notes changed since; this is added after them") else ok(item)
             ItemKind.SET_NOTES -> if (base.notes != current.notes) conflict(item, "You changed the notes since this was proposed") else ok(item)
             ItemKind.SET_TITLE -> if (base.title != current.title) conflict(item, "You changed the title since this was proposed") else ok(item)
@@ -73,6 +75,28 @@ object ProposalReconciler {
         return ok(item)
     }
 
+    /**
+     * Details for an existing step: the destination must be chosen (never guessed), still exist and
+     * still take what's new. Completed work is protected (PLAN-074): a ticked step needs an explicit
+     * "apply anyway", and stays ticked. A rename since doesn't matter: the step is found by its id.
+     */
+    private fun stepDetails(item: ProposalItem, current: TargetSnapshot): ItemCheck {
+        val v = item.value as? ItemValue.StepDetails ?: return blocked(item, "Nothing to add")
+        val id = v.stepId ?: return conflict(item, CHOOSE_STEP)
+        val now = current.step(id) ?: return blocked(item, "That step no longer exists")
+        val paragraphs = StepDetails.newParagraphs(now.description, StepDetails.paragraphs(v.description), MatchKey::of)
+        val links = StepDetails.newLinks(now.links, v.links)
+        if (paragraphs.isEmpty() && links.isEmpty()) return note(item, "Everything here is already on the step")
+        if (now.links.size + links.size > StepDetails.MAX_LINKS) return blocked(item, "The step would have more than ${StepDetails.MAX_LINKS} links")
+        val merged = StepDetails.appendDescription(now.description, paragraphs).orEmpty()
+        if (merged.codePointCount(0, merged.length) > StepDetails.MAX_DESCRIPTION) return blocked(item, "The step's description would be too long")
+        if (now.isDone) return conflict(item, "This step is done; it stays done")
+        return ok(item)
+    }
+
+    /** The reason shown while an ambiguous match waits for the user to pick the step. */
+    const val CHOOSE_STEP = "More than one step has this name. Choose the one these details belong to"
+
     private fun statusItem(item: ProposalItem, base: TargetSnapshot, current: TargetSnapshot, status: TaskStatus?): ItemCheck {
         val to = (item.value as? ItemValue.Status)?.status?.let { s -> TaskStatus.entries.firstOrNull { it.name == s } } ?: return blocked(item, "Unknown status")
         if (status == null) return blocked(item, "Unknown status")
@@ -106,6 +130,7 @@ object ProposalReconciler {
         ItemKind.SET_DEADLINE, ItemKind.SET_TARGET, ItemKind.SET_EVENT_DATE, ItemKind.SET_REMINDER, ItemKind.SET_STATUS -> true
         ItemKind.SET_TITLE, ItemKind.SET_NOTES -> true
         ItemKind.EDIT_STEP, ItemKind.REMOVE_STEP -> target.step(item.anchorStepId)?.let { it.isDone || it.origin == "USER" } ?: true
-        ItemKind.ADD_STEP, ItemKind.APPEND_NOTE -> false
+        // Adds to a step without changing its wording, done state or anything already on it.
+        ItemKind.ADD_STEP, ItemKind.APPEND_NOTE, ItemKind.ADD_STEP_DETAILS -> false
     }
 }

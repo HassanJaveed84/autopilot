@@ -217,6 +217,8 @@ class HandoffImportViewModel(
         saved[KEY_DECISIONS] = h?.decisions?.let(::ArrayList)
         saved[KEY_STEPS] = h?.steps?.let(::ArrayList)
         saved[KEY_NOTES] = h?.notes?.let(::ArrayList)
+        saved[KEY_VERSION] = h?.version
+        saved[KEY_DETAILS] = h?.stepDetails?.takeIf { it.isNotEmpty() }?.let { detailsJson.encodeToString(detailsSerializer, it) }
         saved[KEY_REFUSAL] = ui.refusal?.name
         saved[KEY_WHY] = ui.why?.name
         saved[KEY_TARGET] = ui.taskId
@@ -230,7 +232,10 @@ class HandoffImportViewModel(
     private fun restore(): ImportUi {
         val stage = saved.get<String>(KEY_STAGE)?.let { s -> ImportStage.entries.firstOrNull { it.name == s } } ?: return ImportUi(ImportStage.EMPTY)
         fun list(key: String) = saved.get<ArrayList<String>>(key).orEmpty().toList()
-        val handoff = saved.get<String>(KEY_TASK)?.let { LinkHandoff(it, list(KEY_DECISIONS), list(KEY_STEPS), list(KEY_NOTES), saved.get<String>(KEY_REF)) }
+        val details = saved.get<String>(KEY_DETAILS)?.let { runCatching { detailsJson.decodeFromString(detailsSerializer, it) }.getOrNull() }.orEmpty()
+        val handoff = saved.get<String>(KEY_TASK)?.let {
+            LinkHandoff(it, list(KEY_DECISIONS), list(KEY_STEPS), list(KEY_NOTES), saved.get<String>(KEY_REF), saved.get<Int>(KEY_VERSION) ?: 1, details)
+        }
         return ImportUi(
             stage = stage, handoff = handoff,
             refusal = saved.get<String>(KEY_REFUSAL)?.let { r -> ImportRefusal.entries.firstOrNull { it.name == r } },
@@ -251,6 +256,12 @@ class HandoffImportViewModel(
         const val KEY_DECISIONS = "handoff_import_decisions"
         const val KEY_STEPS = "handoff_import_steps"
         const val KEY_NOTES = "handoff_import_notes"
+        const val KEY_VERSION = "handoff_import_version"
+
+        /** Rich steps' descriptions and links, as validated (never the raw URL). */
+        const val KEY_DETAILS = "handoff_import_step_details"
+        val detailsJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        val detailsSerializer = kotlinx.serialization.builtins.MapSerializer(kotlinx.serialization.serializer<Int>(), com.lifeadmin.autopilot.share.applink.HandoffStepDetails.serializer())
         const val KEY_REFUSAL = "handoff_import_refusal"
         const val KEY_WHY = "handoff_import_why"
         const val KEY_TARGET = "handoff_import_target"

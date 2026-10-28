@@ -48,6 +48,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -74,7 +75,13 @@ import com.lifeadmin.autopilot.domain.model.ReminderPolicy
 import com.lifeadmin.autopilot.domain.model.TaskStatus
 import com.lifeadmin.autopilot.domain.usecase.StallAction
 import com.lifeadmin.autopilot.domain.usecase.StallHint
+import com.lifeadmin.autopilot.domain.model.StepLink
 import com.lifeadmin.autopilot.ui.components.AutopilotIcons
+import com.lifeadmin.autopilot.ui.components.MainLinkPill
+import com.lifeadmin.autopilot.ui.components.StepDraft
+import com.lifeadmin.autopilot.ui.components.StepEditorSheet
+import com.lifeadmin.autopilot.ui.components.openWebLink
+import com.lifeadmin.autopilot.ui.components.stepHint
 import com.lifeadmin.autopilot.ui.components.AutopilotSnackbar
 import com.lifeadmin.autopilot.ui.components.ChoiceChip
 import com.lifeadmin.autopilot.ui.components.Format
@@ -263,6 +270,35 @@ private fun DetailContent(
     var discussOpen by rememberSaveable { mutableStateOf(false) }
     if (discussOpen) DiscussSheet(d, zone, onDismiss = { discussOpen = false })
 
+    // Rich Steps: the step sheet (tap a title) and the step editor (Edit in the sheet).
+    val context = LocalContext.current
+    val stepsLocked = task.status.isTerminal || task.archivedAt != null
+    var openStepId by rememberSaveable { mutableStateOf<String?>(null) }
+    var editStepId by rememberSaveable { mutableStateOf<String?>(null) }
+    val openLink: (StepLink) -> Unit = { link -> if (!openWebLink(context, link.url)) vm.linkFailed() }
+    editStepId?.let { id ->
+        val step = d.steps.firstOrNull { it.id == id }
+        if (step == null || stepsLocked) editStepId = null
+        else StepEditorSheet(
+            heading = if (step.description != null || step.links.isNotEmpty()) "Edit step" else "Step details",
+            initial = StepDraft.of(step.title, step.description, step.links),
+            onDismiss = { editStepId = null },
+            onSave = { edit -> vm.updateStep(step.id, edit.title, edit.description, edit.links) { editStepId = null } },
+        )
+    }
+    if (editStepId == null) openStepId?.let { id ->
+        val step = d.steps.firstOrNull { it.id == id }
+        if (step == null) openStepId = null
+        else StepDetailSheet(
+            step = step, locked = stepsLocked, provenance = step.provenanceId?.let { state.provenance[it] },
+            onToggle = { vm.toggleStep(step.id, it) },
+            onOpenLink = openLink,
+            onEdit = { editStepId = step.id },
+            onShowProvenance = { step.provenanceId?.let { pid -> openStepId = null; provenanceOpen = pid } },
+            onDismiss = { openStepId = null },
+        )
+    }
+
     LazyColumn(modifier.fillMaxSize().testTag("detail_list"), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 40.dp)) {
         item {
             Row(Modifier.fillMaxWidth().statusBarsPadding().heightIn(min = 56.dp).padding(horizontal = 0.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -326,7 +362,7 @@ private fun DetailContent(
             }
         }
         if (stallHint != null) item { StallHintCard(stallHint, vm, openDialog) }
-        item { StepsCard(d, vm, state.provenance, onShowProvenance = { provenanceOpen = it }) }
+        item { StepsCard(d, vm, state.provenance, onShowProvenance = { provenanceOpen = it }, onOpenStep = { openStepId = it }, onOpenLink = openLink) }
         item { DeadlineAndPriorityCard(d, now, zone, vm, openDialog) }
         // The one AI entry point: it needs no key and changes nothing here.
         if (!isDone) item { DiscussCard(onClick = { discussOpen = true }) }
@@ -457,7 +493,14 @@ private fun ActionTile(icon: ImageVector, label: String, modifier: Modifier = Mo
 }
 
 @Composable
-private fun StepsCard(d: TaskDetails, vm: TaskDetailViewModel, provenance: Map<String, com.lifeadmin.autopilot.domain.proposal.ProvenanceRecord> = emptyMap(), onShowProvenance: (String) -> Unit = {}) {
+private fun StepsCard(
+    d: TaskDetails,
+    vm: TaskDetailViewModel,
+    provenance: Map<String, com.lifeadmin.autopilot.domain.proposal.ProvenanceRecord> = emptyMap(),
+    onShowProvenance: (String) -> Unit = {},
+    onOpenStep: (String) -> Unit = {},
+    onOpenLink: (StepLink) -> Unit = {},
+) {
     val c = AutopilotTheme.colors
     var newStep by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -481,24 +524,43 @@ private fun StepsCard(d: TaskDetails, vm: TaskDetailViewModel, provenance: Map<S
         }
         d.steps.forEachIndexed { index, step ->
             GroupDivider()
-            Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
+            // Hybrid A+B (Rich Steps): the box only ticks, the title area only opens the step's sheet,
+            // the main-link pill only opens the link. Three separate targets, nothing nested.
+            val mainLink = step.links.firstOrNull()?.takeIf { !step.isDone && !editing }
+            val hint = stepHint(step, mainLinkShown = mainLink != null)
+            val rich = step.description != null || step.links.isNotEmpty()
+            Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("step_row_${step.id}"), verticalAlignment = Alignment.Top) {
                 StepCheck(step.isDone, label = (if (step.isDone) "Mark not done: " else "Mark done: ") + step.title, enabled = !locked) { vm.toggleStep(step.id, it) }
-                Text(
-                    step.title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = if (step.isDone) c.ink3 else c.ink,
-                    textDecoration = if (step.isDone) TextDecoration.LineThrough else null,
-                    modifier = Modifier.weight(1f).padding(end = 6.dp),
-                )
-                if (firstOpen?.id == step.id) {
-                    Text("Next", style = MaterialTheme.typography.labelSmall, color = c.onSignalSoft, modifier = Modifier.padding(end = 6.dp).clip(RoundedCornerShape(12.dp)).background(c.signalSoft).padding(horizontal = 8.dp, vertical = 4.dp))
+                Column(Modifier.weight(1f).padding(end = 6.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp))
+                            .clickable(role = Role.Button, onClickLabel = "Open step details") { onOpenStep(step.id) }
+                            .padding(vertical = 12.dp).testTag("step_open_${step.id}"),
+                        verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                step.title,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = if (step.isDone) c.ink3 else c.ink,
+                                textDecoration = if (step.isDone) TextDecoration.LineThrough else null,
+                            )
+                            hint?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = c.ink3, modifier = Modifier.testTag("step_hint_${step.id}")) }
+                        }
+                        if (firstOpen?.id == step.id) {
+                            Text("Next", style = MaterialTheme.typography.labelSmall, color = c.onSignalSoft, modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(c.signalSoft).padding(horizontal = 8.dp, vertical = 4.dp))
+                        }
+                        // Decorative only; at large text it would cost the title its width, and the title is the target anyway.
+                        if (rich && !editing && LocalDensity.current.fontScale < 1.3f) Icon(AutopilotIcons.ChevronRight, contentDescription = null, tint = c.ink3, modifier = Modifier.size(20.dp))
+                    }
+                    mainLink?.let { link -> MainLinkPill(link, onOpen = { onOpenLink(link) }, modifier = Modifier.padding(bottom = 8.dp).testTag("step_main_link_${step.id}")) }
                 }
                 // Provenance is a property of the content, shown lightly (INT-032): one marker, the full record on tap.
                 step.provenanceId?.let { pid ->
                     val record = provenance[pid]
                     if (record != null && !editing) {
                         RoundIconButton(
-                            AutopilotIcons.Info, tint = c.ink3, onClick = { onShowProvenance(pid) }, modifier = Modifier.size(40.dp).testTag("step_prov_${step.id}"),
+                            AutopilotIcons.Info, tint = c.ink3, onClick = { onShowProvenance(pid) }, modifier = Modifier.padding(top = 4.dp).size(40.dp).testTag("step_prov_${step.id}"),
                             contentDescription = when (record.source) {
                                 com.lifeadmin.autopilot.domain.proposal.ProposalSource.RESEARCH -> "From research"
                                 com.lifeadmin.autopilot.domain.proposal.ProposalSource.PLANNING -> "From Plan with AI"
@@ -508,9 +570,11 @@ private fun StepsCard(d: TaskDetails, vm: TaskDetailViewModel, provenance: Map<S
                     }
                 }
                 if (editing) {
-                    if (index > 0) RoundIconButton(AutopilotIcons.ChevronDown, contentDescription = "Move ${step.title} up", tint = c.ink3, onClick = { vm.moveStep(step.id, -1) }, modifier = Modifier.size(40.dp).rotate(180f))
-                    if (index < d.steps.lastIndex) RoundIconButton(AutopilotIcons.ChevronDown, contentDescription = "Move ${step.title} down", tint = c.ink3, onClick = { vm.moveStep(step.id, 1) }, modifier = Modifier.size(40.dp))
-                    RoundIconButton(AutopilotIcons.Trash, contentDescription = "Remove step ${step.title}", tint = c.ink3, onClick = { vm.deleteStep(step.id) }, modifier = Modifier.size(40.dp))
+                    Row(Modifier.padding(top = 4.dp)) {
+                        if (index > 0) RoundIconButton(AutopilotIcons.ChevronDown, contentDescription = "Move ${step.title} up", tint = c.ink3, onClick = { vm.moveStep(step.id, -1) }, modifier = Modifier.size(40.dp).rotate(180f))
+                        if (index < d.steps.lastIndex) RoundIconButton(AutopilotIcons.ChevronDown, contentDescription = "Move ${step.title} down", tint = c.ink3, onClick = { vm.moveStep(step.id, 1) }, modifier = Modifier.size(40.dp))
+                        RoundIconButton(AutopilotIcons.Trash, contentDescription = "Remove step ${step.title}", tint = c.ink3, onClick = { vm.deleteStep(step.id) }, modifier = Modifier.size(40.dp))
+                    }
                 }
             }
         }

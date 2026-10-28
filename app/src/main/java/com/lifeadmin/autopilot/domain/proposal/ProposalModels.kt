@@ -3,6 +3,7 @@ package com.lifeadmin.autopilot.domain.proposal
 import com.lifeadmin.autopilot.domain.model.ContentOrigin
 import com.lifeadmin.autopilot.domain.model.DeadlineType
 import com.lifeadmin.autopilot.domain.model.ReminderPolicy
+import com.lifeadmin.autopilot.domain.model.StepLink
 import com.lifeadmin.autopilot.domain.model.Task
 import com.lifeadmin.autopilot.domain.model.TaskStep
 import kotlinx.serialization.SerialName
@@ -43,6 +44,14 @@ enum class ItemKind {
     ADD_STEP,
     EDIT_STEP,
     REMOVE_STEP,
+
+    /**
+     * Rich Steps (v0.2.1): adds a description and/or links to an existing step. Never changes the
+     * step's wording, done state, order or origin, and never replaces what's there: only what's new
+     * is appended. The destination is [ItemValue.StepDetails.stepId]; when ChatGPT's name for the step
+     * matches more than one step, the user picks it in review.
+     */
+    ADD_STEP_DETAILS,
     APPEND_NOTE,
     SET_NOTES,
     SET_TITLE,
@@ -55,7 +64,7 @@ enum class ItemKind {
     SET_STATUS,
     ;
 
-    val touchesSteps: Boolean get() = this == ADD_STEP || this == EDIT_STEP || this == REMOVE_STEP
+    val touchesSteps: Boolean get() = this == ADD_STEP || this == EDIT_STEP || this == REMOVE_STEP || this == ADD_STEP_DETAILS
 }
 
 @Serializable
@@ -71,6 +80,25 @@ sealed class ItemValue {
         /** The edited step is an assumption the finding superseded (INT-052). */
         val supersedes: Boolean = false,
         val afterStepId: String? = null,
+        /** Rich Steps: an optional description and links for the new step (ADD_STEP only). */
+        val description: String? = null,
+        val links: List<StepLink> = emptyList(),
+    ) : ItemValue()
+
+    /**
+     * Details to add to an existing step (ADD_STEP_DETAILS). [stepId] is the destination: set when
+     * exactly one step matched, or once the user picked one of [choices] (ambiguous match, never
+     * guessed). [stepTitle] is the step's name as ChatGPT wrote it. [description] holds only the new
+     * paragraphs, one per line; [links] only the new links.
+     */
+    @Serializable
+    @SerialName("step_details")
+    data class StepDetails(
+        val stepId: String? = null,
+        val choices: List<String> = emptyList(),
+        val stepTitle: String = "",
+        val description: String? = null,
+        val links: List<StepLink> = emptyList(),
     ) : ItemValue()
 
     @Serializable
@@ -152,8 +180,18 @@ data class ProposalItem(
     val src: ItemSrc? = null,
 )
 
+/** A step as it was. Rich Steps (v0.2.1) added [description] and [links] so undo restores them; older records decode without them. */
 @Serializable
-data class StepSnapshot(val id: String, val sortOrder: Int, val title: String, val isDone: Boolean, val origin: String = "USER", val provenanceId: String? = null)
+data class StepSnapshot(
+    val id: String,
+    val sortOrder: Int,
+    val title: String,
+    val isDone: Boolean,
+    val origin: String = "USER",
+    val provenanceId: String? = null,
+    val description: String? = null,
+    val links: List<StepLink> = emptyList(),
+)
 
 @Serializable
 data class ReminderSnapshot(
@@ -198,7 +236,7 @@ data class TargetSnapshot(
             eventDate = task.eventLocalDate?.toString(), eventLabel = task.eventLabel, intendedDate = task.intendedLocalDate?.toString(),
             targetDate = task.targetLocalDate?.toString(), targetBasis = task.targetBasis, snoozedUntilMs = task.snoozedUntil?.toEpochMilli(),
             waitingReason = task.waitingReason, waitingCheckInAtMs = task.waitingCheckInAt?.toEpochMilli(),
-            steps = steps.sortedBy { it.sortOrder }.map { StepSnapshot(it.id, it.sortOrder, it.title, it.isDone, it.origin.name, it.provenanceId) },
+            steps = steps.sortedBy { it.sortOrder }.map { StepSnapshot(it.id, it.sortOrder, it.title, it.isDone, it.origin.name, it.provenanceId, it.description, it.links) },
             reminder = policy?.let {
                 ReminderSnapshot(it.enabled, it.kind.name, it.times.map { t -> t.toString() }, it.dayInterval, it.startLocalDate?.toString(), it.atInstant?.toEpochMilli(), it.lastEditedAt.toEpochMilli())
             },
@@ -240,6 +278,8 @@ data class ApplyRecord(
     val declinedItemIds: List<String> = emptyList(),
     val addedStepIds: List<String> = emptyList(),
     val provenanceIds: List<String> = emptyList(),
+    /** Steps whose description or links this apply changed (Rich Steps); undo restores theirs from [previous]. */
+    val detailStepIds: List<String> = emptyList(),
     /** The target exactly before this apply (also the history snapshot, INT-054). */
     val previous: TargetSnapshot,
     val previousPolicy: PolicyRestore? = null,
