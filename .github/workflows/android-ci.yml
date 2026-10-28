@@ -41,6 +41,39 @@ jobs:
         env:
           AUTOPILOT_KEYSTORE_PASSWORD: ${{ secrets.AUTOPILOT_KEYSTORE_PASSWORD }}
         run: ./gradlew --stacktrace lintDebug testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest
+      # The assetlinks.json statement for the certificate this release APK is really
+      # signed with (public digest only). Without the personal-key secret it describes a throwaway key.
+      - name: Release signing certificate for assetlinks.json
+        run: |
+          set -o pipefail
+          applink-site/assetlinks-from-apk.sh app/build/outputs/apk/release/app-release.apk | tee assetlinks.json
+          { echo '### assetlinks.json for this release APK'; echo '```json'; cat assetlinks.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload assetlinks.json
+        uses: actions/upload-artifact@v4
+        with:
+          name: assetlinks
+          path: assetlinks.json
+      # Release gate for the phone install: ID, version, App Link route, no INTERNET, and the personal
+      # certificate published in assetlinks.json. Fails the run on any mismatch; without the personal
+      # key it fails too (exit 2), so a debug-signed APK is never presented as an update.
+      - name: Verify release APK
+        id: verify
+        run: |
+          set -o pipefail
+          code="$(sed -nE 's/^ *versionCode = ([0-9]+)$/\1/p' app/build.gradle.kts)"
+          name="$(sed -nE 's/^ *versionName = "([^"]+)"$/\1/p' app/build.gradle.kts)"
+          .github/scripts/verify-release-apk.sh app/build/outputs/apk/release/app-release.apk "$code" "$name" | tee verify-release.txt
+          { echo '### Release APK verification'; echo '```'; cat verify-release.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          cp app/build/outputs/apk/release/app-release.apk "autopilot-$name-release.apk"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+      - name: Upload the verified release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: autopilot-${{ steps.verify.outputs.name }}-release
+          path: |
+            autopilot-${{ steps.verify.outputs.name }}-release.apk
+            verify-release.txt
+          if-no-files-found: error
       - name: Upload APKs
         if: always()
         uses: actions/upload-artifact@v4
@@ -115,7 +148,7 @@ jobs:
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           # The screenshot tour runs on demand: .github/workflows/screenshots.yml.
-          script: ./gradlew --stacktrace connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=com.lifeadmin.autopilot.ScreenshotTour,com.lifeadmin.autopilot.ScreenshotTourAiReview
+          script: ./gradlew --stacktrace connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=com.lifeadmin.autopilot.ScreenshotTour
       - name: Upload instrumented reports
         if: always()
         uses: actions/upload-artifact@v4

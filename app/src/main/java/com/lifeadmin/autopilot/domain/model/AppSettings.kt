@@ -16,7 +16,12 @@ data class AppSettings(
     val quietHours: QuietHours = QuietHours(),
     val quietHoursBehavior: QuietHoursBehavior = QuietHoursBehavior.DEFER_AND_COALESCE,
     val defaultSnooze: SnoozePreset = SnoozePreset.TOMORROW_MORNING,
-    val defaultPreset: ReminderPreset = ReminderPreset.PERSISTENT,
+    /**
+     * Follow-up for a capture with no timing in its words. Gentle for new installs; an existing
+     * install keeps what it has stored (every settings write persists this key, and the engine
+     * writes settings on its first reconcile, so any install that has run before has it stored).
+     */
+    val defaultPreset: ReminderPreset = ReminderPreset.GENTLE,
     val allowReminderNotifications: Boolean = true,
     val lockScreenPrivacy: Boolean = false,
     /** Try exact alarms when the user granted special access. Off by default (battery + policy). */
@@ -27,26 +32,15 @@ data class AppSettings(
     val maxNotificationsPerDay: Int = 30,
     val onboardingCompleted: Boolean = false,
     val notificationPermissionRequested: Boolean = false,
-    /** Optional AI planning (M2). Off by default; the app is fully usable without it. */
-    val aiEnabled: Boolean = false,
-    /** When the user accepted the "text is sent to Anthropic" disclosure; null = not yet. */
-    val aiConsentAt: Instant? = null,
-    /** Model id for AI planning; blank = [com.lifeadmin.autopilot.ai.AiConfig.DEFAULT_MODEL]. */
-    val aiModel: String = "",
-    /** Local-day request counter used to cap accidental spend ([com.lifeadmin.autopilot.ai.AiConfig.MAX_REQUESTS_PER_DAY]). */
-    val aiUsageDay: String = "",
-    val aiUsageCount: Int = 0,
-    /** Web research (M3): version of the one-time explainer the user accepted; 0 = not yet. */
-    val researchExplainerVersion: Int = 0,
-    /** Local-day research request counter, separate from planning ([com.lifeadmin.autopilot.ai.research.ResearchConfig.MAX_REQUESTS_PER_DAY]). */
-    val researchUsageDay: String = "",
-    val researchUsageCount: Int = 0,
     val lastReconcileAt: Instant? = null,
     val lastReconcileSummary: String? = null,
     /** Light/dark preference for the UI; SYSTEM follows the phone. Presentation only. */
     val appearance: Appearance = Appearance.SYSTEM,
+    /** When "before bed", "at bedtime" and "every night" nudge. Editable in Settings. */
+    val bedtime: LocalTime = DEFAULT_BEDTIME,
 ) {
     companion object {
         val MORNING: LocalTime = LocalTime.of(9, 0)
+        val DEFAULT_BEDTIME: LocalTime = LocalTime.of(21, 30)
     }
 }

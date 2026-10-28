@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import com.lifeadmin.autopilot.appContainer
+import com.lifeadmin.autopilot.domain.scheduling.RoutineCycle
 import com.lifeadmin.autopilot.reminders.IntentContract
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -55,7 +56,7 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
 class NotificationActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action
-        if (action != IntentContract.ACTION_DONE && action != IntentContract.ACTION_SNOOZE) return
+        if (action != IntentContract.ACTION_DONE && action != IntentContract.ACTION_SNOOZE && action != IntentContract.ACTION_DONE_FOR_NOW) return
         val taskId = IntentContract.taskIdFrom(intent.data) ?: return
         val container = context.appContainer
         runAsync {
@@ -66,6 +67,11 @@ class NotificationActionReceiver : BroadcastReceiver() {
             when (action) {
                 IntentContract.ACTION_DONE -> if (!task.status.isTerminal) container.taskRepository.complete(taskId) else container.notificationPublisher.cancelForTask(taskId)
                 IntentContract.ACTION_SNOOZE -> if (!task.status.isTerminal) container.taskActions.snoozeWithDefault(taskId) else container.notificationPublisher.cancelForTask(taskId)
+                // Re-checked against Room: if the task is no longer an open routine, the tap only
+                // clears the notification; it never falls back to completing the task.
+                IntentContract.ACTION_DONE_FOR_NOW ->
+                    if (RoutineCycle.canFinishCycle(task, container.taskRepository.getPolicy(taskId))) container.taskRepository.finishCycle(taskId, container.taskRepository.latestDeliveredSlot(taskId))
+                    else container.notificationPublisher.cancelForTask(taskId)
             }
         }
     }

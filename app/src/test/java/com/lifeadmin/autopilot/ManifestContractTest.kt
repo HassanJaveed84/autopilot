@@ -1,5 +1,9 @@
 package com.lifeadmin.autopilot
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -10,7 +14,7 @@ import javax.xml.parsers.DocumentBuilderFactory
 
 /**
  * Verifies security/permission properties of the source manifest (SPEC §5.4, §8):
- * network only for optional AI planning (TLS-only config), no sensitive permissions, no
+ * no network permission (a TLS-only config stays as defence in depth), no sensitive permissions, no
  * USE_EXACT_ALARM, non-exported internal receivers, backups disabled.
  */
 class ManifestContractTest {
@@ -28,12 +32,11 @@ class ManifestContractTest {
         assertEquals(
             setOf(
                 "android.permission.POST_NOTIFICATIONS", "android.permission.RECEIVE_BOOT_COMPLETED", "android.permission.SCHEDULE_EXACT_ALARM",
-                // M2: only for optional, user-triggered AI planning requests.
-                "android.permission.INTERNET", "android.permission.ACCESS_NETWORK_STATE",
             ),
             permissions,
         )
-        listOf("USE_EXACT_ALARM", "READ_CONTACTS", "ACCESS_FINE_LOCATION", "RECORD_AUDIO", "READ_SMS", "READ_CALENDAR", "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", "USE_FULL_SCREEN_INTENT")
+        // Built-in AI is retired: the app makes no network requests of its own.
+        listOf("INTERNET", "ACCESS_NETWORK_STATE", "USE_EXACT_ALARM", "READ_CONTACTS", "ACCESS_FINE_LOCATION", "RECORD_AUDIO", "READ_SMS", "READ_CALENDAR", "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", "USE_FULL_SCREEN_INTENT")
             .forEach { p -> assertFalse(p, permissions.any { it.endsWith(".$p") }) }
     }
 
@@ -64,6 +67,65 @@ class ManifestContractTest {
     @Test fun noServicesOrProvidersAreDeclaredByTheApp() {
         assertTrue(elements("service").isEmpty())
         assertTrue(elements("provider").isEmpty())
+    }
+
+    /** No share target: the only entry points are the launcher and the one App Link route. */
+    @Test fun noShareTargetAndTheLauncherIsUnchanged() {
+        val activities = elements("activity").associateBy { it.attr("name") }
+        assertEquals(setOf(".MainActivity", ".ui.handoff.HandoffImportActivity"), activities.keys)
+        fun filter(a: Element, tag: String) = a.getElementsByTagName(tag).let { nl -> (0 until nl.length).map { (nl.item(it) as Element) } }
+        val main = activities.getValue(".MainActivity")
+        assertEquals(listOf("android.intent.action.MAIN"), filter(main, "action").map { it.attr("name") })
+        assertEquals(listOf("android.intent.category.LAUNCHER"), filter(main, "category").map { it.attr("name") })
+        val actions = activities.values.flatMap { filter(it, "action") }.map { it.attr("name") }
+        assertTrue(actions.none { it == "android.intent.action.SEND" || it == "android.intent.action.SEND_MULTIPLE" })
+    }
+
+    /** The ChatGPT round trip's import route: one https path on one host, verified, nothing broader, its own task. */
+    @Test fun importFilterClaimsOnlyTheImportRoute() = assertAppLinkRoute(".ui.handoff.HandoffImportActivity", "/autopilot/import")
+
+    /** The retired display-only spike route is gone; no filter may claim it again. */
+    @Test fun theRetiredTestRouteIsNotClaimed() {
+        val paths = doc.getElementsByTagName("data").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).attr("path") } }
+        assertEquals(listOf("/autopilot/import"), paths.filter { it.isNotEmpty() })
+    }
+
+    /** "Discuss in ChatGPT" may see exactly one other package: the ChatGPT app. */
+    @Test fun onlyTheChatGptPackageIsQueried() {
+        val queries = elements("queries").single()
+        val packages = queries.getElementsByTagName("package").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).attr("name") } }
+        assertEquals(listOf("com.openai.chatgpt"), packages)
+        assertEquals(0, queries.getElementsByTagName("intent").length)
+    }
+
+    private fun assertAppLinkRoute(name: String, path: String) {
+        val activity = elements("activity").single { it.attr("name") == name }
+        fun Element.all(tag: String) = getElementsByTagName(tag).let { nl -> (0 until nl.length).map { (nl.item(it) as Element) } }
+        val filter = activity.all("intent-filter").single()
+        assertEquals("true", filter.attr("autoVerify"))
+        assertEquals(listOf("android.intent.action.VIEW"), filter.all("action").map { it.attr("name") })
+        assertEquals(setOf("android.intent.category.DEFAULT", "android.intent.category.BROWSABLE"), filter.all("category").map { it.attr("name") }.toSet())
+        val data = filter.all("data").single()
+        assertEquals("https", data.attr("scheme"))
+        assertEquals("\${appLinkHost}", data.attr("host"))
+        assertEquals(path, data.attr("path"))
+        listOf("pathPrefix", "pathPattern", "pathAdvancedPattern", "port").forEach { assertTrue(it, data.attr(it).isEmpty()) }
+        assertEquals("singleTop", activity.attr("launchMode"))
+        assertEquals("persistNever", activity.attr("persistableMode"))
+        assertEquals("", activity.attr("taskAffinity"))
+        assertTrue(activity.hasAttributeNS(ns, "taskAffinity"))
+    }
+
+    /** The site file the spike publishes names only the release package, with well-formed SHA-256 fingerprints. */
+    @Test fun assetLinksNameOnlyTheReleasePackage() {
+        val statements = Json.parseToJsonElement(File("../applink-site/.well-known/assetlinks.json").readText()).jsonArray.map { it.jsonObject }
+        val statement = statements.single()
+        assertEquals(listOf("delegate_permission/common.handle_all_urls"), statement.getValue("relation").jsonArray.map { it.jsonPrimitive.content })
+        val target = statement.getValue("target").jsonObject
+        assertEquals("android_app", target.getValue("namespace").jsonPrimitive.content)
+        assertEquals(BuildConfig.APPLICATION_ID.removeSuffix(".debug"), target.getValue("package_name").jsonPrimitive.content)
+        val prints = target.getValue("sha256_cert_fingerprints").jsonArray.map { it.jsonPrimitive.content }
+        assertTrue(prints.isNotEmpty() && prints.all { Regex("([0-9A-F]{2}:){31}[0-9A-F]{2}").matches(it) })
     }
 
     @Test fun networkIsTlsOnlyWithSystemCertificates() {

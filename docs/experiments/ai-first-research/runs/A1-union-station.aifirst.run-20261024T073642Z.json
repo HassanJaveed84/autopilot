@@ -1,0 +1,122 @@
+{
+ "sanitization": {
+  "rawSha256": "4ec0ec922816947978e8aadbde50a95824d9a2b86956f56652e6d0eff01ee20f",
+  "removed": {
+   "emails": 1,
+   "phones": 2
+  },
+  "note": "Compact summary: request bodies and full reply segments omitted; cited text kept verbatim apart from emails/phones; no credential."
+ },
+ "scenario": "A1-union-station",
+ "engine": "aifirst",
+ "model": "claude-sonnet-5-5",
+ "ranAtUtc": "2026-10-24T07:36:48.371684956Z",
+ "searchBudget": 3,
+ "spendLimitCents": 300,
+ "totalUsd": 0.045194,
+ "turns": [
+  {
+   "question": "What is the address of Union Station in Washington, DC?",
+   "status": "COMPLETE",
+   "outcome": null,
+   "objective": null,
+   "config": "searchBudget=3 spendLimit=300¢ maxOutputTokens=16000 prompt=v1",
+   "elapsedMs": 5669,
+   "shown": "**Union Station, Washington, DC is at 50 Massachusetts Avenue NE, Washington, DC 20002.**\n\n- The station's own contact page lists it as 50 Massachusetts Ave., NE, Washington, D.C. 20002, with phone [phone removed]. [1]\n- Amtrak lists the same street address, with the longer ZIP+4 of 20002-4214. [2]\n- One bus-listing site gives the ZIP as 20001. I'd go with 20002, since the station and Amtrak both use it.\n- The station sits in front of Columbus Circle, where Massachusetts Avenue meets Delaware and Louisiana Avenues and E and First Streets NE. [3]\n- Amtrak says pick-up and drop-off is at the Massachusetts Avenue exit. [2] That may help if you're being picked up or dropped off.\n\nI haven't checked whether the entrances or pick-up areas have temporary changes, such as construction. Check the station's website if you're going soon.\n\nSources\n[1] Contact Us — https://www.unionstationdc.com/contact-us/ (search result age: 168 days ago)\n[2] Washington, DC - Union Station (WAS) — https://www.amtrak.com/stations/was (search result age: 285 days ago)\n[3] Columbus Circle (Washington, D.C.) — https://en.wikipedia.org/wiki/Columbus_Circle_(Washington,_D.C.)",
+   "claims": [],
+   "ledger": [
+    {
+     "stage": "AI_FIRST",
+     "model": "claude-sonnet-5-5",
+     "outcome": "COMPLETE",
+     "usageStatus": "COMPLETE",
+     "inputTokens": 15247,
+     "outputTokens": 470,
+     "cacheReadTokens": 0,
+     "cacheWriteTokens": 0,
+     "webSearches": 1,
+     "estimatedMicros": 45194,
+     "durationMs": 5606
+    }
+   ],
+   "calls": [
+    {
+     "maxSearches": 3,
+     "stop": "END",
+     "elapsedMs": 5606,
+     "continuesPausedTurn": false,
+     "searches": [
+      {
+       "query": "Union Station Washington DC address 50 Massachusetts Ave NE",
+       "error": "",
+       "results": [
+        {
+         "url": "https://www.taketours.com/busstation/160413.html",
+         "pageAge": ""
+        },
+        {
+         "url": "https://en.wikipedia.org/wiki/Washington_Union_Station",
+         "pageAge": ""
+        },
+        {
+         "url": "https://washington.org/find-dc-listings/union-station",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.unionstationdc.com/contact-us/",
+         "pageAge": "168 days ago"
+        },
+        {
+         "url": "https://www.amtrak.com/stations/was",
+         "pageAge": "285 days ago"
+        },
+        {
+         "url": "https://www.unionstationdc.com/visit/",
+         "pageAge": "333 days ago"
+        },
+        {
+         "url": "https://en.wikipedia.org/wiki/Union_Station_(Washington_Metro)",
+         "pageAge": ""
+        },
+        {
+         "url": "https://en.wikipedia.org/wiki/Columbus_Circle_(Washington,_D.C.)",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.yelp.com/biz/union-station-washington?start=320",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.yelp.com/biz/union-station-washington",
+         "pageAge": "913 days ago"
+        }
+       ]
+      }
+     ],
+     "citations": [
+      {
+       "url": "https://www.unionstationdc.com/contact-us/",
+       "citedText": "Union Station D.C. Union Station 50 Massachusetts Ave., NE Washington, D.C. 20002 P: [phone removed] E: [email removed].\n\n"
+      },
+      {
+       "url": "https://www.amtrak.com/stations/was",
+       "citedText": "50 Massachusetts Avenue NE Washington, DC 20002-4214. "
+      },
+      {
+       "url": "https://en.wikipedia.org/wiki/Columbus_Circle_(Washington,_D.C.)",
+       "citedText": ": 80004523\n- Added to NRHP: April 9, 1980\n\nColumbus Circle, also known as Union Station Plaza or Columbus Plaza, is a\n\n\n[traffic circle](https://en.wi..."
+      },
+      {
+       "url": "https://en.wikipedia.org/wiki/Columbus_Circle_(Washington,_D.C.)",
+       "citedText": "It is located in front of [Union Station](https://en.wikipedia.org/wiki/Union_Station_(Washington,_D.C.)) "
+      },
+      {
+       "url": "https://www.amtrak.com/stations/was",
+       "citedText": "## Connections\n**Pick Up/Drop Off**\n\n- Located via the Massachusetts Avenue exit.\n\n\n\n"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

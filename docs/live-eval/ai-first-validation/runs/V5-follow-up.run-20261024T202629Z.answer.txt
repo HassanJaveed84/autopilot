@@ -1,0 +1,74 @@
+**My pick for a small, hard-floor flat is a LiDAR-mapping model with a self-emptying dock. The Roborock Q7 M5 family is the safest value choice. If you want mopping handled automatically, step up to a model with a washing dock, such as the Shark PowerDetect 2-in-1 or a Mova/Dreame/Roborock combo.** I'm assuming a US buyer and a budget of roughly $300–700, which is how the mid-range roundups define it. I couldn't verify current prices, so check them before you buy.
+
+**Solid shortlist, from independent testers**
+- **Roborock Q7 M5 (or M5+ with the self-empty dock):** RTINGS, after testing 102 robot vacuums, named the Q7 M5 its best budget robot vacuum, with strong cleaning and useful app features [1]. TechRadar also recommends it as the cheaper option, and it has 10,000Pa of suction [2]. It's a vacuum with light mopping, not a full mopping system. It may sit at the low end of "mid-range", and a dock version will cost more.
+- **Eufy C10 (vacuum only):** Consumer Reports says it's a great choice if you don't have many carpeted areas, and excellent at cleaning bare laminate floors [3]. That fits your floors well.
+- **iRobot Roomba Max 705 (vacuum only):** Consumer Reports found it quiet and strong in every cleaning test [3]. It's likely pricier than the other two.
+- **Shark PowerDetect 2-in-1 (vacuum and mop):** Tom's Guide picked it as best for most people. It empties its dustbin, washes its mops and refills its tanks automatically. [4]
+- **Mova P10 Pro Ultra Gen2 (vacuum and mop):** Consumer Reports found it impressive on bare floors, but only middling at mopping up stains [5].
+
+**What I'd weigh for a small flat (my judgment)**
+- **Mopping:** If you want it, choose a model whose dock washes the pads. Cheaper docks only empty the bin, and you'd rinse the pad by hand. One brand's guide says this about its budget model, so treat it as vendor-sourced.
+- **Dock and height:** Dock footprint and body height matter more than suction in a small space. Even cheap models have plenty of suction for hard floors, so I wouldn't pay extra for very high Pa numbers.
+- **Rugs:** If you have any thick rugs, check carpet results, because several of these models are only middling on carpet.
+
+**Caveats**
+- Many "best of" pages in the results look like affiliate roundups. I leaned on Consumer Reports, RTINGS, TechRadar and Tom's Guide where I could.
+- RTINGS's budget page is about 80 days old, and some of the Consumer Reports pages are 2–4 months old. Models and prices change quickly, and mid-range models are often discounted.
+- I didn't find a single head-to-head test of these models in a small flat.
+
+If you tell me your budget, whether you want mopping, and whether you have pets or rugs, I can narrow this to one or two models.
+
+Sources
+[1] The 3 Best Budget Robot Vacuums of 2026 - RTINGS.com — https://www.rtings.com/robot-vacuum/reviews/best/budget (search result age: 80 days ago)
+[2] These are the 3 best cheap robot vacuums we've tested this year — https://www.techradar.com/home/robot-vacuums/ive-tested-dozens-of-robot-vacuums-here-are-my-3-favorite-budget-bots-from-gbp149
+[3] 2 Best Robot Vacuums of 2026, Lab-Tested and Reviewed - Consumer Reports — https://www.consumerreports.org/appliances/vacuum-cleaners/best-robotic-vacuums-of-the-year-a7149523687/ (search result age: 57 days ago)
+[4] Best robot vacuums in 2026: expert tested and rated — https://www.tomsguide.com/best-picks/the-best-robot-vacuums
+[5] 3 Best Robotic Vacuum-Mop Combos, Lab-Tested and Reviewed - Consumer Reports — https://www.consumerreports.org/appliances/vacuum-cleaners/best-robotic-vacuum-mop-combos-a7474187257/ (search result age: 124 days ago)
+
+======== next turn ========
+
+**Yes, it changes my pick. I'd now suggest the Dreame D20+, or the Eufy C10 if you'd rather have a slimmer, vacuum-only robot. I'd drop the Roborock Q7 M5 I led with before.** Neither is a sure thing on a long-pile rug (see below).
+
+**Why the Roborock Q7 M5 drops out**
+- In Vacuum Wars' tests, the Q7 M5 removed just 79% of pressed-in pet hair, about average and well behind the Eufy C10's 100%. [1]
+- TechGearLab's review of the Q7 M5+ found that its suction struggled on low-pile carpet and its roller brush easily tangled with fur. [2] That review is about 10 months old.
+- I based my first answer on hard floors only. With two cats and a rug, hair handling matters more than it did.
+
+**What I'd pick now**
+- **Dreame D20+ (vacuum with a basic mop, self-emptying dock):**
+  - Vacuum Wars named it its best robot vacuum under $300. It removed 93% of embedded debris from carpet and 91% of flattened pet hair, and no hair wrapped around its brushes in the long-hair test. [3]
+  - Vacuum Wars showed it at $278.99, down from $369.99 [3], and that page is about 3 days old. Dreame's own store showed $309.99 [4] about 81 days ago, so the price may be just over your limit at times.
+  - It's a weaker mopper. Its mop is basic and it has no dedicated obstacle avoidance. [3]
+- **Eufy C10 (vacuum only, self-emptying dock):**
+  - Vacuum Wars found it removed 86% of embedded sand from medium-pile carpet and 100% of flattened pet hair. [5]
+  - Consumer Reports says it is proficient at sweeping up pet hair without catching it in its brush. [6]
+  - Its sale price is often below $300 [5], but the Vacuum Wars page showed a $419.99 list price, so confirm the price before buying.
+  - One Reddit owner said the roller clogged on the first run during heavy shedding. They said it stayed clear when run once a day. [7] That's a single anecdote.
+
+**The long-pile rug is the weak spot**
+- I found no sub-$300 robot that is tested and shown to handle long pile well.
+- For the D20+, one review (about 10 months old) says it handles rugs up to about 20mm (¾ inch) but very thick shag or plush will cause problems. [8] The same review says high-pile carpet should be avoided or excluded with no-go zones. [8]
+- I couldn't find a tested pile-height limit for the C10. Its carpet results are on medium pile.
+- In my judgment, measure your rug's pile and check for fringe. Plan to block it off in the app and vacuum it by hand or with a stick vac. If the rug is deep shag, none of these is a safe bet. Robots that do well on thick rugs are much pricier. For example, one review lists the Dreame X50 Ultra at $849.99 [9].
+- If you get the D20+, I'd also take the mop pad off or keep it away from the rug. I couldn't confirm that it lifts its mop over carpet.
+
+**Cat-specific points**
+- Neither model has dedicated obstacle avoidance. In my judgment that matters most for pet accidents, so keep an eye on the first few runs.
+- Check the brush for hair after each run, at least at first.
+
+**How sure I am**
+- The strongest evidence is Vacuum Wars' lab tests, with Consumer Reports for the C10. Vacuum Wars earns affiliate income on its links. Many other "best under $300" pages are affiliate roundups, and I mostly set them aside.
+- I couldn't check live prices. Both models move between about $250 and $310 on sale, so confirm the price at checkout.
+- If the rug turns out to be a deep shag, tell me and I can look at what's available just above your budget.
+
+Sources
+[1] Roborock Q7 M5 Robot Vacuum Review: Key Features and Real-World Flaws | — https://vacuumwars.com/roborock-q7-m5-robot-vacuum-review-key-features-and-real-world-flaws/ (search result age: 36 days ago)
+[2] Roborock Q7 M5+ Review — https://www.techgearlab.com/reviews/smart-home/robot-vacuum/roborock-q7-m5-plus (search result age: 319 days ago)
+[3] Dreame D20+ Robot Vacuum Review: A Budget Robot That Puts Vacuuming First — https://vacuumwars.com/dreame-d20-plus-review/ (search result age: 3 days ago)
+[4] Robot Vacuums for Carpet — https://www.dreametech.com/collections/robot-vacuum-for-carpet (search result age: 81 days ago)
+[5] Eufy C10 Robot Vacuum Review | — https://vacuumwars.com/eufy-c10-review/ (search result age: 135 days ago)
+[6] 6 Best Robot Vacuums of 2026 for Pet Hair, Lab-Tested and Reviewed via @ConsumerReports — https://www.consumerreports.org/appliances/vacuum-cleaners/best-robotic-vacuums-for-pet-hair-a6341573082/ (search result age: 233 days ago)
+[7] Eufy C10 Robot Vacuum with Auto-Empty Station - All Reddit Reviews, in One Place — https://redditrecs.com/robot-vacuum/model/eufy-c10-robot-vacuum-with-auto-empty-station/ (search result age: 134 days ago)
+[8] Dreame D20+ — https://robot-review.com/reviews/dreame-d20-plus/ (search result age: 320 days ago)
+[9] Best Robot Vacuum for Thick Carpet: 5 Proven High-Pile Picks — https://everydayhomecomfort.com/best-robot-vacuum-for-thick-carpet/ (search result age: 20 days ago)

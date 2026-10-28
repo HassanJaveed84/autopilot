@@ -1,0 +1,369 @@
+{
+    "title": "Thorne & Pure picks: multi, D, magnesium, glucosamine",
+    "request": "Brand preference: Thorne and Pure Encapsulations. Need a general multivitamin, vitamin D, magnesium and glucosamine. Produce a list, each as a separate step added to my task.",
+    "template": "PICK_PER_ITEM",
+    "requirements": [
+        {
+            "id": "r-i0",
+            "type": "ITEM",
+            "label": "general multivitamin",
+            "origin": "EXTRACTED",
+            "confident": true,
+            "soft": false,
+            "followUp": false
+        },
+        {
+            "id": "r-i1",
+            "type": "ITEM",
+            "label": "vitamin D",
+            "origin": "EXTRACTED",
+            "confident": true,
+            "soft": false,
+            "followUp": false
+        },
+        {
+            "id": "r-i2",
+            "type": "ITEM",
+            "label": "magnesium",
+            "origin": "EXTRACTED",
+            "confident": true,
+            "soft": false,
+            "followUp": false
+        },
+        {
+            "id": "r-i3",
+            "type": "ITEM",
+            "label": "glucosamine",
+            "origin": "EXTRACTED",
+            "confident": true,
+            "soft": false,
+            "followUp": false
+        },
+        {
+            "id": "r-c0",
+            "type": "CONSTRAINT",
+            "label": "Brand preference: Thorne and Pure Encapsulations",
+            "origin": "EXTRACTED",
+            "confident": true,
+            "soft": true,
+            "followUp": false
+        },
+        {
+            "id": "r-o0",
+            "type": "OUTPUT",
+            "label": "One step per item, added to the task",
+            "origin": "EXTRACTED",
+            "confident": true,
+            "soft": false,
+            "followUp": false
+        }
+    ],
+    "coverage": [
+        {
+            "requirementId": "r-i0",
+            "status": "ANSWERED",
+            "summary": "Basic Nutrients 2/Day is Thorne's two-capsule multivitamin.",
+            "refs": [
+                1
+            ],
+            "reusedRefs": []
+        },
+        {
+            "requirementId": "r-i1",
+            "status": "ANSWERED",
+            "summary": "Thorne Vitamin D-1,000 provides 1,000 IU per capsule.",
+            "refs": [
+                2
+            ],
+            "reusedRefs": []
+        },
+        {
+            "requirementId": "r-i2",
+            "status": "ANSWERED",
+            "summary": "Pure Encapsulations Magnesium (glycinate), 120 mg per capsule.",
+            "refs": [
+                3
+            ],
+            "reusedRefs": []
+        },
+        {
+            "requirementId": "r-i3",
+            "status": "NOT_FOUND",
+            "summary": "No glucosamine product from Thorne or Pure Encapsulations appeared in the searches.",
+            "refs": [],
+            "reusedRefs": []
+        },
+        {
+            "requirementId": "r-c0",
+            "status": "ANSWERED",
+            "summary": "Every pick is from Thorne or Pure Encapsulations",
+            "refs": [],
+            "reusedRefs": []
+        },
+        {
+            "requirementId": "r-o0",
+            "status": "PARTLY",
+            "summary": "Steps for 3 of 4 items",
+            "refs": [],
+            "reusedRefs": []
+        }
+    ],
+    "answer": [
+        {
+            "text": "Thorne's Basic Nutrients 2/Day covers the multivitamin, and Thorne Vitamin D-1,000 covers vitamin D.",
+            "refs": [
+                1,
+                2
+            ],
+            "reusedRefs": []
+        },
+        {
+            "text": "Pure Encapsulations Magnesium (glycinate) covers magnesium.",
+            "refs": [
+                3
+            ],
+            "reusedRefs": []
+        },
+        {
+            "text": "Neither preferred brand lists a plain glucosamine product in the pages found.",
+            "refs": [],
+            "reusedRefs": []
+        }
+    ],
+    "callouts": [
+        {
+            "kind": "CROSS_ITEM",
+            "text": "The multivitamin already contains vitamin D, so a separate vitamin D product overlaps with it."
+        },
+        {
+            "kind": "HEALTH",
+            "text": "Product facts, not medical advice."
+        }
+    ],
+    "body": {
+        "candidates": [],
+        "excluded": [],
+        "compareKeys": [],
+        "recommendation": [],
+        "picks": [
+            {
+                "requirementId": "r-i0",
+                "status": "ANSWERED",
+                "pick": "Thorne Basic Nutrients 2/Day",
+                "variant": null,
+                "labelFacts": [
+                    {
+                        "key": "label",
+                        "value": "Two capsules daily provide vitamins A, C, D, E, K and a full B complex.",
+                        "tag": "FACT",
+                        "refs": [
+                            1
+                        ],
+                        "reusedRefs": []
+                    }
+                ],
+                "alternative": "Pure Encapsulations O.N.E. Multivitamin",
+                "forYou": "Ask your pharmacist whether a multivitamin that already contains vitamin D fits alongside a separate vitamin D product.",
+                "why": "Fewest capsules among the brand's multivitamins.",
+                "price": null,
+                "refs": [
+                    1
+                ],
+                "reusedRefs": []
+            },
+            {
+                "requirementId": "r-i1",
+                "status": "ANSWERED",
+                "pick": "Thorne Vitamin D-1,000",
+                "variant": null,
+                "labelFacts": [
+                    {
+                        "key": "label",
+                        "value": "Each capsule provides 1,000 IU (25 mcg) of vitamin D3.",
+                        "tag": "FACT",
+                        "refs": [
+                            2
+                        ],
+                        "reusedRefs": []
+                    }
+                ],
+                "alternative": null,
+                "forYou": "Ask your doctor what vitamin D level you need before choosing a strength.",
+                "why": "Standard strength; higher strengths exist.",
+                "price": null,
+                "refs": [
+                    2
+                ],
+                "reusedRefs": []
+            },
+            {
+                "requirementId": "r-i2",
+                "status": "ANSWERED",
+                "pick": "Pure Encapsulations Magnesium",
+                "variant": "glycinate",
+                "labelFacts": [
+                    {
+                        "key": "label",
+                        "value": "120 mg magnesium per capsule, 90 capsules.",
+                        "tag": "FACT",
+                        "refs": [
+                            3
+                        ],
+                        "reusedRefs": []
+                    }
+                ],
+                "alternative": null,
+                "forYou": "Ask your pharmacist about magnesium alongside any medication you take.",
+                "why": "Glycinate form is the brand's general-purpose option.",
+                "price": null,
+                "refs": [
+                    3
+                ],
+                "reusedRefs": []
+            },
+            {
+                "requirementId": "r-i3",
+                "status": "NOT_FOUND",
+                "pick": null,
+                "variant": null,
+                "labelFacts": [],
+                "alternative": null,
+                "forYou": null,
+                "why": "Neither brand's pages listed a glucosamine product.",
+                "price": null,
+                "refs": [],
+                "reusedRefs": []
+            }
+        ],
+        "steps": []
+    },
+    "claims": [
+        {
+            "text": "Reviewers describe Thorne's multivitamin as third-party tested.",
+            "tag": "REVIEWS",
+            "refs": [
+                4
+            ],
+            "reusedRefs": []
+        },
+        {
+            "text": "The multivitamin is cheaper than the others.",
+            "tag": "UNKNOWN",
+            "refs": [],
+            "reusedRefs": []
+        }
+    ],
+    "conflicts": [],
+    "unresolved": [
+        {
+            "topic": "Glucosamine from Thorne or Pure Encapsulations",
+            "why": "searched both brand sites; no product page found",
+            "requirementId": null
+        }
+    ],
+    "sources": [
+        {
+            "n": 1,
+            "url": "https://www.thorne.example/products/basic-nutrients",
+            "title": "Basic Nutrients 2/Day | Thorne",
+            "domain": "thorne.example",
+            "official": false,
+            "pageAge": "October 2026",
+            "quotes": [
+                "Two capsules daily provide vitamins A, C, D, E, K and a full B complex."
+            ],
+            "citedCount": 3,
+            "firstRunId": "run1"
+        },
+        {
+            "n": 2,
+            "url": "https://www.thorne.example/products/vitamin-d-1000",
+            "title": "Vitamin D-1,000 | Thorne",
+            "domain": "thorne.example",
+            "official": false,
+            "pageAge": null,
+            "quotes": [
+                "Each capsule provides 1,000 IU (25 mcg) of vitamin D3."
+            ],
+            "citedCount": 3,
+            "firstRunId": "run1"
+        },
+        {
+            "n": 3,
+            "url": "https://www.pureencapsulations.example/magnesium-glycinate",
+            "title": "Magnesium (glycinate) | Pure Encapsulations",
+            "domain": "pureencapsulations.example",
+            "official": false,
+            "pageAge": null,
+            "quotes": [
+                "120 mg magnesium per capsule, 90 capsules."
+            ],
+            "citedCount": 3,
+            "firstRunId": "run1"
+        },
+        {
+            "n": 4,
+            "url": "https://www.supplementreviews.example/thorne-basic-nutrients",
+            "title": "Thorne Basic Nutrients review",
+            "domain": "supplementreviews.example",
+            "official": false,
+            "pageAge": null,
+            "quotes": [
+                "Third-party tested; reviewers note the capsule count per bottle."
+            ],
+            "citedCount": 1,
+            "firstRunId": "run1"
+        }
+    ],
+    "queries": [
+        "Thorne multivitamin",
+        "Thorne vitamin D",
+        "Pure Encapsulations magnesium",
+        "Thorne glucosamine",
+        "Pure Encapsulations glucosamine"
+    ],
+    "proposals": [
+        {
+            "id": "p-96dfcda26938",
+            "kind": "STEP",
+            "title": "Buy multivitamin: Thorne Basic Nutrients 2/Day",
+            "note": "Two capsules daily; contains vitamin D.",
+            "requirementId": "r-i0",
+            "refs": [],
+            "checkedAtEpochMs": 1,
+            "selectedByDefault": true,
+            "generated": false,
+            "reusedRefs": []
+        },
+        {
+            "id": "p-d93faa7a0e0c",
+            "kind": "STEP",
+            "title": "Buy vitamin D: Thorne Vitamin D-1,000",
+            "note": "1,000 IU per capsule; ask about your level first.",
+            "requirementId": "r-i1",
+            "refs": [],
+            "checkedAtEpochMs": 1,
+            "selectedByDefault": true,
+            "generated": false,
+            "reusedRefs": []
+        },
+        {
+            "id": "p-a96c932b3f65",
+            "kind": "STEP",
+            "title": "Buy magnesium: Pure Encapsulations Magnesium (glycinate)",
+            "note": "120 mg per capsule, 90 capsules.",
+            "requirementId": "r-i2",
+            "refs": [],
+            "checkedAtEpochMs": 1,
+            "selectedByDefault": true,
+            "generated": false,
+            "reusedRefs": []
+        }
+    ],
+    "runs": [],
+    "followUps": [],
+    "outcome": "INCOMPLETE_EVIDENCE",
+    "shared": [],
+    "injectionNoticed": false,
+    "contractVersion": 2
+}

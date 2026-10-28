@@ -21,7 +21,6 @@ import com.lifeadmin.autopilot.domain.usecase.TaskActions
 import com.lifeadmin.autopilot.ui.tickerFlow
 import com.lifeadmin.autopilot.ui.userMessage
 import kotlinx.coroutines.channels.Channel
-import com.lifeadmin.autopilot.ai.research.ResearchRunState
 import com.lifeadmin.autopilot.data.repository.ResearchBrief
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -45,13 +44,18 @@ data class TaskDetailUiState(
     val zone: ZoneId = ZoneId.systemDefault(),
     /** Deterministic "this seems stuck" hint (never AI, never a background call). */
     val stallHint: StallHint? = null,
-    /** Saved research briefs for this task, newest first (M3). */
+    /** Saved research briefs for this task, newest first (M3; read-only). */
     val briefs: List<ResearchBrief> = emptyList(),
-    /** True while a research run for this task is in flight. */
-    val researching: Boolean = false,
-    val researchRunId: String? = null,
-    val researchQuestion: String? = null,
-)
+    /** Saved research threads linked to this task, newest first (either engine; legacy M3A.2 sessions included; read-only). */
+    val investigations: List<com.lifeadmin.autopilot.data.repository.ResearchThreadSummary> = emptyList(),
+    /** Proposal sets for this task (M2); open ones show a "waiting for review" banner each. */
+    val proposalSets: List<com.lifeadmin.autopilot.domain.proposal.ProposalSet> = emptyList(),
+    /** Provenance records by id for the "where did this come from" marker on applied content. */
+    val provenance: Map<String, com.lifeadmin.autopilot.domain.proposal.ProvenanceRecord> = emptyMap(),
+) {
+    val openSets: List<com.lifeadmin.autopilot.domain.proposal.ProposalSet>
+        get() = proposalSets.filter { it.status == com.lifeadmin.autopilot.domain.proposal.SetStatus.OPEN && it.pending.isNotEmpty() }
+}
 
 sealed interface DetailEvent {
     data class Message(val text: String) : DetailEvent
@@ -68,24 +72,32 @@ class TaskDetailViewModel(
     private val zoneProvider: ZoneProvider,
     private val hintDismissals: HintDismissals = InMemoryHintDismissals(),
     researchBriefs: Flow<List<ResearchBrief>> = flowOf(emptyList()),
-    researchRun: Flow<ResearchRunState> = flowOf(ResearchRunState.Idle),
+    investigations: Flow<List<com.lifeadmin.autopilot.data.repository.ResearchThreadSummary>> = flowOf(emptyList()),
+    proposalSets: Flow<List<com.lifeadmin.autopilot.domain.proposal.ProposalSet>> = flowOf(emptyList()),
+    provenance: Flow<List<com.lifeadmin.autopilot.domain.proposal.ProvenanceRecord>> = flowOf(emptyList()),
 ) : ViewModel() {
     private val dismissedTick = kotlinx.coroutines.flow.MutableStateFlow(0)
 
     private val events = Channel<DetailEvent>(Channel.BUFFERED)
     val eventFlow: Flow<DetailEvent> = events.receiveAsFlow()
 
-    private val research = combine(researchBriefs.catch { emit(emptyList()) }, researchRun) { b, r -> b to r }
+    private data class ResearchBits(
+        val briefs: List<ResearchBrief>, val investigations: List<com.lifeadmin.autopilot.data.repository.ResearchThreadSummary>,
+        val sets: List<com.lifeadmin.autopilot.domain.proposal.ProposalSet> = emptyList(), val provenance: List<com.lifeadmin.autopilot.domain.proposal.ProvenanceRecord> = emptyList(),
+    )
+    private val proposals = combine(proposalSets.catch { emit(emptyList()) }, provenance.catch { emit(emptyList()) }) { a, b -> a to b }
+    private val research = combine(researchBriefs.catch { emit(emptyList()) }, investigations.catch { emit(emptyList()) }, proposals) { b, s2, (sets, prov) -> ResearchBits(b, s2, sets, prov) }
 
     val state: StateFlow<TaskDetailUiState> = combine(
         repository.observeDetails(taskId), settings.settings, tickerFlow(clock), dismissedTick, research,
-    ) { d, s, now, _, (briefs, run) ->
+    ) { d, s, now, _, bits ->
+        val (briefs, threads) = bits
         val zone = zoneProvider.current()
         val hint = d?.let { StallDetector.detect(it, now, zone) }?.takeUnless { hintDismissals.isDismissed(taskId, it.signature) }
-        val running = (run as? ResearchRunState.Running)?.takeIf { it.taskId == taskId }
         TaskDetailUiState(
             loading = false, missing = d == null, details = d, settings = s, now = now, zone = zone, stallHint = hint,
-            briefs = briefs, researching = running != null, researchRunId = running?.runId, researchQuestion = running?.question,
+            briefs = briefs, investigations = threads,
+            proposalSets = bits.sets, provenance = bits.provenance.associateBy { it.id },
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TaskDetailUiState())
 
@@ -109,6 +121,12 @@ class TaskDetailViewModel(
     fun setWaiting(reason: String?, checkIn: Instant?) = run("Marked as waiting") { repository.changeStatus(taskId, TaskStatus.WAITING, reason, checkIn) }
     fun complete() = run("Marked done — future reminders canceled") { repository.complete(taskId) }
     fun reopen() = run("Reopened") { repository.reopen(taskId) }
+
+    /** "Done for tonight" on a routine: this cycle only; the task stays open. */
+    fun finishCycle(onFinished: () -> Unit = {}) = viewModelScope.launch {
+        runCatching { repository.finishCycle(taskId) }.onSuccess { onFinished() }.onFailure { events.send(DetailEvent.Message(it.userMessage())) }
+    }
+    fun undoFinishCycle() = run { repository.undoFinishCycle(taskId) }
     fun snooze(until: Instant, remindAtEnd: Boolean) = run { repository.snooze(taskId, until, remindAtEnd) }
     fun clearSnooze() = run("Snooze cleared") { repository.clearSnooze(taskId) }
     fun archive() = run("Archived") { repository.archive(taskId) }

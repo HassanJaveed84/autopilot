@@ -73,7 +73,11 @@ class AndroidNotificationPublisher(private val context: Context) : NotificationP
             .setWhen(notification.postedAt.toEpochMilli())
             .setShowWhen(true)
             .setContentIntent(openTaskIntent(taskId))
-            .addAction(0, "Done", actionIntent(taskId, IntentContract.ACTION_DONE))
+            .addAction(
+                0,
+                notification.doneForNowLabel ?: "Done",
+                actionIntent(taskId, if (notification.doneForNowLabel != null) IntentContract.ACTION_DONE_FOR_NOW else IntentContract.ACTION_DONE),
+            )
             .addAction(0, if (notification.snoozeLabel.isBlank()) "Snooze" else "Snooze · ${notification.snoozeLabel}", actionIntent(taskId, IntentContract.ACTION_SNOOZE))
             .addAction(0, "Open", openTaskIntent(taskId))
         if (notification.redactOnLockScreen) {

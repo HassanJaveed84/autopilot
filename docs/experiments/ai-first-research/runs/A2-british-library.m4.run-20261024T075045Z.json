@@ -1,0 +1,120 @@
+{
+ "sanitization": {
+  "rawSha256": "dc83e35a828f97bd42b2fbc444c44779db51ef2da87c2ac5b3df84c96e08dd75",
+  "removed": {
+   "emails": 0,
+   "phones": 1
+  },
+  "note": "Compact summary: request bodies and full reply segments omitted; cited text kept verbatim apart from emails/phones; no credential."
+ },
+ "scenario": "A2-british-library",
+ "engine": "m4",
+ "model": "claude-sonnet-5-5",
+ "ranAtUtc": "2026-10-24T07:50:53.202790437Z",
+ "searchBudget": 3,
+ "spendLimitCents": 300,
+ "totalUsd": 0.033931,
+ "turns": [
+  {
+   "question": "What is the street address of the British Library in London?",
+   "status": "ANSWERED",
+   "outcome": "Saved(turnState=DONE, resultState=ANSWERED, ending=COMPLETE)",
+   "objective": "Find out: What is the street address of the British Library in London",
+   "config": "searchBudget=3 spendLimit=300¢ stages=[GATHER, FILL_GAPS] outputTokens=8000 wordingCheck=false",
+   "elapsedMs": 7069,
+   "shown": "Street address of the British Library in London — Answered.\nThe British Library's London site, at St Pancras, is at 96 Euston Road, London NW1 2DB. The library's own website gives this address, and its page footer carries a 2026 copyright line with the same address. [1] [2] [3]\n\nSources\n[1] Visit the British Library — https://www.bl.uk/visit (search result age: 163 days ago)\n[2] Contact us for help - British Library — https://www.bl.uk/about/contact\n[3] British Library — https://www.visitlondon.com/things-to-do/place/283871-the-british-library",
+   "claims": [
+    "c1 ESTABLISHED load=true :: The British Library's London address is 96 Euston Road, London NW1 2DB. :: sources=[1, 2, 3]"
+   ],
+   "ledger": [
+    {
+     "stage": "GATHER",
+     "model": "claude-sonnet-5-5",
+     "outcome": "COMPLETE",
+     "usageStatus": "COMPLETE",
+     "inputTokens": 367,
+     "outputTokens": 567,
+     "cacheReadTokens": 9798,
+     "cacheWriteTokens": 6619,
+     "webSearches": 1,
+     "estimatedMicros": 33931,
+     "durationMs": 6809
+    }
+   ],
+   "calls": [
+    {
+     "maxSearches": 1,
+     "stop": "END",
+     "elapsedMs": 6809,
+     "continuesPausedTurn": false,
+     "searches": [
+      {
+       "query": "British Library London address St Pancras 96 Euston Road",
+       "error": "",
+       "results": [
+        {
+         "url": "https://www.bl.uk/visit",
+         "pageAge": "163 days ago"
+        },
+        {
+         "url": "https://librarytechnology.org/library/3413",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.bl.uk/about/contact",
+         "pageAge": ""
+        },
+        {
+         "url": "https://en.wikipedia.org/wiki/British_Library",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.visitlondon.com/things-to-do/place/283871-the-british-library",
+         "pageAge": ""
+        },
+        {
+         "url": "https://en.wikipedia.org/wiki/Friends_of_the_British_Library",
+         "pageAge": ""
+        },
+        {
+         "url": "https://maps.apple.com/place?place-id=I11425D15841E6294",
+         "pageAge": ""
+        },
+        {
+         "url": "https://soas.libguides.com/c.php?g=704580&p=5072883",
+         "pageAge": "137 days ago"
+        },
+        {
+         "url": "https://www.britainexpress.com/articles/Notebook/british_library.htm",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.futureevents.uk/theweekjuniorlive/getting-there",
+         "pageAge": ""
+        }
+       ]
+      }
+     ],
+     "citations": [
+      {
+       "url": "https://www.bl.uk/visit",
+       "citedText": "## How to find the British Library in London\n### Our London address and directions\nBritish Library 96 Euston Road London NW1 2DB\n\nFind us on Google ma..."
+      },
+      {
+       "url": "https://www.bl.uk/visit",
+       "citedText": "© 2026 British Library, 96 Euston Road, London, NW1 2DB All text is © British Library Board and is available under a CC-BY Licence except where otherw..."
+      },
+      {
+       "url": "https://www.bl.uk/about/contact",
+       "citedText": "# Contact us\n## Common questions\n### What is the British Library's address?\n**London, St Pancras**\n\nBritish Library 96 Euston Road London NW1 2DB"
+      },
+      {
+       "url": "https://www.visitlondon.com/things-to-do/place/283871-the-british-library",
+       "citedText": "# British Library\nEuston\n\n## Location\n\n**Address**: 96 Euston Road London NW1 2DB\n**Telephone:**: +44 (0)[phone removed]\n**Email**: \\[email protected\\]\n*..."
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

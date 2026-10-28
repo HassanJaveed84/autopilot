@@ -65,6 +65,12 @@ class TodayViewModel(
         runCatching { repository.complete(taskId) }.onSuccess { onDone() }
     }
 
+    /** "Done for tonight" on a routine; [onDone] gets the label shown ("Done for tonight"). */
+    fun finishCycle(taskId: String, onDone: () -> Unit = {}) = viewModelScope.launch {
+        runCatching { repository.finishCycle(taskId) }.onSuccess { onDone() }
+    }
+    fun undoFinishCycle(taskId: String) = viewModelScope.launch { runCatching { repository.undoFinishCycle(taskId) } }
+
     /** Real inverse of [complete]: reopens the task and reschedules its reminders. */
     fun undoComplete(taskId: String) = viewModelScope.launch { runCatching { repository.reopen(taskId) } }
 

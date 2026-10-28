@@ -1,0 +1,226 @@
+{
+ "sanitization": {
+  "rawSha256": "83d4d32c71752f92c12d00a23c86285ac0a1c5708826ee234da3109f3cb7a065",
+  "removed": {
+   "emails": 0,
+   "phones": 0
+  },
+  "note": "Compact summary: request bodies and full reply segments omitted; cited text kept verbatim apart from emails/phones; no credential."
+ },
+ "scenario": "D-snowflake-postgres",
+ "engine": "aifirst",
+ "model": "claude-sonnet-5-5",
+ "ranAtUtc": "2026-10-24T07:56:38.379319957Z",
+ "searchBudget": 6,
+ "spendLimitCents": 500,
+ "totalUsd": 0.106022,
+ "turns": [
+  {
+   "question": "Should a customer-facing reporting API query Snowflake directly or serve precomputed reporting data from Postgres?",
+   "status": "COMPLETE",
+   "outcome": null,
+   "objective": null,
+   "config": "searchBudget=6 spendLimit=500¢ maxOutputTokens=16000 prompt=v1",
+   "elapsedMs": 17252,
+   "shown": "**Short answer:** For most customer-facing reporting APIs, serve precomputed data from Postgres, and keep Snowflake as the place where the data is computed. This is my judgment. Vendor pages and practitioner posts support it, but I found no independent benchmark. Querying Snowflake directly is reasonable in some cases, listed below.\n\n**What the sources say**\n- **Concurrency limits:** By default, Snowflake limits concurrent queries to 8 per warehouse [1], controlled by the MAX_CONCURRENCY_LEVEL setting. That figure comes from a third-party blog, and Snowflake describes it as a soft limit. When load exceeds the limit, additional queries queue until resources free up. [2] Snowflake's own guidance is that multi-cluster warehouses add concurrency but don't make individual queries faster [3]. Customer traffic is spiky and unpredictable, so you would be paying for extra clusters to absorb it.\n- **Latency:** Snowflake's own guide says standard tables give inconsistent lookup latency. The result cache only helps identical repeated queries, not per-user lookups, and there is no row-level index. [4]\n- **Common industry pattern:** One vendor source says a preferred approach is syncing modeled data from the warehouse to a database that the application uses to serve low-latency results [5]. It also says direct warehouse queries can lead to tight coupling to data models [5]. That source is Hightouch, a reverse-ETL vendor, so it has a stake in this pattern.\n- **Reliability:** One practitioner source warns that external queries can fail or add unpredictable load to the warehouse [6]. A customer-facing endpoint can therefore affect your internal analytics workloads.\n\n**Snowflake now offers its own serving options**\nSnowflake's documentation lists lower-latency serving of precomputed aggregates through an API or a user interface [7] as a hybrid-table use case. Its guide claims double-digit millisecond latency [4] and says this can replace separate serving layers. It also describes Interactive Tables, which are Dynamic Tables optimized for low-latency serving and queried through a specialized Interactive Warehouse [8]. That guide claims sub-100ms analytical queries. These are Snowflake's own claims, and I didn't verify them independently. Hybrid tables also have limits: one experiment found count queries over hybrid tables took significantly longer than on native tables [9]. That post is about 18 months old, and Snowflake has said hybrid tables have since gotten faster.\n\n**When each choice fits**\n\n| Choose Postgres (precomputed) if… | Query Snowflake directly if… |\n|---|---|\n| You expect many concurrent users or spiky traffic | Traffic is low and internal-ish, such as a few enterprise customers |\n| You need predictable, fast responses (for example, under 200 ms) | Seconds-long responses are acceptable |\n| Reports are a known set of aggregates, such as per-tenant daily or monthly metrics | Queries are ad hoc or very varied, so precomputing isn't practical |\n| You want customer traffic isolated from internal analytics | Data must be near-real-time and a sync lag is unacceptable |\n| You want to avoid Snowflake compute cost scaling with customer usage | You want one copy of the data and no sync pipeline |\n\n**Costs of the Postgres route**\n- Data is only as fresh as your sync. Decide the acceptable lag first.\n- You maintain a pipeline and a second copy of the data.\n- Tenant isolation (such as row-level security) has to be handled in Postgres.\n- Postgres is not built for very large scans, so precompute at the grain you serve.\n\n**What would change my answer**\n- Before deciding, you would need to know your expected queries per second, your latency target, your freshness requirement, the number of distinct report shapes, and data volume.\n- If you're already on Snowflake and want to avoid new infrastructure, trial Interactive or hybrid tables against your own workload. I would not rely on the vendor's latency numbers alone.\n- A hybrid is common: serve precomputed aggregates from Postgres and fall back to Snowflake for rare drill-downs, with rate limits.\n\nSources\n[1] How to Optimize Query Concurrency in Snowflake — https://www.dataexpert.io/blog/optimize-query-concurrency-snowflake (search result age: 267 days ago)\n[2] Snowflake Multi Cluster Warehouses Done Right — https://www.unraveldata.com/resources/snowflake-multi-cluster-warehouse-done-right (search result age: 25 days ago)\n[3] Performance — https://www.snowflake.com/en/developers/guides/well-architected-framework-performance/ (search result age: 363 days ago)\n[4] Serving Low-Latency Data with Hybrid Tables — https://www.snowflake.com/en/developers/guides/hybrid-tables-serving-layer/ (search result age: 125 days ago)\n[5] The State of Reverse ETL: What Operational Analytics Looks Like Today & Beyond — https://hightouch.com/blog/the-state-of-reverse-etl (search result age: 723 days ago)\n[6] Reverse ETL: Beyond the Hype, the Critical Bridge Between the Data Warehouse and Operations — https://medium.com/@sendoamoronta/reverse-etl-beyond-the-hype-the-critical-bridge-between-the-data-warehouse-and-operations-5e363dcf7a16 (search result age: 394 days ago)\n[7] Hybrid tables — https://docs.snowflake.com/en/user-guide/tables-hybrid\n[8] Streaming and Change Detection Patterns for Hybrid Tables — https://www.snowflake.com/en/developers/guides/hybrid-tables-streaming-patterns/ (search result age: 125 days ago)\n[9] Snowflake’s Split Personality: Hybrid Tables vs Native — Who Wins What? — https://medium.com/@marya.gautam/snowflakes-split-personality-hybrid-tables-vs-native-who-wins-what-c62685f101c9 (search result age: 549 days ago)",
+   "claims": [],
+   "ledger": [
+    {
+     "stage": "AI_FIRST",
+     "model": "claude-sonnet-5-5",
+     "outcome": "COMPLETE",
+     "usageStatus": "COMPLETE",
+     "inputTokens": 28041,
+     "outputTokens": 1994,
+     "cacheReadTokens": 0,
+     "cacheWriteTokens": 0,
+     "webSearches": 3,
+     "estimatedMicros": 106022,
+     "durationMs": 17179
+    }
+   ],
+   "calls": [
+    {
+     "maxSearches": 6,
+     "stop": "END",
+     "elapsedMs": 17179,
+     "continuesPausedTurn": false,
+     "searches": [
+      {
+       "query": "Snowflake concurrency limits warehouse queuing high concurrency customer-facing applications",
+       "error": "",
+       "results": [
+        {
+         "url": "https://medium.com/snowflake/snowflake-concurrency-fundamentals-7a2279dd4c51",
+         "pageAge": "588 days ago"
+        },
+        {
+         "url": "https://medium.com/@sbaltagi/snowflake-performance-challenges-solutions-part-1-b91fe74c31f3",
+         "pageAge": "998 days ago"
+        },
+        {
+         "url": "https://www.snowflake.com/en/developers/guides/well-architected-framework-performance/",
+         "pageAge": "363 days ago"
+        },
+        {
+         "url": "https://www.dataexpert.io/blog/optimize-query-concurrency-snowflake",
+         "pageAge": "267 days ago"
+        },
+        {
+         "url": "https://www.unraveldata.com/resources/snowflake-multi-cluster-warehouse-done-right",
+         "pageAge": "25 days ago"
+        },
+        {
+         "url": "https://docs.snowflake.com/en/user-guide/performance-query-warehouse-max-concurrency",
+         "pageAge": "1300 days ago"
+        },
+        {
+         "url": "https://yukidata.com/snowflake-concurrency-optimization/",
+         "pageAge": "520 days ago"
+        },
+        {
+         "url": "https://sonra.io/optimal-usage-of-snowflake-virtual-warehouses-breaking-down-parallelism-concurrency/",
+         "pageAge": "152 days ago"
+        },
+        {
+         "url": "https://datageek.blog/2026/04/21/performance-impacts-of-concurrency/",
+         "pageAge": "186 days ago"
+        }
+       ]
+      },
+      {
+       "query": "Snowflake Hybrid Tables Snowflake Postgres interactive tables low latency serving",
+       "error": "",
+       "results": [
+        {
+         "url": "https://www.snowflake.com/en/developers/guides/hybrid-tables-serving-layer/",
+         "pageAge": "125 days ago"
+        },
+        {
+         "url": "https://www.snowflake.com/en/developers/guides/hybrid-tables-streaming-patterns/",
+         "pageAge": "125 days ago"
+        },
+        {
+         "url": "https://docs.snowflake.com/en/user-guide/tables-hybrid",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.snowflake.com/en/product/features/unistore/",
+         "pageAge": "374 days ago"
+        },
+        {
+         "url": "https://mahesh-birajdar.medium.com/snowflake-hybrid-tables-deep-dive-for-cloud-and-data-architects1-29c95089c07d",
+         "pageAge": "320 days ago"
+        },
+        {
+         "url": "https://www.flexera.com/blog/finops/snowflake-hybrid-tables/",
+         "pageAge": "39 days ago"
+        },
+        {
+         "url": "https://medium.com/@marya.gautam/snowflakes-split-personality-hybrid-tables-vs-native-who-wins-what-c62685f101c9",
+         "pageAge": "549 days ago"
+        },
+        {
+         "url": "https://www.baremon.eu/snowflake-hybrid-tables-explained/",
+         "pageAge": "483 days ago"
+        },
+        {
+         "url": "https://thecodeforge.io/database/snowflake-hybrid-tables/",
+         "pageAge": "97 days ago"
+        }
+       ]
+      },
+      {
+       "query": "serving analytics from data warehouse to customer-facing API vs reverse ETL to Postgres tradeoffs",
+       "error": "",
+       "results": [
+        {
+         "url": "https://truto.one/blog/reverse-etl-vs-unified-apis-syncing-warehouse-data-to-customer-saas/",
+         "pageAge": "172 days ago"
+        },
+        {
+         "url": "https://medium.com/@sendoamoronta/reverse-etl-beyond-the-hype-the-critical-bridge-between-the-data-warehouse-and-operations-5e363dcf7a16",
+         "pageAge": "394 days ago"
+        },
+        {
+         "url": "https://hightouch.com/blog/the-state-of-reverse-etl",
+         "pageAge": "723 days ago"
+        },
+        {
+         "url": "https://blog.dreamfactory.com/api-generation-vs-reverse-etl",
+         "pageAge": "717 days ago"
+        },
+        {
+         "url": "https://cdp.com/glossary/reverse-etl/",
+         "pageAge": "144 days ago"
+        },
+        {
+         "url": "https://www.domo.com/learn/article/etl-vs-api",
+         "pageAge": "420 days ago"
+        },
+        {
+         "url": "https://hightouch.com/blog/reverse-etl",
+         "pageAge": "289 days ago"
+        },
+        {
+         "url": "https://www.analyticsengineering.com/resources/reverse-etl-explained",
+         "pageAge": "36 days ago"
+        },
+        {
+         "url": "https://stackshare.io/data-warehouses-freshpaint/vs/peerdb",
+         "pageAge": ""
+        }
+       ]
+      }
+     ],
+     "citations": [
+      {
+       "url": "https://www.dataexpert.io/blog/optimize-query-concurrency-snowflake",
+       "citedText": "Snowflake Query Concurrency Optimization Decision Framework\n\nSnowflake Query Concurrency Optimization Decision Framework\n\n## What is Query Concurrency..."
+      },
+      {
+       "url": "https://www.unraveldata.com/resources/snowflake-multi-cluster-warehouse-done-right",
+       "citedText": "When query load exceeds this limit, additional queries queue until resources become available. "
+      },
+      {
+       "url": "https://www.snowflake.com/en/developers/guides/well-architected-framework-performance/",
+       "citedText": "- **Scale out for concurrency:** For a higher number of concurrent users and queries, increase the number of clusters in a multi-cluster warehouse. Th..."
+      },
+      {
+       "url": "https://www.snowflake.com/en/developers/guides/hybrid-tables-serving-layer/",
+       "citedText": "- **Result cache** helps only for identical repeated queries (not per-user lookups)\n- **No row-level index** means every point lookup scans micro-part..."
+      },
+      {
+       "url": "https://hightouch.com/blog/the-state-of-reverse-etl",
+       "citedText": "A preferred approach being used by companies is syncing modeled data from the warehouse to a database which can then be used by the application to ser..."
+      },
+      {
+       "url": "https://hightouch.com/blog/the-state-of-reverse-etl",
+       "citedText": "One option has been to query that data directly from the warehouse, but this can lead to tight coupling to data models.\n\n"
+      },
+      {
+       "url": "https://medium.com/@sendoamoronta/reverse-etl-beyond-the-hype-the-critical-bridge-between-the-data-warehouse-and-operations-5e363dcf7a16",
+       "citedText": "- **Reliability**: external queries can fail or add unpredictable load to the warehouse."
+      },
+      {
+       "url": "https://docs.snowflake.com/en/user-guide/tables-hybrid",
+       "citedText": "- Lower-latency serving of precomputed aggregates through an API or a user interface."
+      },
+      {
+       "url": "https://www.snowflake.com/en/developers/guides/hybrid-tables-serving-layer/",
+       "citedText": "Hybrid Tables can eliminate this intermediate layer entirely by serving data directly from Snowflake at double-digit millisecond latency.\n\n"
+      },
+      {
+       "url": "https://www.snowflake.com/en/developers/guides/hybrid-tables-streaming-patterns/",
+       "citedText": "### Optional: Add Interactive Analytics for Sub-100ms Analytical Serving\nInteractive Tables are Dynamic Tables optimized for low-latency serving. They..."
+      },
+      {
+       "url": "https://medium.com/@marya.gautam/snowflakes-split-personality-hybrid-tables-vs-native-who-wins-what-c62685f101c9",
+       "citedText": "### End result of the experiment\n- The counts queries that ran over the Hybrid Tables took **significantly longer** than regular queries on native sno..."
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

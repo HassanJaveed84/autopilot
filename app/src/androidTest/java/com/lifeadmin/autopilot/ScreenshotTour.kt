@@ -25,6 +25,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextClearance
@@ -37,14 +38,6 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
-import com.lifeadmin.autopilot.ai.PlanningError
-import com.lifeadmin.autopilot.ai.PlanningRequest
-import com.lifeadmin.autopilot.ai.PlanningResult
-import com.lifeadmin.autopilot.ai.PlanningUsage
-import com.lifeadmin.autopilot.ai.RawPlan
-import com.lifeadmin.autopilot.ai.RawReminder
-import com.lifeadmin.autopilot.ai.TaskPlanningProvider
-import com.lifeadmin.autopilot.ai.security.InMemoryApiKeyStore
 import com.lifeadmin.autopilot.data.local.AppDatabase
 import com.lifeadmin.autopilot.data.repository.InMemorySettingsRepository
 import com.lifeadmin.autopilot.data.repository.NewTask
@@ -56,10 +49,6 @@ import com.lifeadmin.autopilot.domain.model.OccurrenceStatus
 import com.lifeadmin.autopilot.domain.model.ReminderPreset
 import com.lifeadmin.autopilot.domain.model.ReminderKind
 import com.lifeadmin.autopilot.domain.model.TaskStatus
-import com.lifeadmin.autopilot.ui.ai.AiSettingsScreen
-import com.lifeadmin.autopilot.ui.ai.AiSettingsViewModel
-import com.lifeadmin.autopilot.ui.plan.PlanScreen
-import com.lifeadmin.autopilot.ui.plan.PlanViewModel
 import com.lifeadmin.autopilot.ui.LifeAdminRoot
 import com.lifeadmin.autopilot.ui.theme.LifeAdminTheme
 import kotlinx.coroutines.CompletableDeferred
@@ -163,7 +152,27 @@ private fun ComposeTestRule.waitForTag(tag: String) =
 private fun ComposeTestRule.waitForText(text: String) =
     waitUntil(15_000) { onAllNodes(hasText(text, substring = true)).fetchSemanticsNodes().isNotEmpty() }
 
+/** The review's Apply button once something is selected ("Apply N changes"), whatever N the fixture yields. */
+private fun ComposeTestRule.waitForApplyCount() = waitUntil(15_000) {
+    onAllNodes(SemanticsMatcher("Apply N changes") { n ->
+        n.config.getOrNull(SemanticsProperties.Text)?.any { it.text.matches(Regex("Apply \\d+ changes?")) } == true
+    }).fetchSemanticsNodes().isNotEmpty()
+}
+
 private fun ComposeTestRule.scrollTo(list: String, child: String) = onNodeWithTag(list).performScrollToNode(hasTestTag(child))
+
+/**
+ * A lazy list only composes what is on screen, so a tag below the fold is invisible to [waitForTag].
+ * Scroll to it instead, retrying while the list (or the item) is still on its way.
+ */
+private fun ComposeTestRule.waitAndScrollTo(list: String, child: String, timeoutMs: Long = 30_000) {
+    val deadline = System.currentTimeMillis() + timeoutMs
+    var last: Throwable? = null
+    while (System.currentTimeMillis() < deadline) {
+        try { scrollTo(list, child); return } catch (t: Throwable) { last = t; Thread.sleep(500) }
+    }
+    throw AssertionError("$child never appeared in $list within $timeoutMs ms", last)
+}
 
 /**
  * A task card merges its text into the clickable column (one TalkBack announcement), so the title
@@ -494,7 +503,7 @@ class ScreenshotTour {
         }
     }
 
-    @Test fun e_captureAndAiEntry() {
+    @Test fun e_capture() {
         launch()
         compose.onNodeWithTag("fab_capture").tap()
         compose.waitForTag("capture_title")
@@ -517,22 +526,42 @@ class ScreenshotTour {
             compose.onNodeWithTag("fab_capture").tap()
             compose.waitForTag("capture_title")
         }
-        // With AI off, "Plan with AI" opens the setup sheet in place (the note is kept).
-        compose.onNodeWithTag("capture_plan_ai").tap()
-        compose.waitForTag("capture_ai_turn_on")
-        screenshot("e4-ai-setup-in-place")
-        compose.onNodeWithTag("capture_ai_settings").tap()
-        compose.waitForTag("ai_settings_list")
-        screenshot("e5-ai-settings-off")
-        compose.onNodeWithTag("ai_settings_list").performTouchInput { swipeUp() }
-        screenshot("e6-ai-settings-off-scrolled")
-        compose.soft("consent dialog") {
-            compose.scrollTo("ai_settings_list", "ai_enabled_row")
-            compose.onNodeWithTag("ai_enabled_row").tap()
-            compose.waitForTag("ai_consent_text")
-            screenshot("e7-ai-consent")
-            compose.back() // declined: AI stays off in the installed app
+    }
+
+    /** Research saved by an earlier version with built-in AI: read-only from its task and from Settings. */
+    @Test fun eq_savedResearch() {
+        runBlocking {
+            val task = container.database.taskDao().getAll().first { it.title == TRAIN }.id
+            if (container.researchThreads.get(SAVED_THREAD) == null) {
+                val at = container.clock.now().minus(Duration.ofDays(3)).toEpochMilli()
+                val q = "When do advance tickets for this route go on sale?"
+                val turn = com.lifeadmin.autopilot.ai.aifirst.AfTurn(
+                    id = "$SAVED_THREAD-t0", index = 0, question = q, createdAtMs = at, status = com.lifeadmin.autopilot.ai.aifirst.AfStatus.COMPLETE,
+                    authorization = com.lifeadmin.autopilot.ai.aifirst.AfAuthorization(q, config = com.lifeadmin.autopilot.ai.aifirst.AfConfig("claude-sonnet-5-5", 3, 100), promptVersion = 2, payload = q, payloadSha256 = "0".repeat(64), authorizedAtMs = at),
+                    segments = listOf(
+                        com.lifeadmin.autopilot.ai.aifirst.AfSegment("Advance tickets go on sale 12 weeks before travel (sample).", listOf(1)),
+                        com.lifeadmin.autopilot.ai.aifirst.AfSegment(" Prices are usually lowest in the first days after release."),
+                    ),
+                    answer = "Advance tickets go on sale 12 weeks before travel (sample). [1] Prices are usually lowest in the first days after release.",
+                    sources = listOf(com.lifeadmin.autopilot.ai.aifirst.AfSource(1, "https://www.northlinerail.example/tickets", "Tickets | Northline Rail (sample)", listOf("Advance tickets are released 12 weeks ahead."), "September 2026")),
+                    searches = listOf(com.lifeadmin.autopilot.ai.aifirst.AfSearch("northline rail advance tickets release", 4)),
+                    calls = 1, webSearches = 1, costMicros = 42_000, startedAtMs = at, finishedAtMs = at + 30_000,
+                )
+                container.researchThreads.create(SAVED_THREAD, task, "Advance tickets", q, turn, Instant.ofEpochMilli(at))
+            }
         }
+        launch()
+        openTask(TRAIN)
+        compose.scrollTo("detail_list", "detail_research_card")
+        screenshot("eq1-detail-saved-research")
+        compose.onNodeWithTag("detail_research_latest").tap()
+        compose.waitForTag("thread_readonly")
+        screenshot("eq2-saved-thread-read-only")
+        compose.backToTabs()
+        compose.onNodeWithTag("nav_settings").tap()
+        compose.waitForTag("settings_list")
+        compose.scrollTo("settings_list", "settings_saved_research")
+        screenshot("eq3-settings-saved-research")
     }
 
     /** Saving from Capture: the confirmation toast (5 s, swipeable) over the Today screen. */
@@ -682,402 +711,6 @@ class ScreenshotTour {
         const val SPANISH = "Learn Spanish for the trip"
         const val BOOKS = "Return the library books"
         const val EXPENSES = "Submit the expense claim"
-    }
-}
-
-/**
- * AI screens need an AI answer. Without a real key these host the real screens on an in-memory
- * container with a scripted provider (the same RawPlan shape the API returns): no network call.
- */
-@RunWith(AndroidJUnit4::class)
-@FixMethodOrder(MethodSorters.NAME_ASCENDING)
-class ScreenshotTourAiReview {
-    @get:Rule val compose = createComposeRule()
-
-    private class ScriptedProvider(private val answer: () -> PlanningResult) : TaskPlanningProvider {
-        var hold: CompletableDeferred<Unit>? = null
-        override val id = "scripted"
-        override suspend fun plan(request: PlanningRequest, apiKey: String, model: String): PlanningResult {
-            hold?.await()
-            return answer()
-        }
-        override suspend fun testConnection(apiKey: String, model: String): PlanningError? = null
-    }
-
-    private fun container(provider: TaskPlanningProvider, online: Boolean = true): AppContainer {
-        val context = instrumentation.targetContext
-        return AppContainer(
-            context = context,
-            database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build(),
-            settingsRepository = InMemorySettingsRepository(AppSettings(onboardingCompleted = true, aiEnabled = true, aiConsentAt = Instant.now())),
-            apiKeyStore = InMemoryApiKeyStore("test-key-0000000000000000000000000000"),
-            planningProvider = provider,
-            networkStatus = { online },
-        )
-    }
-
-    private fun planScreen(c: AppContainer, text: String, taskId: String? = null): PlanViewModel {
-        val vm = PlanViewModel(SavedStateHandle(), c.aiPlanning, c.taskRepository, c.taskActions, c.settingsRepository, c.clock, c.zoneProvider, taskId, text)
-        compose.setContent {
-            LifeAdminTheme {
-                PlanScreen(vm, zone = c.zoneProvider.current(), now = c.clock::now, onBack = {}, onOpenTask = {}, onOpenAiSettings = {})
-            }
-        }
-        compose.waitForTag("plan_list")
-        return vm
-    }
-
-    private val trainPlan = RawPlan(
-        title = "Book train ride for daughter",
-        steps = listOf("Check train times and prices", "Buy the tickets", "Find and book parking"),
-        nextStep = "Check train times and prices",
-        reminder = RawReminder(kind = "daily_times", provenance = "explicit", times = listOf("09:00", "18:00"), requestedPhrase = "remind me at 9 and 6 every day until done"),
-        assumptions = listOf("Interpreted '9 and 6' as 09:00 and 18:00"),
-    )
-
-    @Test fun g_planCapture() {
-        val provider = ScriptedProvider { PlanningResult.Success(trainPlan, PlanningUsage(812, 356, "scripted")) }
-        provider.hold = CompletableDeferred()
-        planScreen(container(provider), "Need to book the train ride for my daughter, find parking and tickets, remind me at 9 and 6 every day until done.")
-        screenshot("g1-plan-input")
-        compose.onNodeWithTag("plan_request").tap()
-        compose.waitForTag("plan_working")
-        screenshot("g2-plan-working")
-        provider.hold!!.complete(Unit)
-        compose.waitForTag("plan_approve") // the review bottom bar is always on screen
-        compose.scrollTo("plan_list", "review_title") // the title card can be below the fold at 200% text
-        screenshot("g3-review-top")
-        compose.scrollTo("plan_list", "review_reminders")
-        screenshot("g4-review-reminders")
-        compose.scrollTo("plan_list", "review_assumptions")
-        screenshot("g5-review-assumptions")
-        compose.soft("saved") {
-            compose.onNodeWithTag("plan_approve").tap()
-            compose.waitForTag("plan_saved")
-            screenshot("g6-plan-saved")
-        }
-    }
-
-    @Test fun g_planUnsupported() {
-        val plan = trainPlan.copy(
-            reminder = RawReminder(kind = "weekly_days", provenance = "explicit", times = listOf("09:00"), weekdays = listOf("monday", "wednesday"), requestedPhrase = "every Monday and Wednesday at 9"),
-            assumptions = emptyList(),
-        )
-        val provider = ScriptedProvider { PlanningResult.Success(plan, PlanningUsage(812, 356, "scripted")) }
-        planScreen(container(provider), "Book the train ride for my daughter, remind me every Monday and Wednesday at 9")
-        compose.onNodeWithTag("plan_request").tap()
-        compose.waitForTag("plan_approve")
-        compose.scrollTo("plan_list", "review_unsupported")
-        screenshot("g7-review-unsupported")
-    }
-
-    @Test fun h_planErrorsUnauthorized() {
-        val provider = ScriptedProvider { PlanningResult.Failure(PlanningError.Unauthorized) }
-        planScreen(container(provider), "Renew the car insurance before the end of the month")
-        compose.onNodeWithTag("plan_request").tap()
-        compose.waitForTag("plan_error")
-        screenshot("h2-plan-error-unauthorized")
-    }
-
-    @Test fun h_planErrors() {
-        val provider = ScriptedProvider { PlanningResult.Failure(PlanningError.RateLimited(null)) }
-        planScreen(container(provider), "Renew the car insurance before the end of the month")
-        compose.onNodeWithTag("plan_request").tap()
-        compose.waitForTag("plan_error")
-        screenshot("h1-plan-error-rate-limited")
-    }
-
-    @Test fun i_planOffline() {
-        val provider = ScriptedProvider { PlanningResult.Success(trainPlan, null) }
-        planScreen(container(provider, online = false), "Renew the car insurance before the end of the month")
-        compose.onNodeWithTag("plan_request").tap()
-        compose.waitForTag("plan_error")
-        screenshot("i1-plan-error-offline")
-    }
-
-    @Test fun j_followThrough() {
-        val plan = RawPlan(
-            steps = listOf("Find the cancellation clause in the contract", "Email the gym to cancel", "Cancel the direct debit"),
-            nextStep = "Find the cancellation clause in the contract",
-            advice = "Gyms often need written notice; check the notice period first.",
-        )
-        val provider = ScriptedProvider { PlanningResult.Success(plan, PlanningUsage(640, 300, "scripted")) }
-        val c = container(provider)
-        val taskId = runBlocking {
-            c.taskRepository.createTask(NewTask("Cancel the gym membership", status = TaskStatus.ACTIONABLE, preset = ReminderPreset.DAILY))
-        }
-        planScreen(c, "I keep putting this off. What's the first thing to do?", taskId)
-        screenshot("j1-move-forward-input")
-        compose.onNodeWithTag("plan_request").tap()
-        compose.waitForTag("plan_approve")
-        screenshot("j2-move-forward-review")
-        compose.onNodeWithTag("plan_list").performTouchInput { swipeUp() }
-        screenshot("j3-move-forward-review-scrolled")
-        compose.soft("deselect a change") {
-            compose.scrollTo("plan_list", "review_step_check_1")
-            compose.onNodeWithTag("review_step_check_1").tap() // the Apply count follows the selection
-            compose.waitForText("Apply 2 changes")
-            screenshot("j4-move-forward-two-changes")
-        }
-    }
-
-    @Test fun k_aiSettingsReady() {
-        val c = container(ScriptedProvider { PlanningResult.Success(trainPlan, null) })
-        val vm = AiSettingsViewModel(c.settingsRepository, c.apiKeyStore, c.aiPlanning, c.clock)
-        compose.setContent { LifeAdminTheme { AiSettingsScreen(vm, onBack = {}) } }
-        compose.waitForTag("ai_settings_list")
-        screenshot("k1-ai-settings-ready")
-        compose.onNodeWithTag("ai_settings_list").performTouchInput { swipeUp() }
-        screenshot("k2-ai-settings-ready-scrolled")
-        compose.onNodeWithTag("ai_settings_list").performTouchInput { swipeUp() }
-        screenshot("k3-ai-settings-ready-bottom")
-        compose.soft("test connection") {
-            compose.scrollTo("ai_settings_list", "ai_test_connection")
-            compose.onNodeWithTag("ai_test_connection").tap()
-            compose.waitForTag("ai_test_result")
-            screenshot("k1b-ai-test-connection")
-        }
-        compose.soft("delete all confirm") {
-            compose.scrollTo("ai_settings_list", "ai_delete_all")
-            compose.onNodeWithTag("ai_delete_all").tap()
-            compose.waitForText("Delete AI settings?")
-            screenshot("k3b-ai-delete-all-confirm")
-            compose.closeDialog()
-        }
-    }
-}
-
-/**
- * M3 research screens (boards R1–R20) on the real shell with a scripted provider: entry tiles,
- * preflight, one-time explainer, progress, brief, source sheet, apply, applied, history, AI-off
- * card and error/stop states. The provider never touches the network; the brief's sources use the
- * reserved .example domain and are clearly fictional.
- */
-@RunWith(AndroidJUnit4::class)
-@FixMethodOrder(MethodSorters.NAME_ASCENDING)
-class ScreenshotTourResearch {
-    @get:Rule val compose = createComposeRule()
-
-    private class ScriptedResearchProvider(private val answer: () -> com.lifeadmin.autopilot.ai.research.ResearchResponse) : com.lifeadmin.autopilot.ai.research.ResearchProvider {
-        var hold: CompletableDeferred<Unit>? = null
-        override val id = "scripted-research"
-        override suspend fun research(
-            request: com.lifeadmin.autopilot.ai.research.ResearchRequest,
-            apiKey: String,
-            model: String,
-            onProgress: (com.lifeadmin.autopilot.ai.research.ResearchProgress) -> Unit,
-        ): com.lifeadmin.autopilot.ai.research.ResearchResponse {
-            onProgress(com.lifeadmin.autopilot.ai.research.ResearchProgress.Sent)
-            onProgress(com.lifeadmin.autopilot.ai.research.ResearchProgress.Searching(1))
-            hold?.await()
-            return answer()
-        }
-    }
-
-    private val rail = com.lifeadmin.autopilot.ai.research.RawCitation("https://www.northlinerail.example/tickets", "Tickets | Northline Rail (sample)", "Advance tickets are released 12 weeks ahead.")
-    private val carPark = com.lifeadmin.autopilot.ai.research.RawCitation("https://parking.riverside-central.example/book", "Riverside Central car park (sample)", "Pre-booking closes at 23:59 the day before.")
-    private val blog = com.lifeadmin.autopilot.ai.research.RawCitation("https://travel-tips.example/trains", "Cheap train tips (sample)", "Fares are cheapest in the first week of release.")
-
-    private fun seg(text: String, vararg c: com.lifeadmin.autopilot.ai.research.RawCitation) = com.lifeadmin.autopilot.ai.research.RawSegment(text, c.toList())
-
-    private val sampleResponse = com.lifeadmin.autopilot.ai.research.ResearchResponse.Success(
-        segments = listOf(
-            seg("## QUICK ANSWER\n"),
-            seg("Advance tickets for this route go on sale 12 weeks before travel.", rail),
-            seg(" The station car park can be pre-booked until the day before.", carPark),
-            seg(" I couldn't confirm whether child fares are discounted.\n\n## NEXT MOVES\n- STEP: Check the 12-week release date for your travel day — "),
-            seg("Northline releases advance fares 12 weeks out.", rail),
-            seg("\n- STEP: Pre-book the station car park — "),
-            seg("Booking closes at 23:59 the day before.", carPark),
-            seg("\n- NOTE: Advance fares are released 12 weeks before travel — "),
-            seg("From the operator's ticket page.", rail),
-            seg("\n- CHECK: Whether child fares are discounted, with the operator — nothing online settled this\n- STEP: Set a reminder a week before release — Claude's suggestion\n\n## FINDINGS\n- "),
-            seg("Advance fares are released 12 weeks ahead.", rail),
-            seg("\n- "),
-            seg("Car park pre-booking closes at 23:59 the day before travel.", carPark),
-            seg("\n- DISAGREE: When fares are cheapest | "),
-            seg("At release", blog),
-            seg(" | "),
-            seg("Prices vary by train, not by date", rail),
-            seg("\n- Booking early usually beats booking late.\n\n## UNCONFIRMED\n- Child fare discounts — I searched but no page covered this route"),
-        ),
-        searches = listOf(
-            com.lifeadmin.autopilot.ai.research.RawSearch("Northline Rail advance tickets release date", listOf(com.lifeadmin.autopilot.ai.research.RawSearchResult(rail.url, rail.title!!, "September 2026"))),
-            com.lifeadmin.autopilot.ai.research.RawSearch("Riverside Central station car park booking", listOf(com.lifeadmin.autopilot.ai.research.RawSearchResult(carPark.url, carPark.title!!, "August 2026"), com.lifeadmin.autopilot.ai.research.RawSearchResult(blog.url, blog.title!!, null))),
-        ),
-        usage = com.lifeadmin.autopilot.ai.research.ResearchUsage(2140, 612, 2, "claude-haiku-5-5", 9800),
-        truncated = false,
-    )
-
-    private lateinit var container: AppContainer
-    private lateinit var taskId: String
-
-    /**
-     * A crash during the activity's teardown hides the failure that ended the test. Record the
-     * first uncaught throwable (and any composition exception) in the screenshots folder so the
-     * artifact carries it.
-     */
-    @Before fun captureCrashes() {
-        val previous = Thread.getDefaultUncaughtExceptionHandler()
-        Thread.setDefaultUncaughtExceptionHandler { t, e ->
-            runCatching {
-                val dir = File(instrumentation.targetContext.getExternalFilesDir(null), "screenshots").apply { mkdirs() }
-                File(dir, "crash-${System.currentTimeMillis()}.txt").writeText("thread=${t.name}\n" + Log.getStackTraceString(e))
-            }
-            previous?.uncaughtException(t, e)
-        }
-    }
-
-    private fun container(provider: com.lifeadmin.autopilot.ai.research.ResearchProvider, aiEnabled: Boolean = true, explainerAccepted: Boolean = false, online: Boolean = true): AppContainer {
-        val context = instrumentation.targetContext
-        return AppContainer(
-            context = context,
-            database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build(),
-            settingsRepository = InMemorySettingsRepository(
-                AppSettings(
-                    onboardingCompleted = true, aiEnabled = aiEnabled, aiConsentAt = Instant.now(),
-                    researchExplainerVersion = if (explainerAccepted) com.lifeadmin.autopilot.ai.research.ResearchConfig.EXPLAINER_VERSION else 0,
-                ),
-            ),
-            apiKeyStore = InMemoryApiKeyStore("test-key-0000000000000000000000000000"),
-            researchProvider = provider,
-            networkStatus = { online },
-        )
-    }
-
-    private fun launch(c: AppContainer, seedBrief: Boolean = false) {
-        container = c
-        runBlocking {
-            taskId = c.taskRepository.createTask(NewTask("Book family train ride", notes = "Need tickets and parking details", status = TaskStatus.ACTIONABLE, preset = ReminderPreset.PERSISTENT))
-            c.taskRepository.addStep(taskId, "Check train times and prices")
-            if (seedBrief) {
-                val content = com.lifeadmin.autopilot.ai.research.BriefParser.parse(sampleResponse.segments, sampleResponse.searches, sampleResponse.usage, false, listOf("Task title", "Your question and details", "Notes", "Date and language"), c.ids::newId)
-                c.researchRepository.save(taskId, "When do advance tickets go on sale, and can I pre-book parking?", content)
-            }
-        }
-        compose.setContent { LifeAdminTheme { LifeAdminRoot(c) } }
-        compose.waitForTag("nav_tasks")
-        compose.onNodeWithTag("nav_tasks").tap()
-        compose.waitForTag("tasks_list")
-        compose.onNodeWithTag("tasks_list").performScrollToNode(hasText("Book family train ride", substring = true))
-        compose.onAllNodes(clickableWithText("Book family train ride")).onFirst().tap()
-        compose.waitForTag("detail_title")
-    }
-
-    private fun openPreflight(question: String) {
-        compose.scrollTo("detail_list", "action_research")
-        compose.onNodeWithTag("action_research").tap()
-        compose.waitForTag("preflight_question")
-        compose.onNodeWithTag("preflight_question").performTextInput(question)
-        compose.scrollTo("preflight_list", "detail_OPERATOR") // below the fold at large text
-        compose.onNodeWithTag("detail_OPERATOR").performTextInput("Northline Rail")
-    }
-
-    @Test fun r1_entryPreflightExplainerProgressBrief() {
-        val provider = ScriptedResearchProvider { sampleResponse }
-        provider.hold = CompletableDeferred()
-        launch(container(provider))
-        compose.scrollTo("detail_list", "detail_ai_card")
-        screenshot("r01-detail-move-forward-tiles")
-        openPreflight("When do advance tickets go on sale, and can I pre-book parking?")
-        compose.scrollTo("preflight_list", "preflight_for")
-        screenshot("r02-preflight-top")
-        compose.scrollTo("preflight_list", "preflight_scope")
-        screenshot("r03-preflight-scope")
-        compose.scrollTo("preflight_list", "preflight_cost")
-        screenshot("r04-preflight-cost")
-        compose.onNodeWithTag("preflight_start").tap()
-        compose.waitForTag("explainer_sheet")
-        screenshot("r05-explainer")
-        compose.onNodeWithTag("explainer_accept").tap()
-        compose.waitForTag("research_stop")
-        screenshot("r06-progress")
-        provider.hold!!.complete(Unit)
-        compose.soft("brief-open") { compose.waitForTag("brief_list") }
-        screenshot("r07-brief-top")
-        compose.scrollTo("brief_list", "brief_answer")
-        screenshot("r08-brief-answer")
-        compose.onNodeWithTag("brief_list").performScrollToNode(hasTestTag("finding_sourced"))
-        screenshot("r09-brief-moves-findings")
-        compose.onNodeWithTag("brief_list").performScrollToNode(hasTestTag("finding_sources_disagree"))
-        screenshot("r10-brief-findings-disagree")
-        compose.scrollTo("brief_list", "brief_sources")
-        screenshot("r11-brief-sources")
-        compose.scrollTo("brief_list", "brief_log")
-        screenshot("r12-brief-log")
-        compose.onNodeWithTag("brief_list").performScrollToNode(hasTestTag("source_2"))
-        compose.onNodeWithTag("source_2").tap()
-        compose.waitForTag("source_sheet")
-        screenshot("r13-source-sheet")
-        compose.back()
-        compose.waitForTag("brief_review")
-        compose.onNodeWithTag("brief_review").tap()
-        compose.waitForTag("apply_rows")
-        screenshot("r14-apply-review")
-        compose.onNodeWithTag("apply_confirm").tap()
-        compose.waitForTag("apply_result")
-        screenshot("r15-applied-undo")
-        compose.onNodeWithTag("apply_done").tap()
-        compose.waitForTag("detail_list") // the list keeps its scroll position, so the title may be off screen
-        compose.scrollTo("detail_list", "detail_research_card")
-        screenshot("r16-detail-research-card")
-        compose.onNodeWithTag("detail_research_history").tap()
-        compose.waitForTag("history_list")
-        screenshot("r17-history")
-    }
-
-    @Test fun r2_aiOffKeepsSavedResearch() {
-        launch(container(ScriptedResearchProvider { sampleResponse }, aiEnabled = false), seedBrief = true)
-        compose.scrollTo("detail_list", "detail_research_card")
-        screenshot("r18-detail-ai-off-with-research")
-    }
-
-    @Test fun r3_offlineBriefAndBlockedPreflight() {
-        launch(container(ScriptedResearchProvider { sampleResponse }, explainerAccepted = true, online = false), seedBrief = true)
-        compose.scrollTo("detail_list", "detail_research_latest")
-        compose.onNodeWithTag("detail_research_latest").tap()
-        compose.waitForTag("brief_offline")
-        screenshot("r19-brief-offline")
-        compose.back()
-        compose.waitForTag("detail_list")
-        compose.scrollTo("detail_list", "action_research")
-        compose.onNodeWithTag("action_research").tap()
-        compose.waitForTag("preflight_blocker")
-        screenshot("r20-preflight-offline")
-    }
-
-    @Test fun r4_errorStates() {
-        val provider = ScriptedResearchProvider { com.lifeadmin.autopilot.ai.research.ResearchResponse.Failure(com.lifeadmin.autopilot.ai.research.ResearchError.WebSearchNotEnabled, 0) }
-        launch(container(provider, explainerAccepted = true))
-        openPreflight("How much is a child fare?")
-        compose.onNodeWithTag("preflight_start").tap()
-        compose.waitForTag("result_headline")
-        screenshot("r21-error-web-search-not-enabled")
-    }
-
-    @Test fun r5_stopped() {
-        val provider = ScriptedResearchProvider { sampleResponse }
-        provider.hold = CompletableDeferred()
-        launch(container(provider, explainerAccepted = true))
-        openPreflight("Is there a family railcard for this route?")
-        compose.onNodeWithTag("preflight_start").tap()
-        compose.waitForTag("research_stop")
-        compose.onNodeWithTag("research_stop").tap()
-        compose.waitForTag("result_headline")
-        screenshot("r22-stopped")
-        provider.hold!!.complete(Unit)
-    }
-
-    @Test fun r6_settingsResearchSection() {
-        launch(container(ScriptedResearchProvider { sampleResponse }, explainerAccepted = true), seedBrief = true)
-        compose.back()
-        compose.waitForTag("nav_tasks")
-        compose.onNodeWithTag("nav_settings").tap()
-        compose.waitForTag("settings_list")
-        compose.onNodeWithTag("settings_list").performScrollToNode(hasText("Plan with AI"))
-        compose.onAllNodes(clickableWithText("Plan with AI")).onFirst().tap()
-        compose.waitForTag("ai_settings_list")
-        compose.scrollTo("ai_settings_list", "ai_research")
-        screenshot("r23-settings-web-research")
+        const val SAVED_THREAD = "tour-saved-research"
     }
 }

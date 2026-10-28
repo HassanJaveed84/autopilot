@@ -60,6 +60,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.lifeadmin.autopilot.domain.scheduling.RoutineCycle
 import com.lifeadmin.autopilot.ui.components.showToast
 import kotlinx.coroutines.launch
 import com.lifeadmin.autopilot.data.repository.TaskDetails
@@ -91,7 +92,6 @@ import com.lifeadmin.autopilot.ui.components.color
 import com.lifeadmin.autopilot.ui.components.icon
 import com.lifeadmin.autopilot.ui.components.isOverdue
 import com.lifeadmin.autopilot.ui.components.isSnoozed
-import com.lifeadmin.autopilot.ui.components.provenanceBorder
 import com.lifeadmin.autopilot.ui.theme.AutopilotTheme
 import java.time.Instant
 import java.time.ZoneId
@@ -101,19 +101,18 @@ private enum class DetailDialog { EDIT, DEADLINE, WAITING, SNOOZE, POLICY, DELET
 /**
  * Task detail: status pill, title and notes, a plain-language follow-up card, one full-width
  * primary action (Mark done / Reopen), secondary tiles (Snooze / Waiting on… / Pause with their
- * contextual inverses), inline steps with a Next marker, deadline and priority rows, the AI card
- * and the activity history. Every action goes through the existing repository methods.
+ * contextual inverses), inline steps with a Next marker, deadline and priority rows, Discuss in
+ * ChatGPT, saved research (read-only, when there is some) and the activity history. Every action goes through the existing repository methods.
  */
 @Composable
 fun TaskDetailScreen(
     viewModel: TaskDetailViewModel,
     onBack: () -> Unit,
     onReminderEnabled: () -> Unit = {},
-    /** Opens "Move this forward"; null hides the AI card (e.g. in tests). */
-    onMoveForward: (() -> Unit)? = null,
-    onOpenAiSettings: () -> Unit = {},
-    /** Research (M3) navigation; null hides the research tile and card. */
+    /** Saved-research navigation; null hides the research card. */
     research: ResearchNav? = null,
+    /** Opens the canonical Proposal Review for a pending set (M2); null hides the banners. */
+    onOpenReview: ((setId: String) -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val c = AutopilotTheme.colors
@@ -146,14 +145,22 @@ fun TaskDetailScreen(
             }
             else -> DetailContent(
                 details, state.now, state.zone, viewModel, Modifier.padding(padding), onBack = onBack,
-                openDialog = { dialog = it }, stallHint = state.stallHint, onMoveForward = onMoveForward, onOpenAiSettings = onOpenAiSettings,
-                aiEnabled = state.settings.aiEnabled,
-                research = research, state = state,
+                openDialog = { dialog = it }, stallHint = state.stallHint,
+                research = research, state = state, onOpenReview = onOpenReview,
                 onDone = {
                     viewModel.complete()
                     scope.launch {
                         val r = snackbar.showToast("Done. Nudges stopped.", actionLabel = "Undo")
                         if (r == SnackbarResult.ActionPerformed) viewModel.reopen()
+                    }
+                },
+                onDoneForNow = {
+                    val label = RoutineCycle.label(viewModel.now(), viewModel.zone())
+                    viewModel.finishCycle {
+                        scope.launch {
+                            val r = snackbar.showToast("$label. The routine continues.", actionLabel = "Undo")
+                            if (r == SnackbarResult.ActionPerformed) viewModel.undoFinishCycle()
+                        }
                     }
                 },
                 onPause = {
@@ -234,20 +241,27 @@ private fun DetailContent(
     onBack: () -> Unit,
     openDialog: (DetailDialog) -> Unit,
     stallHint: StallHint?,
-    onMoveForward: (() -> Unit)?,
-    onOpenAiSettings: () -> Unit,
-    aiEnabled: Boolean,
     research: ResearchNav?,
     state: TaskDetailUiState,
     onDone: () -> Unit,
     onPause: () -> Unit,
+    onOpenReview: ((String) -> Unit)? = null,
+    onDoneForNow: () -> Unit = {},
 ) {
     val c = AutopilotTheme.colors
     val task = d.task
+    var provenanceOpen by rememberSaveable { mutableStateOf<String?>(null) }
+    provenanceOpen?.let { id ->
+        val record = state.provenance[id]
+        if (record == null) provenanceOpen = null
+        else com.lifeadmin.autopilot.ui.review.ProvenanceSheet(record, zone, onDismiss = { provenanceOpen = null }, onOpenInvestigation = research?.onOpenInvestigation)
+    }
     val summary = TaskSummary(task, d.steps.count { it.isDone }, d.steps.size, d.steps.sortedBy { it.sortOrder }.firstOrNull { !it.isDone }?.title, d.nextReminder, d.policy)
     val pill = TaskPresentation.pill(summary, now, zone)
     val isDone = task.status.isTerminal
     var showHistory by rememberSaveable { mutableStateOf(false) }
+    var discussOpen by rememberSaveable { mutableStateOf(false) }
+    if (discussOpen) DiscussSheet(d, zone, onDismiss = { discussOpen = false })
 
     LazyColumn(modifier.fillMaxSize().testTag("detail_list"), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 40.dp)) {
         item {
@@ -273,13 +287,26 @@ private fun DetailContent(
             Text(task.title, style = MaterialTheme.typography.headlineMedium, color = c.ink, modifier = Modifier.padding(top = 14.dp, bottom = 6.dp).semantics { heading() }.testTag("detail_title"))
             task.notes?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyLarge, color = c.ink2) }
         }
+        if (onOpenReview != null && !isDone) {
+            state.openSets.forEach { set -> item(key = "review-" + set.id) { ReviewBanner(set, onOpenReview) } }
+        }
         item { FollowUpCard(d, summary, now, zone, vm, openDialog) }
         item {
             Column(Modifier.padding(top = 14.dp)) {
                 if (isDone) {
                     PrimaryButton(if (task.status == TaskStatus.DONE) "Mark as not done" else "Reopen", onClick = vm::reopen, icon = AutopilotIcons.Refresh, modifier = Modifier.fillMaxWidth().testTag("action_reopen"))
+                } else if (RoutineCycle.canFinishCycle(task, d.policy)) {
+                    // A routine: the cycle is answered here; Mark done (permanent) stays one tap away.
+                    if (RoutineCycle.isCycleDone(task, now)) {
+                        SecondaryButton("Undo “${RoutineCycle.label(now, zone)}”", onClick = vm::undoFinishCycle, icon = AutopilotIcons.Refresh, modifier = Modifier.fillMaxWidth().testTag("action_undo_done_for_now"))
+                    } else {
+                        PrimaryButton(RoutineCycle.label(now, zone), onClick = onDoneForNow, icon = AutopilotIcons.Check, modifier = Modifier.fillMaxWidth().testTag("action_done_for_now"))
+                    }
+                    SecondaryButton("Mark done · ends the routine", onClick = onDone, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("action_done"))
                 } else {
                     PrimaryButton("Mark done", onClick = onDone, icon = AutopilotIcons.Check, modifier = Modifier.fillMaxWidth().testTag("action_done"))
+                }
+                if (!isDone) {
                     Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (task.isSnoozed(now)) ActionTile(AutopilotIcons.Sun, "Wake", Modifier.weight(1f).testTag("action_unsnooze")) { vm.clearSnooze() }
                         else ActionTile(AutopilotIcons.Moon, "Snooze", Modifier.weight(1f).testTag("action_snooze"), enabled = task.status != TaskStatus.PAUSED) { openDialog(DetailDialog.SNOOZE) }
@@ -299,10 +326,11 @@ private fun DetailContent(
             }
         }
         if (stallHint != null) item { StallHintCard(stallHint, vm, openDialog) }
-        item { StepsCard(d, vm) }
+        item { StepsCard(d, vm, state.provenance, onShowProvenance = { provenanceOpen = it }) }
         item { DeadlineAndPriorityCard(d, now, zone, vm, openDialog) }
-        if (onMoveForward != null && !task.status.isTerminal) item { AiCard(aiEnabled, onMoveForward, onOpenAiSettings, research = research, researching = state.researching) }
-        if (research != null && (state.briefs.isNotEmpty() || state.researching)) item { ResearchCard(state, now, zone, research) }
+        // The one AI entry point: it needs no key and changes nothing here.
+        if (!isDone) item { DiscussCard(onClick = { discussOpen = true }) }
+        if (research != null && (state.briefs.isNotEmpty() || state.investigations.isNotEmpty())) item { ResearchCard(state, now, zone, research) }
         item {
             LinkButton(if (showHistory) "Hide history" else "History · ${d.events.size} entries", onClick = { showHistory = !showHistory }, modifier = Modifier.padding(top = 12.dp).testTag("detail_history_toggle"))
         }
@@ -319,6 +347,31 @@ private fun DetailContent(
 }
 
 /** "Nudging 09:00 & 18:00 daily · until it's done · next today 09:00 · Change" in plain words. */
+/** One banner per open proposal set (handoff §2): the saved task stays separate from pending changes until the user reviews them. */
+@Composable
+private fun ReviewBanner(set: com.lifeadmin.autopilot.domain.proposal.ProposalSet, onOpenReview: (String) -> Unit) {
+    val c = AutopilotTheme.colors
+    val n = set.pending.size
+    val from = when (set.source) {
+        com.lifeadmin.autopilot.domain.proposal.ProposalSource.PLANNING -> "Plan with AI"
+        com.lifeadmin.autopilot.domain.proposal.ProposalSource.RESEARCH -> "research"
+        com.lifeadmin.autopilot.domain.proposal.ProposalSource.HANDOFF -> "ChatGPT"
+    }
+    Row(
+        Modifier.fillMaxWidth().padding(top = 12.dp).clip(RoundedCornerShape(16.dp)).background(c.routeSoft)
+            .clickable(role = Role.Button, onClickLabel = "Review $n proposed ${if (n == 1) "change" else "changes"}") { onOpenReview(set.id) }
+            .padding(14.dp).testTag("detail_review_banner_${set.id}"),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Icon(AutopilotIcons.Route, contentDescription = null, tint = c.onRouteSoft, modifier = Modifier.size(22.dp))
+        Column(Modifier.weight(1f)) {
+            Text("$n ${if (n == 1) "change" else "changes"} waiting for your review", style = MaterialTheme.typography.titleSmall, color = c.onRouteSoft)
+            Text("From $from · nothing is applied until you say so", style = MaterialTheme.typography.bodySmall, color = c.onRouteSoft)
+        }
+        Icon(AutopilotIcons.ChevronRight, contentDescription = null, tint = c.onRouteSoft, modifier = Modifier.size(20.dp))
+    }
+}
+
 @Composable
 private fun FollowUpCard(d: TaskDetails, summary: TaskSummary, now: Instant, zone: ZoneId, vm: TaskDetailViewModel, openDialog: (DetailDialog) -> Unit) {
     val c = AutopilotTheme.colors
@@ -347,6 +400,12 @@ private fun FollowUpCard(d: TaskDetails, summary: TaskSummary, now: Instant, zon
             "Edit", { openDialog(DetailDialog.WAITING) },
         )
         task.status == TaskStatus.PAUSED -> Fu(AutopilotIcons.Pause, c.sunken, c.ink, "Paused", "No nudges until you resume.", "Resume", { vm.changeStatus(TaskStatus.ACTIONABLE) })
+        TaskPresentation.isCycleDone(summary, now) -> Fu(
+            AutopilotIcons.Check, c.doneSoft, c.onDoneSoft,
+            RoutineCycle.label(now, zone) + (next?.let { " · next ${Format.relativeLower(it.plannedAt, now, zone)}" } ?: ""),
+            "The routine continues: ${policy?.let { TaskPresentation.scheduleShort(it, zone, now) } ?: "no nudges"}.",
+            "Undo", { vm.undoFinishCycle() },
+        )
         task.isSnoozed(now) -> Fu(
             AutopilotIcons.Moon, c.sunken, c.ink, "Snoozed until ${Format.relativeLower(task.snoozedUntil!!, now, zone)}",
             "Then: " + (policy?.takeIf { it.enabled }?.let { TaskPresentation.scheduleSentence(it, zone, now) } ?: "no nudges") + (if (next?.kind == OccurrenceKind.SNOOZE_END) " · reminder when the snooze ends" else "") + ".",
@@ -356,7 +415,8 @@ private fun FollowUpCard(d: TaskDetails, summary: TaskSummary, now: Instant, zon
         next == null -> Fu(AutopilotIcons.Bell, c.signalSoft, c.onSignalSoft, "Nudging " + TaskPresentation.scheduleShort(policy, zone, now), "No upcoming nudge for this schedule.", "Change", { openDialog(DetailDialog.POLICY) })
         else -> Fu(
             AutopilotIcons.Bell, c.signalSoft, c.onSignalSoft, "Nudging " + TaskPresentation.scheduleShort(policy, zone, now),
-            (if (policy.kind == ReminderKind.ONCE) "Once" else "Until it's done") + " · next ${Format.relativeLower(next.plannedAt, now, zone)}$mode",
+            (if (policy.kind == ReminderKind.ONCE) "Once" else if (policy.isRoutine) "Every day, a routine" else "Until it's done") +
+                " · next ${Format.relativeLower(next.plannedAt, now, zone)}$mode" + if (policy.ringInQuietHours) " · may ring in quiet hours" else "",
             "Change", { openDialog(DetailDialog.POLICY) },
         )
     }
@@ -397,7 +457,7 @@ private fun ActionTile(icon: ImageVector, label: String, modifier: Modifier = Mo
 }
 
 @Composable
-private fun StepsCard(d: TaskDetails, vm: TaskDetailViewModel) {
+private fun StepsCard(d: TaskDetails, vm: TaskDetailViewModel, provenance: Map<String, com.lifeadmin.autopilot.domain.proposal.ProvenanceRecord> = emptyMap(), onShowProvenance: (String) -> Unit = {}) {
     val c = AutopilotTheme.colors
     var newStep by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -432,6 +492,20 @@ private fun StepsCard(d: TaskDetails, vm: TaskDetailViewModel) {
                 )
                 if (firstOpen?.id == step.id) {
                     Text("Next", style = MaterialTheme.typography.labelSmall, color = c.onSignalSoft, modifier = Modifier.padding(end = 6.dp).clip(RoundedCornerShape(12.dp)).background(c.signalSoft).padding(horizontal = 8.dp, vertical = 4.dp))
+                }
+                // Provenance is a property of the content, shown lightly (INT-032): one marker, the full record on tap.
+                step.provenanceId?.let { pid ->
+                    val record = provenance[pid]
+                    if (record != null && !editing) {
+                        RoundIconButton(
+                            AutopilotIcons.Info, tint = c.ink3, onClick = { onShowProvenance(pid) }, modifier = Modifier.size(40.dp).testTag("step_prov_${step.id}"),
+                            contentDescription = when (record.source) {
+                                com.lifeadmin.autopilot.domain.proposal.ProposalSource.RESEARCH -> "From research"
+                                com.lifeadmin.autopilot.domain.proposal.ProposalSource.PLANNING -> "From Plan with AI"
+                                com.lifeadmin.autopilot.domain.proposal.ProposalSource.HANDOFF -> "From ChatGPT"
+                            } + ": where this step came from",
+                        )
+                    }
                 }
                 if (editing) {
                     if (index > 0) RoundIconButton(AutopilotIcons.ChevronDown, contentDescription = "Move ${step.title} up", tint = c.ink3, onClick = { vm.moveStep(step.id, -1) }, modifier = Modifier.size(40.dp).rotate(180f))
@@ -522,95 +596,39 @@ private fun DeadlineAndPriorityCard(d: TaskDetails, now: Instant, zone: ZoneId, 
     }
 }
 
-/** Research (M3) entry points from the task; all optional so the detail screen renders without them. */
+/** Saved-research navigation from the task (read-only); optional so the detail screen renders without it. */
 data class ResearchNav(
-    val onResearch: () -> Unit,
     val onOpenBrief: (briefId: String) -> Unit,
     val onOpenHistory: () -> Unit,
-    val onOpenRun: (runId: String, question: String) -> Unit,
+    val onOpenInvestigation: (investigationId: String) -> Unit = {},
 )
 
-/** "Move this forward": two ways Claude can help. Nothing changes until the user approves. */
-@Composable
-private fun AiCard(aiEnabled: Boolean, onMoveForward: () -> Unit, onOpenAiSettings: () -> Unit, research: ResearchNav?, researching: Boolean) {
-    val c = AutopilotTheme.colors
-    Column(
-        Modifier.fillMaxWidth().padding(top = 12.dp).provenanceBorder(suggested = aiEnabled, radius = 20.dp).padding(16.dp).testTag("detail_ai_card"),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
-            IconCircle(AutopilotIcons.Route, tint = if (aiEnabled) c.route else c.ink2, background = if (aiEnabled) c.routeSoft else c.sunken)
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(if (aiEnabled) "Move this forward" else "AI suggestions and research are off", style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp), color = c.ink, modifier = Modifier.semantics { heading() })
-                Text(
-                    if (aiEnabled) "Two ways Claude can help. Nothing changes until you approve."
-                    else if (research != null) "Turn on AI planning to plan steps or research this task online. Saved research below still opens."
-                    else "Turn on AI planning to get suggested steps and dates for a task like this.",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = c.ink2,
-                )
-            }
-        }
-        if (!aiEnabled) {
-            SecondaryButton("Set up AI planning", onClick = onOpenAiSettings, minHeight = 44.dp, modifier = Modifier.padding(start = 52.dp).testTag("action_move_forward"))
-        } else if (research == null) {
-            SecondaryButton("Suggest", onClick = onMoveForward, route = true, minHeight = 44.dp, modifier = Modifier.padding(start = 52.dp).testTag("action_move_forward"))
-        } else {
-            val stacked = LocalDensity.current.fontScale >= 1.3f
-            val plan: @Composable (Modifier) -> Unit = { m -> HelpTile(AutopilotIcons.Route, "Plan next step", "Thinks with what’s in this task. No web.", m.testTag("action_move_forward"), onClick = onMoveForward) }
-            val web: @Composable (Modifier) -> Unit = { m ->
-                HelpTile(
-                    AutopilotIcons.Research, if (researching) "Researching…" else "Research online",
-                    if (researching) "A request is running for this task." else "Searches the web and cites sources. Uses paid web search on your key.",
-                    m.testTag("action_research"), enabled = !researching, onClick = research.onResearch,
-                )
-            }
-            if (stacked) Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { plan(Modifier.fillMaxWidth()); web(Modifier.fillMaxWidth()) }
-            else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { plan(Modifier.weight(1f)); web(Modifier.weight(1f)) }
-        }
-    }
-}
-
-@Composable
-private fun HelpTile(icon: ImageVector, title: String, body: String, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
-    val c = AutopilotTheme.colors
-    Column(
-        modifier
-            .heightIn(min = 96.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(c.surface)
-            .border(1.dp, c.line, RoundedCornerShape(16.dp))
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Icon(icon, contentDescription = null, tint = if (enabled) c.route else c.ink3, modifier = Modifier.size(22.dp))
-        Text(title, style = MaterialTheme.typography.titleSmall, color = if (enabled) c.ink else c.ink3)
-        Text(body, style = MaterialTheme.typography.bodySmall, color = c.ink2)
-    }
-}
-
-/** Saved research for this task: running state, latest brief, link to all. Readable offline and with AI off. */
+/** Saved research for this task from earlier versions: the latest, and a link to all. Read-only and offline. */
 @Composable
 private fun ResearchCard(state: TaskDetailUiState, now: Instant, zone: ZoneId, nav: ResearchNav) {
     val c = AutopilotTheme.colors
-    val latest = state.briefs.firstOrNull()
+    val latestBrief = state.briefs.firstOrNull()
+    val latestThread = state.investigations.firstOrNull()
+    // Show whichever is newer: a research thread or a legacy M3A brief.
+    val latest = if (latestThread != null && (latestBrief == null || latestThread.updatedAtMs >= latestBrief.createdAt.toEpochMilli())) null else latestBrief
+    val total = state.briefs.size + state.investigations.size
     SurfaceCard(radius = 20.dp, contentPadding = PaddingValues(0.dp), modifier = Modifier.padding(top = 12.dp).testTag("detail_research_card")) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Research", style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp), color = c.ink, modifier = Modifier.weight(1f).semantics { heading() })
-            LinkButton(if (state.briefs.size > 1) "All ${state.briefs.size}" else "History", onClick = nav.onOpenHistory, modifier = Modifier.padding(end = 8.dp).testTag("detail_research_history"))
+            Text("Saved research", style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp), color = c.ink, modifier = Modifier.weight(1f).semantics { heading() })
+            LinkButton(if (total > 1) "All $total" else "History", onClick = nav.onOpenHistory, modifier = Modifier.padding(end = 8.dp).testTag("detail_research_history"))
         }
-        if (state.researching && state.researchRunId != null) {
+        if (latestThread != null && latest == null) {
             GroupDivider()
-            Row(
-                Modifier.fillMaxWidth().clickable(role = Role.Button) { nav.onOpenRun(state.researchRunId, state.researchQuestion.orEmpty()) }.padding(16.dp).testTag("detail_research_running"),
-                horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconCircle(AutopilotIcons.Research, tint = c.route, background = c.routeSoft, size = 36.dp)
-                Column(Modifier.weight(1f)) {
-                    Text("Researching now…", style = MaterialTheme.typography.bodyLarge, color = c.ink)
-                    state.researchQuestion?.let { Text("“$it”", style = MaterialTheme.typography.bodySmall, color = c.ink2, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
-                }
-                Icon(AutopilotIcons.ChevronRight, contentDescription = null, tint = c.ink3)
+            val searches = latestThread.searches
+            val sources = latestThread.sources
+            Column(Modifier.fillMaxWidth().clickable(role = Role.Button) { nav.onOpenInvestigation(latestThread.id) }.padding(16.dp).testTag("detail_research_latest"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    ("Researched " + Format.relative(Instant.ofEpochMilli(latestThread.updatedAtMs), now, zone) + " · ${latestThread.turnCount} ${if (latestThread.turnCount == 1) "turn" else "turns"}" +
+                        (if (searches > 0) " · $searches ${if (searches == 1) "search" else "searches"}" else "") + (if (sources > 0) " · $sources ${if (sources == 1) "source" else "sources"}" else "")).uppercase(),
+                    style = com.lifeadmin.autopilot.ui.theme.TimeTextStyle.copy(fontSize = 12.sp, lineHeight = 16.sp), color = c.ink2,
+                )
+                Text(latestThread.title, style = MaterialTheme.typography.bodyLarge, color = c.ink, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                latestThread.preview?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = c.ink2, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
             }
         }
         if (latest != null) {

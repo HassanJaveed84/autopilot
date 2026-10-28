@@ -55,7 +55,6 @@ import com.lifeadmin.autopilot.ai.research.Finding
 import com.lifeadmin.autopilot.ai.research.MoveKind
 import com.lifeadmin.autopilot.ai.research.NextMove
 import com.lifeadmin.autopilot.ai.research.ResearchConfig
-import com.lifeadmin.autopilot.ai.research.ResearchError
 import com.lifeadmin.autopilot.ai.research.Segment
 import com.lifeadmin.autopilot.ai.research.SourceRef
 import com.lifeadmin.autopilot.ai.research.SourceTier
@@ -208,67 +207,6 @@ private fun findingText(f: Finding): String = when (f) {
     is Finding.Suggestion -> f.text
 }
 
-/** Selectable next-move row with kind tag, text, basis line and source numbers. */
-@Composable
-fun MoveRow(
-    move: NextMove,
-    sources: List<SourceRef>,
-    checked: Boolean,
-    onToggle: ((Boolean) -> Unit)?,
-    onCite: (Int) -> Unit,
-    modifier: Modifier = Modifier,
-    /** "Already in your steps" etc.; the row is shown dotted and cannot be selected. */
-    skippedReason: String? = null,
-    applied: Boolean = false,
-) {
-    val c = AutopilotTheme.colors
-    val shape = RoundedCornerShape(18.dp)
-    val sourced = move.refs.isNotEmpty()
-    val selectable = onToggle != null && skippedReason == null && !applied
-    val kind = when (move.kind) { MoveKind.STEP -> "Add step"; MoveKind.CHECK -> "Check"; MoveKind.NOTE -> "Add note" }
-    val state = when {
-        applied -> "Already applied"
-        skippedReason != null -> "$skippedReason, will be skipped"
-        checked -> "Selected"
-        else -> "Not selected"
-    }
-    Row(
-        modifier.fillMaxWidth().clip(shape).background(if (checked && selectable) c.sunken else c.surface)
-            .let {
-                when {
-                    skippedReason != null || applied -> it.dottedBorder(c.lineStrong, 18.dp)
-                    sourced -> it.border(1.dp, if (checked) c.lineStrong else c.line, shape)
-                    else -> it.drawBehind { drawRoundRect(c.route, cornerRadius = CornerRadius(18.dp.toPx()), style = Stroke(1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 7f)))) }
-                }
-            }
-            .let { if (selectable) it.toggleable(value = checked, role = Role.Checkbox, onValueChange = onToggle!!) else it }
-            .semantics { stateDescription = state }
-            .padding(start = 12.dp, end = 10.dp, top = 12.dp, bottom = 12.dp)
-            .testTag("move_${move.id}"),
-        verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        if (onToggle != null) {
-            Box(
-                Modifier.size(24.dp).clip(RoundedCornerShape(7.dp)).background(if (checked && selectable) c.inverse else Color.Transparent)
-                    .border(2.dp, if (!selectable) c.line else if (checked) c.inverse else c.lineStrong, RoundedCornerShape(7.dp)),
-                contentAlignment = Alignment.Center,
-            ) { if (checked && selectable) Icon(AutopilotIcons.Check, contentDescription = null, tint = c.onInverse, modifier = Modifier.size(14.dp)) }
-        }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(kind.uppercase(), style = MaterialTheme.typography.labelSmall, color = if (sourced || move.kind == MoveKind.CHECK) c.ink2 else c.route)
-            Text(move.text, style = MaterialTheme.typography.bodyLarge, color = if (selectable || onToggle == null) c.ink else c.ink2)
-            Text(
-                if (applied) "Already added to your task" else skippedReason ?: move.basis,
-                style = MaterialTheme.typography.bodySmall, color = if (!sourced && skippedReason == null && !applied) c.route else c.ink2,
-            )
-        }
-        if (move.refs.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) { move.refs.forEach { n -> CitationChip(n, onClick = { onCite(n) }, title = sources.firstOrNull { it.n == n }?.title) } }
-        }
-    }
-}
-
 /** Legend row for the four provenance types (words, not just lines). */
 @Composable
 fun ProvenanceLegend(modifier: Modifier = Modifier) {
@@ -333,7 +271,7 @@ fun SourceRow(source: SourceRef, onClick: () -> Unit, modifier: Modifier = Modif
 
 /** Inspect a citation before trusting or opening it. The link opens in the browser, never a WebView. */
 @Composable
-fun SourceSheet(source: SourceRef, usedFor: List<String>, researchedLine: String, onDismiss: () -> Unit, online: Boolean?) {
+fun SourceSheet(source: SourceRef, usedFor: List<String>, researchedLine: String, onDismiss: () -> Unit) {
     val c = AutopilotTheme.colors
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -348,13 +286,13 @@ fun SourceSheet(source: SourceRef, usedFor: List<String>, researchedLine: String
         },
         footer = {
             PrimaryButton(
-                if (online == false) "Open in browser (offline)" else "Open in browser",
+                "Open in browser",
                 onClick = {
                     @Suppress("UseKtx") // core-ktx is not a dependency of this module
                     val uri = safe?.let { android.net.Uri.parse(it) } ?: return@PrimaryButton
                     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE)) }
                 },
-                enabled = safe != null && online != false, icon = AutopilotIcons.OpenExternal,
+                enabled = safe != null, icon = AutopilotIcons.OpenExternal,
                 modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Open in browser, opens in your browser" }.testTag("source_open"),
             )
             Text(
@@ -387,90 +325,6 @@ fun SourceSheet(source: SourceRef, usedFor: List<String>, researchedLine: String
     }
 }
 
-/** One-time terms for web research, separate from AI planning consent. */
-@Composable
-fun ExplainerSheet(onAccept: () -> Unit, onDismiss: () -> Unit) {
-    val c = AutopilotTheme.colors
-    AutopilotSheet(
-        title = "Before your first web research", onDismiss = onDismiss, closeLabel = "Not now",
-        footer = {
-            PrimaryButton("I understand, start", onClick = onAccept, modifier = Modifier.fillMaxWidth().testTag("explainer_accept"))
-            SecondaryButton("Not now", onClick = onDismiss, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("explainer_dismiss"), minHeight = 48.dp)
-        },
-    ) {
-        Column(Modifier.fillMaxWidth().padding(bottom = 12.dp).testTag("explainer_sheet"), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text("Your AI planning consent doesn’t cover this, so here’s what’s different. You’ll only see this once.", style = MaterialTheme.typography.bodyMedium, color = c.ink2)
-            ExplainerPoint(AutopilotIcons.Play, "You start every request.", "Nothing runs in the background, on a schedule or from a reminder.")
-            ExplainerPoint(AutopilotIcons.Key, "It costs more than planning.", "Anthropic bills each web search on top of tokens. The app caps it at ${ResearchConfig.MAX_SEARCHES_PER_REQUEST} searches per request and ${ResearchConfig.MAX_REQUESTS_PER_DAY} requests a day.")
-            ExplainerPoint(AutopilotIcons.Warn, "Web pages can be wrong or out of date.", "Every claim shows its source; anything without one is labelled as Claude’s suggestion.")
-            ExplainerPoint(AutopilotIcons.Shield, "It only reads.", "No bookings, purchases, messages or forms — and your task changes only when you apply.")
-            Text(
-                "Your API key is sent to Anthropic to authenticate each request, like planning. It is never placed in the question, search queries, sources, backups or logs.",
-                style = MaterialTheme.typography.bodySmall, color = c.ink2,
-            )
-        }
-    }
-}
-
-@Composable
-private fun ExplainerPoint(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, body: String) {
-    val c = AutopilotTheme.colors
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
-        IconCircle(icon, tint = c.ink, background = c.sunken, size = 36.dp)
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(title, style = MaterialTheme.typography.titleSmall, color = c.ink)
-            Text(body, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = c.ink2)
-        }
-    }
-}
-
-/**
- * Result/error state: icon, headline, explanation, the kept question, and the mono technical line
- * that always says whether anything may have been billed.
- */
-@Composable
-fun ResearchResultState(
-    error: ResearchError,
-    question: String?,
-    modifier: Modifier = Modifier,
-    primary: (@Composable () -> Unit)? = null,
-    secondary: (@Composable () -> Unit)? = null,
-    fixes: List<String> = emptyList(),
-) {
-    val c = AutopilotTheme.colors
-    Column(modifier.fillMaxWidth().testTag("research_result"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        IconCircle(
-            when (error) { ResearchError.Offline -> AutopilotIcons.WifiOff; is ResearchError.Stopped -> AutopilotIcons.Stop; ResearchError.Disabled, ResearchError.NoApiKey, ResearchError.NoConsent, ResearchError.NoResearchConsent -> AutopilotIcons.Lock; else -> AutopilotIcons.Warn },
-            tint = c.ink, background = c.sunken, size = 48.dp,
-        )
-        Text(error.headline, style = MaterialTheme.typography.headlineSmall, color = c.ink, modifier = Modifier.semantics { heading() }.testTag("result_headline"))
-        Text(error.message, style = MaterialTheme.typography.bodyLarge, color = c.ink2)
-        if (fixes.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                fixes.forEachIndexed { i, f ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Box(Modifier.size(22.dp).clip(CircleShape).background(c.sunken), contentAlignment = Alignment.Center) { Text("${i + 1}", style = TimeTextStyle.copy(fontSize = 12.sp), color = c.ink) }
-                        Text(f, style = MaterialTheme.typography.bodyMedium, color = c.ink)
-                    }
-                }
-            }
-        }
-        if (!question.isNullOrBlank()) {
-            SurfaceCard(radius = 16.dp, contentPadding = androidx.compose.foundation.layout.PaddingValues(14.dp)) {
-                Text("YOUR QUESTION — KEPT", style = MaterialTheme.typography.labelSmall, color = c.ink2)
-                Text("“$question”", style = MaterialTheme.typography.bodyLarge, color = c.ink, modifier = Modifier.padding(top = 4.dp).testTag("result_question"))
-            }
-        }
-        ResearchStamp(error.technical, Modifier.testTag("result_technical"))
-        if (primary != null || secondary != null) {
-            Column(Modifier.padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                primary?.invoke()
-                secondary?.invoke()
-            }
-        }
-    }
-}
-
 /** Section heading inside the brief; announced as a heading. */
 @Composable
 fun BriefSectionTitle(text: String, modifier: Modifier = Modifier, count: Int? = null) {
@@ -479,10 +333,5 @@ fun BriefSectionTitle(text: String, modifier: Modifier = Modifier, count: Int? =
         Text(text, style = MaterialTheme.typography.titleMedium, color = c.ink, modifier = Modifier.weight(1f).semantics { heading() })
         if (count != null) ResearchStamp(count.toString())
     }
-}
-
-@Composable
-fun ColumnScope.ResearchNote(text: String) {
-    Text(text, style = MaterialTheme.typography.bodySmall, color = AutopilotTheme.colors.ink2, modifier = Modifier.padding(top = 8.dp))
 }
 

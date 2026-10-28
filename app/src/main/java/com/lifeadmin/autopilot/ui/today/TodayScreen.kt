@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lifeadmin.autopilot.data.repository.TaskSummary
 import com.lifeadmin.autopilot.di.AppContainer
+import com.lifeadmin.autopilot.domain.scheduling.RoutineCycle
 import com.lifeadmin.autopilot.ui.components.AutopilotIcons
 import com.lifeadmin.autopilot.ui.components.CardContext
 import com.lifeadmin.autopilot.ui.components.CompactTaskRow
@@ -60,6 +61,7 @@ import com.lifeadmin.autopilot.ui.components.RowGroup
 import com.lifeadmin.autopilot.ui.components.ScreenHeader
 import com.lifeadmin.autopilot.ui.components.SectionTitle
 import com.lifeadmin.autopilot.ui.components.TaskCard
+import com.lifeadmin.autopilot.ui.components.TaskPresentation
 import com.lifeadmin.autopilot.ui.components.TimeText
 import com.lifeadmin.autopilot.ui.components.dashedBorder
 import com.lifeadmin.autopilot.ui.components.showToast
@@ -100,13 +102,27 @@ fun TodayScreen(
     val scope = rememberCoroutineScope()
     val plan = state.plan
 
-    fun done(s: TaskSummary) = viewModel.complete(s.task.id) {
-        scope.launch {
-            val r = snackbar.showToast("Done. Nudges stopped.", actionLabel = "Undo")
-            if (r == SnackbarResult.ActionPerformed) viewModel.undoComplete(s.task.id)
+    fun done(s: TaskSummary) {
+        // A routine's check finishes tonight's cycle; the task (and tomorrow's nudge) stays.
+        if (TaskPresentation.isCycleDone(s, state.now)) { viewModel.undoFinishCycle(s.task.id); return }
+        if (RoutineCycle.canFinishCycle(s.task, s.policy)) {
+            val label = RoutineCycle.label(state.now, state.zone)
+            viewModel.finishCycle(s.task.id) {
+                scope.launch {
+                    val r = snackbar.showToast("$label. The routine continues.", actionLabel = "Undo")
+                    if (r == SnackbarResult.ActionPerformed) viewModel.undoFinishCycle(s.task.id)
+                }
+            }
+            return
+        }
+        viewModel.complete(s.task.id) {
+            scope.launch {
+                val r = snackbar.showToast("Done. Nudges stopped.", actionLabel = "Undo")
+                if (r == SnackbarResult.ActionPerformed) viewModel.undoComplete(s.task.id)
+            }
         }
     }
-    fun reopen(s: TaskSummary) = viewModel.undoComplete(s.task.id)
+    fun reopen(s: TaskSummary) = if (TaskPresentation.isCycleDone(s, state.now)) viewModel.undoFinishCycle(s.task.id) else viewModel.undoComplete(s.task.id)
 
     LazyColumn(
         Modifier.fillMaxSize().testTag("today_list"),
@@ -317,7 +333,7 @@ private fun EmptyToday(state: TodayUiState, onCaptureWithText: (String) -> Unit,
         )
         Text("A clear day.", style = MaterialTheme.typography.displayMedium, color = c.ink, modifier = Modifier.semantics { heading() }.testTag("today_headline"))
         Text(
-            if (state.showOnboarding) "Nothing needs you right now. Tell Autopilot what you mean to do — it remembers, and keeps after you until it's done. Everything stays on this phone: no account, no cloud. AI planning is optional and off unless you set it up. Dismissing a notification never completes a task."
+            if (state.showOnboarding) "Nothing needs you right now. Tell Autopilot what you mean to do — it remembers, and keeps after you until it's done. Everything stays on this phone: no account, no cloud. Dismissing a notification never completes a task."
             else "Nothing needs you right now. Tell Autopilot what you mean to do — it remembers, and keeps after you until it's done.",
             style = MaterialTheme.typography.bodyLarge, color = c.ink2,
         )

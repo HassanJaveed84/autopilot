@@ -31,9 +31,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.lifeadmin.autopilot.ai.AiConfig
+import com.lifeadmin.autopilot.ai.ModelNames
 import com.lifeadmin.autopilot.ai.research.Finding
-import com.lifeadmin.autopilot.ai.research.ResearchActions
 import com.lifeadmin.autopilot.ui.components.AutopilotIcons
 import com.lifeadmin.autopilot.ui.components.ButtonPair
 import com.lifeadmin.autopilot.ui.components.ChoiceChip
@@ -57,8 +56,6 @@ fun ResearchBriefScreen(
     viewModel: ResearchBriefViewModel,
     zone: ZoneId,
     onBack: () -> Unit,
-    onReview: (selected: Set<String>) -> Unit,
-    onResearchAgain: (question: String) -> Unit,
 ) {
     val s by viewModel.state.collectAsStateWithLifecycle()
     val c = AutopilotTheme.colors
@@ -81,22 +78,8 @@ fun ResearchBriefScreen(
                     Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
                         HorizontalDivider(color = c.line)
                         Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
-                            val terminal = s.details?.task?.status?.isTerminal == true
-                            val count = s.selected.size
-                            ButtonPair(
-                                secondary = { m -> SecondaryButton("Done", onClick = onBack, modifier = m.testTag("brief_done")) },
-                                primary = { m ->
-                                    PrimaryButton(
-                                        if (count == 0) "Select moves to add" else "Review $count ${if (count == 1) "change" else "changes"}",
-                                        onClick = { onReview(s.selected) }, enabled = count > 0 && !terminal && s.details != null,
-                                        modifier = m.testTag("brief_review"),
-                                    )
-                                },
-                            )
-                            Text(
-                                if (terminal) "This task is done. Reopen it to add moves." else "Saved to this task’s research. Your task hasn’t changed.",
-                                style = MaterialTheme.typography.bodySmall, color = c.ink3, modifier = Modifier.padding(top = 8.dp),
-                            )
+                            SecondaryButton("Done", onClick = onBack, modifier = Modifier.fillMaxWidth().testTag("brief_done"))
+                            Text("A saved brief from the first research version, kept as it was. To act on it, research again: changes then go through the review.", style = MaterialTheme.typography.bodySmall, color = c.ink3, modifier = Modifier.padding(top = 8.dp))
                         }
                     }
                 }
@@ -113,13 +96,11 @@ fun ResearchBriefScreen(
                 val content = brief.content
                 val sources = content.sources
                 val applied = brief.applied.map { it.moveId }.toSet()
-                val existingSteps = s.details?.steps?.map { ResearchActions.normalize(it.title) }?.toSet().orEmpty()
                 val sectionIndex = mapOf("Answer" to 2, "Next moves" to 3, "Findings" to 4, "Sources" to 5)
                 LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(padding).testTag("brief_list"), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 32.dp)) {
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            if (s.isStale) ResearchBanner("This brief is from ${Format.relativeLower(brief.createdAt, s.now, zone)}", "Fares, times and rules may have changed since.", warn = true, tag = "brief_stale", action = { LinkButton("Research again", onClick = { onResearchAgain(brief.question) }, modifier = Modifier.padding(top = 4.dp).testTag("brief_again")) })
-                            if (s.online == false) ResearchBanner("You’re offline", "This saved brief is fully readable; links open once you’re back online.", icon = AutopilotIcons.WifiOff, tag = "brief_offline")
+                            if (s.isStale) ResearchBanner("This brief is from ${Format.relativeLower(brief.createdAt, s.now, zone)}", "Fares, times and rules may have changed since.", warn = true, tag = "brief_stale")
                             if (!content.verified) ResearchBanner("Nothing here could be verified", "The answer came back without any source citations, so everything below is labelled as Claude’s suggestion. Check it before you rely on it.", warn = true, icon = AutopilotIcons.Warn, tag = "brief_unverified")
                             if (content.truncated) ResearchBanner("The answer was cut short", "Anthropic stopped before the brief was complete. What arrived is shown; parts may be missing.", icon = AutopilotIcons.Warn, tag = "brief_truncated")
                             if (content.injectionNoticed) ResearchBanner("A web page tried to give instructions", "Page text is information only. The line was dropped and nothing was done.", icon = AutopilotIcons.Shield, tag = "brief_injection")
@@ -150,16 +131,19 @@ fun ResearchBriefScreen(
                     item {
                         BriefSectionTitle("Next moves", count = content.moves.size)
                         Text(
-                            if (content.moves.isEmpty()) "Nothing to add from this research." else "Tick what to add. Sourced steps are pre-selected; suggestions and checks are not. Nothing changes until you review and apply.",
+                            if (content.moves.isEmpty()) "Nothing to add from this research." else "What this research suggested. Read-only: start new research to put a change through the review.",
                             style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(bottom = 10.dp),
                         )
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("brief_moves")) {
                             content.moves.forEach { m ->
-                                val dup = ResearchActions.normalize(m.text) in existingSteps && m.id !in applied && m.kind != com.lifeadmin.autopilot.ai.research.MoveKind.NOTE
-                                MoveRow(
-                                    m, sources, checked = m.id in s.selected, onToggle = { viewModel.toggle(m.id, it) }, onCite = viewModel::openSource,
-                                    skippedReason = if (dup) "Already in your steps" else null, applied = m.id in applied,
-                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text("•", style = MaterialTheme.typography.bodyMedium, color = c.ink2)
+                                    Column(Modifier.weight(1f)) {
+                                        Text(m.text, style = MaterialTheme.typography.bodyMedium, color = c.ink)
+                                        if (m.id in applied) Text("Added to your task", style = MaterialTheme.typography.labelSmall, color = c.onDoneSoft)
+                                    }
+                                    m.refs.take(2).forEach { n -> CitationChip(n, onClick = { viewModel.openSource(n) }) }
+                                }
                             }
                         }
                     }
@@ -191,14 +175,13 @@ fun ResearchBriefScreen(
                                 }
                             }
                             ResearchStamp(
-                                "${AiConfig.label(content.usage.model)} · ${content.usage.inputTokens} in · ${content.usage.outputTokens} out · ${content.usage.webSearches} ${if (content.usage.webSearches == 1) "search" else "searches"} · ${content.usage.elapsedMs / 1000} s" + if (content.usage.continuedOnce) " · continued once" else "",
+                                "${ModelNames.label(content.usage.model)} · ${content.usage.inputTokens} in · ${content.usage.outputTokens} out · ${content.usage.webSearches} ${if (content.usage.webSearches == 1) "search" else "searches"} · ${content.usage.elapsedMs / 1000} s" + if (content.usage.continuedOnce) " · continued once" else "",
                                 Modifier.padding(top = 6.dp).testTag("brief_usage"),
                             )
                             Text("Shared: ${content.shared.joinToString(", ").lowercase()}.", style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(top = 8.dp))
                             Text("Page text was treated as information only — instructions found on web pages are never followed. Billed by Anthropic to your key; the app shows counts, not prices.", style = MaterialTheme.typography.bodySmall, color = c.ink2, modifier = Modifier.padding(top = 4.dp))
                         }
                         Spacer(Modifier.heightIn(min = 8.dp))
-                        LinkButton("Research again with this question", onClick = { onResearchAgain(brief.question) }, modifier = Modifier.padding(top = 12.dp).testTag("brief_again_bottom"))
                     }
                 }
                 s.sourceSheet?.let { n ->
@@ -214,7 +197,7 @@ fun ResearchBriefScreen(
                             }
                             if (content.quickAnswer.any { n in it.refs }) add("The quick answer")
                         }
-                        SourceSheet(src, usedFor, researchedLine = "Researched ${Format.relative(brief.createdAt, s.now, zone)}", onDismiss = viewModel::closeSource, online = s.online)
+                        SourceSheet(src, usedFor, researchedLine = "Researched ${Format.relative(brief.createdAt, s.now, zone)}", onDismiss = viewModel::closeSource)
                     }
                 }
             }

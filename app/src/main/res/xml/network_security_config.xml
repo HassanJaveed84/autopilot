@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- TLS only, system CAs only (user-installed CAs can't intercept AI requests).
-     The only network use is optional, user-triggered AI planning (api.anthropic.com). -->
+<!-- TLS only, system CAs only. The app holds no INTERNET permission and makes no requests of its
+     own (built-in AI is retired); this stays as defence in depth. -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="false">
         <trust-anchors>

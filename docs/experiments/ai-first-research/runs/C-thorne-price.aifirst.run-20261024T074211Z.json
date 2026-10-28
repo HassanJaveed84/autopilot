@@ -1,0 +1,312 @@
+{
+ "sanitization": {
+  "rawSha256": "0fb1954c6b646b183899bab44f856a915367b70689773b5e0410333987fa4788",
+  "removed": {
+   "emails": 0,
+   "phones": 0
+  },
+  "note": "Compact summary: request bodies and full reply segments omitted; cited text kept verbatim apart from emails/phones; no credential."
+ },
+ "scenario": "C-thorne-price",
+ "engine": "aifirst",
+ "model": "claude-sonnet-5-5",
+ "ranAtUtc": "2026-10-24T07:42:30.601333476Z",
+ "searchBudget": 6,
+ "spendLimitCents": 500,
+ "totalUsd": 0.196634,
+ "turns": [
+  {
+   "question": "Where can I buy Thorne Basic Nutrients 2/Day at the best price from a reputable US retailer?",
+   "status": "COMPLETE",
+   "outcome": null,
+   "objective": null,
+   "config": "searchBudget=6 spendLimit=500¢ maxOutputTokens=16000 prompt=v1",
+   "elapsedMs": 19087,
+   "shown": "**Short answer:** Almost every reputable US retailer lists the 60-capsule bottle at $36.00, so the price is nearly the same wherever you buy it. The lowest verified price is about $32 to $34 per 60 capsules, using a subscription discount or the larger bottle. Prices change often, so confirm the final price at checkout.\n\n**What I found (listings checked today, but cached snippets can be stale):**\n- **Standard 60-capsule bottle, $36.00:**\n  - iHerb lists it at $36.00 [1].\n  - Vitacost lists it at $36.00 [2] and Walmart.com lists it at $36.00 [3].\n  - Swanson Vitamins lists it at $36.00 [4].\n  - A clinic store shows it marked down from $38.99 to $36.00 [5].\n- **Higher at local-delivery grocers:** PCC Community Markets lists it at $40.99 [6] and Mother's Market at $43.39 [7]. These are delivery-app prices and probably include markups.\n- **120-capsule bottle, $68.00:** Vitacost lists it at $68.00 [8]. That works out to about $34 per 60 capsules, so it's slightly cheaper per capsule.\n- **Subscription discounts:**\n  - Thorne's own site says you save 10% when subscribed to 1–2 supplements, and 20% with 3 or more [9]. Subscription orders get free ground shipping within the contiguous US. [9] By my math, 10% off $36 is about $32.40, assuming Thorne's own price is also $36. I didn't see Thorne's product page price directly.\n  - Amazon's Subscribe & Save page showed $30.60 with 15% savings [10]. That 15% applies only if you receive 5 or more products in one auto-delivery [10]. Otherwise the page says you'll save 10% [10], which is about $32.40. That page was flagged as old (about 469 days), so check it live.\n- **Be careful with:** Price-comparison sites show lower numbers, for example $27.90 at Amazon as of September 2026 [11]. I couldn't confirm that on a current seller page, so don't count on it.\n\n**Check the version.** Two versions exist. The \"NSF Certified for Sport\" 60-capsule version is $40.00 at iHerb [12]. The standard bottle is $36. Only pay more for the Sport version if you need that certification, for example for tested athletics.\n\n**My judgment:** If you're happy to subscribe, the best deal is probably Thorne direct or Amazon Subscribe & Save, at roughly $31 to $32.40 per bottle. Both are cancelable. For a one-time purchase, $36 is the going price, and iHerb or Vitacost are fine. Vitacost says it sources products directly from brands or authorized distributors [13]. On Amazon, check that the seller is Amazon or Thorne. The listing I saw said \"Sold by Pattern.\" [10] I couldn't confirm whether Pattern is an authorized Thorne seller.\n\n**Before you buy:** Confirm the final price and the Sport vs. standard version. Check the \"best by\" date as well. Vitacost's page showed Best by 10/01/2027 [13].\n\nSources\n[1] Thorne, Basic Nutrients 2/Day, 60 Capsules — https://www.iherb.com/pr/thorne-basic-nutrients-2-day-60-capsules/85476\n[2] Thorne Basic Nutrients 2/Day — https://www.vitacost.com/products/thorne-basic-nutrients-2-day-60-capsules-85476\n[3] THORNE - Basic Nutrients 2/Day - Comprehensive Daily Multivitamin with Optimal Bioavailability - Vitamin & Mineral Formula - Gluten, Dairy & Soy-Free - 60 Capsules - 30 Servings - Walmart.com — https://www.walmart.com/ip/Thorne-Research-Basic-Nutrients-2-Day-Complete-Multivitamin-Mineral-Formula-60-Capsules/719863293 (search result age: 2279 days ago)\n[4] Basic Nutrients 2/Day — https://www.swansonvitamins.com/p/thorne-basic-nutrients-2-day-60-caps\n[5] Thorne Basic Nutrients 2/Day is On Sale! Fast shipping — https://cunninghamclinicstore.com/product/thorne-basic-nutrients-2-day (search result age: 58 days ago)\n[6] Thorne Basic Nutrients, 2/Day, Capsules Same-Day Delivery — https://delivery.pccmarkets.com/store/pcc-community-markets/products/17297253-thorne-research-2-day-multi-vitamin-capsules-60-ct\n[7] Thorne Basic Nutrients 2/Day, Capsules Same-Day Delivery or Pickup — https://delivery.mothersmarket.com/store/mothers-market/products/21544451-thorne-basic-nutrients-2-day-dietary-supplement-capsules-60-ct\n[8] Thorne, Basic Nutrients 2/Day, 120 Capsules — https://www.vitacost.com/thorne-basic-nutrients-2-day\n[9] Subscriptions — https://www.thorne.com/subscriptions\n[10] THORNE Basic Nutrients 2/Day, Vitamin & Mineral Formula, 60 Capsules — https://www.amazon.com/Thorne-Basic-Nutrients-Comprehensive-Bioavailability/dp/B00FOTMGTU (search result age: 469 days ago)\n[11] THORNE Basic Nutrients 2/Day Multivitamin — https://shopsavvy.com/products/thorne-basic-nutrients-2day-multivitamin\n[12] Thorne, Basic Nutrients 2/Day, NSF Certified, 60 Capsules — https://www.iherb.com/pr/thorne-basic-nutrients-2-day-nsf-certified-60-capsules/52954\n[13] Thorne Basic Nutrients 2/Day — https://www.vitacost.com/thorne-basic-nutrient-2-day",
+   "claims": [],
+   "ledger": [
+    {
+     "stage": "AI_FIRST",
+     "model": "claude-sonnet-5-5",
+     "outcome": "COMPLETE",
+     "usageStatus": "COMPLETE",
+     "inputTokens": 67807,
+     "outputTokens": 2102,
+     "cacheReadTokens": 0,
+     "cacheWriteTokens": 0,
+     "webSearches": 4,
+     "estimatedMicros": 196634,
+     "durationMs": 19015
+    }
+   ],
+   "calls": [
+    {
+     "maxSearches": 6,
+     "stop": "END",
+     "elapsedMs": 19015,
+     "continuesPausedTurn": false,
+     "searches": [
+      {
+       "query": "Thorne Basic Nutrients 2/Day 60 capsules price",
+       "error": "",
+       "results": [
+        {
+         "url": "https://www.iherb.com/pr/thorne-basic-nutrients-2-day-60-capsules/85476",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.iherb.com/pr/thorne-basic-nutrients-2-day-nsf-certified-60-capsules/52954",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.walmart.com/ip/Thorne-Research-Basic-Nutrients-2-Day-Complete-Multivitamin-Mineral-Formula-60-Capsules/719863293",
+         "pageAge": "2279 days ago"
+        },
+        {
+         "url": "https://delivery.pccmarkets.com/store/pcc-community-markets/products/17297253-thorne-research-2-day-multi-vitamin-capsules-60-ct",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.vitacost.com/products/thorne-basic-nutrients-2-day-60-capsules-85476",
+         "pageAge": ""
+        },
+        {
+         "url": "https://delivery.mothersmarket.com/store/mothers-market/products/21544451-thorne-basic-nutrients-2-day-dietary-supplement-capsules-60-ct",
+         "pageAge": ""
+        },
+        {
+         "url": "https://pureprescriptions.com/product/basic-nutrients-2-day/",
+         "pageAge": "294 days ago"
+        },
+        {
+         "url": "https://instalab.com/supplements/thorne-basic-nutrients-2day-60-capsule",
+         "pageAge": "171 days ago"
+        },
+        {
+         "url": "https://www.swansonvitamins.com/p/thorne-basic-nutrients-2-day-60-caps",
+         "pageAge": ""
+        },
+        {
+         "url": "https://charnyhealing.com/products/basic-nutrients-2-day-thorne",
+         "pageAge": ""
+        }
+       ]
+      },
+      {
+       "query": "Thorne Basic Nutrients 2/Day Amazon",
+       "error": "",
+       "results": [
+        {
+         "url": "https://www.amazon.com/basic-nutrients-2-day-thorne-research/s?k=basic+nutrients+2%2Fday+by+thorne+research",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.amazon.com/Thorne-Basic-Nutrients-Comprehensive-Bioavailability/dp/B00FOTMGTU",
+         "pageAge": "469 days ago"
+        },
+        {
+         "url": "https://shopsavvy.com/products/thorne-basic-nutrients-2day-multivitamin",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.amazon.com/thorne-research-basic-nutrients-2-day/s?k=thorne+research+-+basic+nutrients+2+/+day",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.amazon.com/stores/Thorne/page/69D04AC7-9D44-4B65-8B8A-A12C2969E259",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.amazon.com/thorne-basic-nutrients-2-day/s?k=thorne+basic+nutrients+2+a+day",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.amazon.com/THORNE-Daily-Essentials-Bundle-Multivitamin/dp/B0D38HZ6ZJ",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.amazon.com/thorne-research-basic-nutrients/s?k=thorne+research+basic+nutrients",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.amazon.com/live/video/0f1525d9a83043d8b19f9fadedb3eedc",
+         "pageAge": "189 days ago"
+        },
+        {
+         "url": "https://www.amazon.com/Multivitamins-THORNE-Vitamin-Supplements/s?keywords=Multivitamins&rh=n%3A3774861%2Cp_89%3ATHORNE&c=ts&ts_id=3774861",
+         "pageAge": ""
+        }
+       ]
+      },
+      {
+       "query": "Thorne Basic Nutrients 2/Day Fullscript OR Vitacost OR iHerb",
+       "error": "",
+       "results": [
+        {
+         "url": "https://fullscript.com/catalog/products/basic-nutrients-2-day",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.iherb.com/pr/thorne-basic-nutrients-2-day-120-capsules/156194",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.iherb.com/c/thorne/multivitamins",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.iherb.com/pr/thorne-basic-nutrients-2-day-60-capsules/85476",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.iherb.com/pr/thorne-basic-nutrients-2-day-nsf-certified-60-capsules/52954",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.iherb.com/c/thorne/vitamins",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.vitacost.com/thorne-basic-nutrient-2-day",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.vitacost.com/thorne-research-basic-nutrients-2-day-nsf-certified-for-sport",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.vitacost.com/thorne-basic-nutrients-2-day",
+         "pageAge": ""
+        },
+        {
+         "url": "https://drbellhealth.com/thorne-basic-nutrients-2-day-review/",
+         "pageAge": "18 days ago"
+        }
+       ]
+      },
+      {
+       "query": "thorne.com Basic Nutrients 2/Day subscribe save",
+       "error": "",
+       "results": [
+        {
+         "url": "https://www.thorne.com/subscriptions",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.amazon.com/Thorne-Basic-Nutrients-Comprehensive-Bioavailability/dp/B00FOTMGTU",
+         "pageAge": "469 days ago"
+        },
+        {
+         "url": "https://www.iherb.com/pr/thorne-basic-nutrients-2-day-60-capsules/85476",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.amazon.com/thorne-basic-nutrients-2-day/s?k=thorne+basic+nutrients+2+a+day",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.amazon.com/thorne-basic-nutrients-2-day/s?k=thorne+basic+nutrients+2+day",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.iherb.com/pr/thorne-basic-nutrients-2-day-nsf-certified-60-capsules/52954",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.walmart.com/ip/Thorne-Research-Basic-Nutrients-2-Day-Complete-Multivitamin-Mineral-Formula-60-Capsules/719863293",
+         "pageAge": "2279 days ago"
+        },
+        {
+         "url": "https://www.thorne.com/products/dp/thorne-basics-bundle",
+         "pageAge": "4 days ago"
+        },
+        {
+         "url": "https://cunninghamclinicstore.com/product/thorne-basic-nutrients-2-day",
+         "pageAge": "58 days ago"
+        },
+        {
+         "url": "https://shop.athleticinsight.com/blogs/reviews/thorne-multivitamin-review",
+         "pageAge": "144 days ago"
+        }
+       ]
+      }
+     ],
+     "citations": [
+      {
+       "url": "https://www.iherb.com/pr/thorne-basic-nutrients-2-day-60-capsules/85476",
+       "citedText": "Thorne, Basic Nutrients 2/Day, 60 Capsules\n\n12,422 Reviews\n\n$36.00 $36.00 (Saved $0.00)\n\n# Thorne, Basic Nutrients 2/Day, 60 Capsules\nThorne, Basic Nu..."
+      },
+      {
+       "url": "https://www.vitacost.com/products/thorne-basic-nutrients-2-day-60-capsules-85476",
+       "citedText": "# Thorne, Basic Nutrients 2/Day, 60 Capsules\nSKU #: 693749006848|Shipping Weight: 0.175 lb|Thorne\n\n- Thorne, Basic Nutrients 2/Day, 60 Capsules\n\nOur P..."
+      },
+      {
+       "url": "https://www.walmart.com/ip/Thorne-Research-Basic-Nutrients-2-Day-Complete-Multivitamin-Mineral-Formula-60-Capsules/719863293",
+       "citedText": "Buy THORNE - Basic Nutrients 2/Day - Comprehensive Daily Multivitamin with Optimal Bioavailability - Vitamin & Mineral Formula - Gluten, Dairy & Soy-F..."
+      },
+      {
+       "url": "https://www.swansonvitamins.com/p/thorne-basic-nutrients-2-day-60-caps",
+       "citedText": "# Basic Nutrients 2/Day\n60 Caps\n\nTRN015 | Thorne Basic Nutrients 2/Day dietary supplement, 60 capsules\n\n- TRN015 \\| Thorne Basic Nutrients 2/Day dieta..."
+      },
+      {
+       "url": "https://cunninghamclinicstore.com/product/thorne-basic-nutrients-2-day",
+       "citedText": "Thorne Basic Nutrients 2-Day Jar\n\nThorne Basic Nutrients 2-Day Benefits\n\nThorne Basic Nutrients 2-Day Use\n\nThorne Basic Nutrients 2-Day Facts\n\n# Thorn..."
+      },
+      {
+       "url": "https://delivery.pccmarkets.com/store/pcc-community-markets/products/17297253-thorne-research-2-day-multi-vitamin-capsules-60-ct",
+       "citedText": "## PCC Community Markets\n- Shop\n\nFront of Vitamins & Supplements Thorne Basic Nutrients, 2/Day, Capsules, image 1 of 4\n\nThorne Basic Nutrients, 2/Day,..."
+      },
+      {
+       "url": "https://delivery.mothersmarket.com/store/mothers-market/products/21544451-thorne-basic-nutrients-2-day-dietary-supplement-capsules-60-ct",
+       "citedText": "## Mother's Market\n- Shop\n\nFront of Vitamins & Supplements Thorne Basic Nutrients 2/Day, Capsules, image 1 of 4\n\nThorne Basic Nutrients 2/Day, Capsule..."
+      },
+      {
+       "url": "https://www.vitacost.com/thorne-basic-nutrients-2-day",
+       "citedText": "# Thorne, Basic Nutrients 2/Day, 120 Capsules\nSKU #: 693749015666|Shipping Weight: 0.32 lb|Thorne\n\n- Thorne, Basic Nutrients 2/Day, 120 Capsules\n\nOur ..."
+      },
+      {
+       "url": "https://www.thorne.com/subscriptions",
+       "citedText": "Bag of daily electrolytes\n\nSubscription benefits\n\n• Save 10% when subscribed to 1–2 supplements\n\n• Save 20% when subscribed to 3 or more supplements\n\n..."
+      },
+      {
+       "url": "https://www.thorne.com/subscriptions",
+       "citedText": "All subscription orders earn free ground shipping within the contiguous United States.\n\n"
+      },
+      {
+       "url": "https://www.amazon.com/Thorne-Basic-Nutrients-Comprehensive-Bioavailability/dp/B00FOTMGTU",
+       "citedText": "It’s a good option for foundational nutritional support alongside a balanced ...\n\n# Not Added\n##### Subscribe & Save\n$30.60 with 15 percent savings $3..."
+      },
+      {
+       "url": "https://www.amazon.com/Thorne-Basic-Nutrients-Comprehensive-Bioavailability/dp/B00FOTMGTU",
+       "citedText": "# Unlock 15% savings\nSave 15% when you receive 5 or more products in one auto-delivery to one address. "
+      },
+      {
+       "url": "https://www.amazon.com/Thorne-Basic-Nutrients-Comprehensive-Bioavailability/dp/B00FOTMGTU",
+       "citedText": "Currently, you'll save 10% on your **Dec 24** delivery.\n\n"
+      },
+      {
+       "url": "https://shopsavvy.com/products/thorne-basic-nutrients-2day-multivitamin",
+       "citedText": "# THORNE Basic Nutrients 2/Day Multivitamin\n$16.68 across 37 retailers\n\nModel: VM2NC Color: Brown UPC: 693749002871\n\nLowest at Amazon\n\n$27.90 at Amazo..."
+      },
+      {
+       "url": "https://www.iherb.com/pr/thorne-basic-nutrients-2-day-nsf-certified-60-capsules/52954",
+       "citedText": "Basic Nutrients\n\nThorne, Basic Nutrients 2/Day, NSF Certified, 60 Capsules\n\n$40.00 $40.00 (Saved $0.00)\n\n# Thorne, Basic Nutrients 2/Day, NSF Certifie..."
+      },
+      {
+       "url": "https://www.vitacost.com/thorne-basic-nutrient-2-day",
+       "citedText": "# Thorne, Basic Nutrients 2/Day, 60 Capsules\nSKU #: 693749006848|Shipping Weight: 0.175 lb|Thorne\n\n- Thorne, Basic Nutrients 2/Day, 60 Capsules\n\nOur P..."
+      },
+      {
+       "url": "https://www.amazon.com/Thorne-Basic-Nutrients-Comprehensive-Bioavailability/dp/B00FOTMGTU",
+       "citedText": "Discover ...\n\nBuy THORNE Basic Nutrients 2/Day, Vitamin & Mineral Formula, 60 Capsules | Comprehensive Daily Multi-Vitamin with Optimal Bioavailabilit..."
+      },
+      {
+       "url": "https://www.vitacost.com/thorne-basic-nutrient-2-day",
+       "citedText": "# Thorne, Basic Nutrients 2/Day, 60 Capsules\nSKU #: 693749006848|Shipping Weight: 0.175 lb|Thorne\n\n- Thorne, Basic Nutrients 2/Day, 60 Capsules\n\nOur P..."
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

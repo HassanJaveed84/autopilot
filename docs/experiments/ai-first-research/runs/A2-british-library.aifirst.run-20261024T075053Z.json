@@ -1,0 +1,118 @@
+{
+ "sanitization": {
+  "rawSha256": "3cfb2c807e51a8aac86e838f9538c49c6fd9bbfdd054c7f1344c760574da826d",
+  "removed": {
+   "emails": 0,
+   "phones": 0
+  },
+  "note": "Compact summary: request bodies and full reply segments omitted; cited text kept verbatim apart from emails/phones; no credential."
+ },
+ "scenario": "A2-british-library",
+ "engine": "aifirst",
+ "model": "claude-sonnet-5-5",
+ "ranAtUtc": "2026-10-24T07:50:57.551358899Z",
+ "searchBudget": 3,
+ "spendLimitCents": 300,
+ "totalUsd": 0.041976,
+ "turns": [
+  {
+   "question": "What is the street address of the British Library in London?",
+   "status": "COMPLETE",
+   "outcome": null,
+   "objective": null,
+   "config": "searchBudget=3 spendLimit=300¢ maxOutputTokens=16000 prompt=v1",
+   "elapsedMs": 4271,
+   "shown": "The British Library's address is:\n\n**96 Euston Road, London, NW1 2DB, England [1]**\n\nMany independent sources give this same address, including Art Fund [2] and Britain Express [3]. The site is the St Pancras building. It is on the north side of Euston Road, between Euston railway station and St Pancras railway station. [4]\n\nThis is the main London site. The library also has a branch in Boston Spa, West Yorkshire, so don't confuse the two. The address doesn't change often, but I took it from third-party pages and not from the library's own website. If you're making a special trip, check bl.uk for opening hours and any closures.\n\nSources\n[1] British Library — https://en.wikipedia.org/wiki/British_Library\n[2] British Library - Art Fund — https://www.artfund.org/explore/museums-and-galleries/british-library\n[3] British Library - London Travel and tourism information — https://www.britainexpress.com/articles/Notebook/british_library.htm\n[4] British Library — https://simple.wikipedia.org/wiki/British_Library (search result age: 168 days ago)",
+   "claims": [],
+   "ledger": [
+    {
+     "stage": "AI_FIRST",
+     "model": "claude-sonnet-5-5",
+     "outcome": "COMPLETE",
+     "usageStatus": "COMPLETE",
+     "inputTokens": 14373,
+     "outputTokens": 323,
+     "cacheReadTokens": 0,
+     "cacheWriteTokens": 0,
+     "webSearches": 1,
+     "estimatedMicros": 41976,
+     "durationMs": 4214
+    }
+   ],
+   "calls": [
+    {
+     "maxSearches": 3,
+     "stop": "END",
+     "elapsedMs": 4214,
+     "continuesPausedTurn": false,
+     "searches": [
+      {
+       "query": "British Library London address St Pancras",
+       "error": "",
+       "results": [
+        {
+         "url": "https://librarytechnology.org/library/3413",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.artfund.org/explore/museums-and-galleries/british-library",
+         "pageAge": ""
+        },
+        {
+         "url": "https://simple.wikipedia.org/wiki/British_Library",
+         "pageAge": "168 days ago"
+        },
+        {
+         "url": "https://en.wikipedia.org/wiki/British_Library",
+         "pageAge": ""
+        },
+        {
+         "url": "https://ageofrevolution.waterlooassociation.org.uk/venues/british-library/",
+         "pageAge": "3047 days ago"
+        },
+        {
+         "url": "https://www.timeout.com/london/attractions/british-library",
+         "pageAge": "3916 days ago"
+        },
+        {
+         "url": "https://www.britainexpress.com/articles/Notebook/british_library.htm",
+         "pageAge": ""
+        },
+        {
+         "url": "https://bodiesfromthelibrary.com/how-to-get-there/",
+         "pageAge": "4322 days ago"
+        },
+        {
+         "url": "https://exploring-london.com/2018/06/29/treasures-of-london-the-british-librarys-st-pancras-building/",
+         "pageAge": "3038 days ago"
+        },
+        {
+         "url": "https://civicledger.co.uk/blog/p/",
+         "pageAge": "150 days ago"
+        }
+       ]
+      }
+     ],
+     "citations": [
+      {
+       "url": "https://en.wikipedia.org/wiki/British_Library",
+       "citedText": "- The British Library from the piazza\n- 51°31′46″N 0°07′37″W﻿ / ﻿51.52944°N 0.12694°W\n- Location: 96 Euston Road London, NW1 2DB, England\n- Type: Nati..."
+      },
+      {
+       "url": "https://www.artfund.org/explore/museums-and-galleries/british-library",
+       "citedText": "## Visitor information\n### Address\nBritish Library\n\n96 Euston Road, London, Greater London, NW1 2DB 01937 546546\n\n## Art Funded by you at British Libr..."
+      },
+      {
+       "url": "https://www.britainexpress.com/articles/Notebook/british_library.htm",
+       "citedText": "About British Library Address: 96 Euston Road, London, Greater London, England, NW1 2DB Attraction Type: Museum Location: opposite St Pancras station ..."
+      },
+      {
+       "url": "https://simple.wikipedia.org/wiki/British_Library",
+       "citedText": "It is on the north side of Euston Road in St Pancras, London, between Euston railway station and St Pancras railway station.\n\n"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

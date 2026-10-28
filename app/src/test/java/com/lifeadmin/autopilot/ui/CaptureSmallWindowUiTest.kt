@@ -79,7 +79,6 @@ class CaptureSmallWindowUiTest {
         // Pinned footer: reachable without scrolling, at 48dp or more.
         compose.onNodeWithTag("sheet_footer").assertIsDisplayed()
         compose.onNodeWithTag("capture_save").assertIsDisplayed().assertTouchTargetAtLeast(48.dp)
-        compose.onNodeWithTag("capture_plan_ai").assertIsDisplayed()
         // Every detail field can be scrolled into view and the sheet is still saveable afterwards.
         compose.onNodeWithTag("capture_priority_high").performScrollTo().assertIsDisplayed().performClick()
         compose.onNodeWithTag("capture_notes").performScrollTo().assertIsDisplayed().performTextInput("Platform 4, usually")

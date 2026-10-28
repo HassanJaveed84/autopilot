@@ -84,7 +84,7 @@ fun ScreenHeader(
     }
 }
 
-/** Back-arrow header for pushed screens (Settings, Health, AI planning, Task detail). */
+/** Back-arrow header for pushed screens (Settings, Health, Task detail). */
 @Composable
 fun BackHeader(
     title: String?,

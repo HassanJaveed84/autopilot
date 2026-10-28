@@ -4,29 +4,31 @@ An offline-first Android follow-through assistant. Capture a commitment in secon
 to be reminded, and the app keeps following up — for example **“Book train ride” at 09:00 and 18:00
 every day** — until you explicitly mark it Done. Dismissing a notification never completes a task.
 
-No account, no backend, no cloud sync, no analytics. Tasks and reminders work fully offline.
-**Optional AI planning** (M2, off by default) can turn a sentence into a reviewed task using your
-own Anthropic API key; the network is used only when you tap a button that asks for it.
+No account, no backend, no cloud sync, no analytics, no network access. Tasks and reminders work
+fully offline.
 
-> Status: M0–M1C (offline MVP) and M2 (optional AI capture/planning) implemented and verified with
-> JVM/Robolectric tests, lint and CI emulator tests. M2 has **not** been tested against the live
-> Anthropic API or on a physical device yet — see `docs/M2_AI_CAPTURE_REPORT.md`.
+**Autopilot manages commitments; ChatGPT handles intelligence.** To plan, research, compare or
+decide, tap **Discuss in ChatGPT** on a task: the conversation happens in your ChatGPT app, and its
+**Open in Autopilot** link brings the suggestions back for you to review and apply selectively.
+The built-in AI (Plan with AI, Move this forward, Research Online, the Anthropic API key and usage
+screens) was retired on 2026-10-27; research saved by earlier versions stays readable, read-only
+(`docs/RETIRE_EMBEDDED_AI_REPORT.md`).
 
 ## Features
 
 The UI follows the **Flight Plan** design (see `docs/FLIGHT_PLAN_UI_REPORT.md`): calm ink on
-mineral paper, orange for time, indigo (always dashed) for anything AI suggested, green for done.
+mineral paper, orange for time, indigo for suggestions waiting for review, green for done.
 
 - **Today** is a flight plan: a headline sentence, then the day's nudges on a rail with a "Now"
   marker — the first nudge of each task as a card, later repeats as dashed ghost rows, plus
   attention rows for overdue deadlines, deadlines due today and check-ins that have passed even
   when no reminder is set. Waiting on others, Not today and Done today follow as compact rows.
-- **Inbox** triage: each note gets Nudge me · Plan with AI · Waiting on… · Done already · Delete.
+- **Inbox** triage: each note gets Nudge me · Waiting on… · Done already · Delete.
   **Tasks**: search, All / Needs you / Waiting / Snoozed / Paused / Done / Archived with counts,
   sort by next nudge, deadline or newest.
 - **Capture** bar on every tab: one field, a follow-up row with a switch (the primary button
-  reads "Save & nudge" or "Save to Inbox"), "Plan with AI" beside it, and a notes / priority /
-  deadline disclosure.
+  reads "Save & nudge" or "Save to Inbox"), timing read offline from your words ("tonight",
+  "every night", "by Monday 5pm"), and a notes / priority / deadline disclosure.
 - **Task detail**: title, notes, priority, date-only or exact deadline, status actions
   (Make actionable, Waiting with check-in, Pause/Resume, Done, Cancel, Reopen), snooze with exact
   next-reminder preview, checklist (add/check/reorder/remove), reminder schedule, activity log and
@@ -50,15 +52,17 @@ mineral paper, orange for time, indigo (always dashed) for anything AI suggested
   lateness); copy/share of privacy-safe diagnostics.
 - **Backup**: plaintext JSON export/import through the system file picker, validated, merged by
   id, all-or-nothing.
-- **Plan with AI** (optional): from Capture, type or dictate e.g. “book the train ride for my
-  daughter, find parking and tickets, remind me at 9 and 6 every day until done”. Claude drafts
-  a title, notes, up to 6 steps, a next step, deadline and reminders. You review and edit
-  everything before saving. Suggested dates are labelled and not set unless you turn them on.
-  Unsupported schedules (e.g. “every weekday”) are shown with a supported alternative, never
-  silently converted.
-- **Help me move this forward** (optional, on a task): a suggested next step or missing steps,
-  shown as a diff you confirm. Separately, a local, AI-free hint appears when a task is snoozed
-  repeatedly or stalls (“add a smaller step”, “move the date”, “mark waiting”, “pause”).
+- **Discuss in ChatGPT** (on an open task): a sheet shows exactly what ChatGPT will see (the
+  task always; steps, deadline and notes only if you switch them on) and hands it to the ChatGPT
+  app. ChatGPT's **Open in Autopilot** link (`https://hassanjaveed84.github.io/autopilot/import#ap=v1…`,
+  a verified App Link) opens the **Proposal Review** for that task: pick the steps and notes you
+  want, apply them in one go, undo if needed. Repeated links never propose twice. No API key and
+  no request from Autopilot itself (`docs/CHATGPT_ROUND_TRIP_REPORT.md`).
+- **Stall hints**: a local hint appears when a task is snoozed repeatedly or stalls (“add a
+  smaller step”, “move the date”, “mark waiting”, “pause”).
+- **Saved research** from earlier versions with built-in AI: readable from its task and from
+  Settings → Saved research (shown only when there is some), with its sources; suggestions it had
+  already made still open in the Proposal Review. Nothing new can be researched in the app.
 
 ## Build
 
@@ -80,12 +84,11 @@ and release APKs as artifacts, emulator instrumented tests).
 ### Screenshots for UI review
 
 `.github/workflows/screenshots.yml` runs only on demand (Actions → **Screenshots** → *Run workflow*).
-It drives the debug app on an API 34 emulator through every main screen, dialog and AI state
+It drives the debug app on an API 34 emulator through every main screen and dialog
 (`app/src/androidTest/.../ScreenshotTour.kt`) and uploads the PNGs as the artifact
 `screenshots-<display>-<theme>-font<scale>`. Options: display `phone` / `small` (320 dp) /
 `tablet`, `light` / `dark` theme, font scale `1.0` / `1.3` / `2.0`, and an optional subset such as
-`com.lifeadmin.autopilot.ScreenshotTour#c_taskDetail`. AI screens use a scripted answer, not the
-live API. It also runs when a push changes `.github/screenshots-request.json` (up to 6 variants per
+`com.lifeadmin.autopilot.ScreenshotTour#c_taskDetail`. Saved research is seeded locally. It also runs when a push changes `.github/screenshots-request.json` (up to 6 variants per
 request; edit `reason` to request a fresh run) — that is how a coding agent without permission to
 dispatch workflows asks for screenshots.
 
@@ -121,50 +124,26 @@ uninstall: use Settings → Export first, then Import after installing.
 | `POST_NOTIFICATIONS` (Android 13+) | Show reminders. Requested the first time you turn on a reminder; if denied, tasks still work and the app shows a warning instead of pretending reminders were delivered. |
 | `RECEIVE_BOOT_COMPLETED` | Android clears alarms on reboot; the app rebuilds them from its database. |
 | `SCHEDULE_EXACT_ALARM` | Only used if you enable **Precise timing** and grant “Alarms & reminders” access. Otherwise reminders are best-effort. `USE_EXACT_ALARM` is intentionally not used. |
-| `INTERNET`, `ACCESS_NETWORK_STATE` | Only for optional AI planning requests to `api.anthropic.com`, started by you. TLS only, system CAs only. Nothing runs in the background. |
 
-No contacts, location, microphone, SMS, calendar or battery-exemption permissions.
+No `INTERNET` permission: the app makes no network requests (ChatGPT is a separate app; the App
+Link is verified by Android). No contacts, location, microphone, SMS, calendar or battery-exemption
+permissions.
 (`WAKE_LOCK` / `ACCESS_NETWORK_STATE` are merged in by WorkManager and do not grant network access;
 WorkManager's `FOREGROUND_SERVICE` is explicitly removed.)
 
-## Optional AI planning (bring your own key)
+## Built-in AI, retired
 
-1. Create an API key at [console.anthropic.com](https://console.anthropic.com) (API usage is billed
-   to that Console account; a Claude app or Claude Code subscription does **not** cover it).
-2. In the app: Settings → **Plan with AI** → turn on **Use AI planning**. Read and accept the
-   privacy note: only the text you submit, the date/time/zone and your reminder settings are sent.
-3. Paste the key, tap **Save key**, then **Test connection** (a free models-endpoint check).
-4. Capture → **Plan with AI** (with AI off this opens the setup sheet in place, keeping your
-   note), or on a task → **Stuck? Ask Claude → Suggest**.
+Earlier versions had optional Plan with AI, Move this forward and Research Online on your own
+Anthropic API key. They were removed on 2026-10-27 in favour of Discuss in ChatGPT. What stays:
 
-The key is encrypted with an Android Keystore key, stored only in app-private storage, excluded
-from backups and Export, and never logged. This is a personal-use compromise; a public app would
-use a server-side proxy instead. Default model: Claude Haiku 5.5 (cheapest). Sonnet 5.5 and
-Opus 5.5 are selectable. Limits: 2,000 characters per request, 6,000 output tokens, 60 requests
-per day, no automatic retries. **Delete AI settings** removes the key and all AI settings.
-
-### Optional web research (M3, bring your own key)
-
-On a task, **Move this forward → Research online** asks Claude to search the web (Anthropic's
-`web_search` server tool) and write a short brief: a quick answer with numbered citations, next
-moves you can add to the task, findings labelled by where they came from (sourced / sources
-disagree / couldn't confirm / Claude's suggestion), the sources, and a log of what was searched.
-
-- You start every request from a preflight that shows exactly what is sent (your question, and
-  by choice the task title, notes, steps, today's date and language). Nothing else about you is
-  sent; your location is never read. A one-time note explains the extra cost before the first run.
-- Caps: 3 web searches per request, 10 research requests per day (separate from planning's 60),
-  no automatic retries, nothing in the background. Anthropic bills searches on top of tokens; the
-  app shows counts, never prices.
-- Briefs are saved with the task, open offline and with AI off, and are included in backups
-  (never transcripts or the key). Deleting research keeps steps you already added.
-- Only structured citations from the API become sources. A URL the model merely writes in text is
-  removed and the sentence is labelled a suggestion. Links open in your browser, never inside the app.
-- Research never changes reminders, status, priority or deadlines. Steps and notes change only when
-  you review and tap Apply; Undo is offered while the task is unchanged since.
-
-Live verification against the real API with a personal key is pending (see
-`docs/M3_RESEARCH_REPORT.md`); everything is tested against fakes and a local MockWebServer.
+- Research saved by those versions (M3A briefs, M3A.2 sessions, M4 investigations, Research Online
+  threads) is kept in the database and in backups and opens read-only; delete a thread from its
+  screen if you no longer want it.
+- Changes you already applied, and their provenance (“From Plan with AI”, “From research”), stay on
+  your tasks; pending suggestions from that research can still be reviewed.
+- If an earlier version stored an Anthropic API key, Settings → **Remove the old Anthropic API key**
+  deletes it (it is never used or sent). The row disappears once it is gone. Revoke the key in the
+  Anthropic Console too if you no longer use it.
 
 ## Limitations (honest)
 
@@ -194,4 +173,5 @@ Live verification against the real API with a personal key is pending (see
 
 `docs/SPEC.md` (product/technical spec), `docs/ARCHITECTURE.md`, `docs/REMINDER_ENGINE.md`,
 `docs/TEST_MATRIX.md`, `docs/PROGRESS.md`, `docs/OVERNIGHT_REPORT.md`,
-`docs/REMINDER_RELIABILITY_REPORT.md`, `docs/M2_AI_CAPTURE_REPORT.md`.
+`docs/REMINDER_RELIABILITY_REPORT.md`, `docs/CHATGPT_ROUND_TRIP_REPORT.md`,
+`docs/RETIRE_EMBEDDED_AI_REPORT.md` (and the historical AI reports it links to).

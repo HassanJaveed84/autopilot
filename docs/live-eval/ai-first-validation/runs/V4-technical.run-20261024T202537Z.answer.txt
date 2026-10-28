@@ -1,0 +1,39 @@
+**My recommendation:** for an internal app with 50 users, I'd default to Postgres. SQLite is a legitimate choice if your setup is simple enough. This is my judgment, not something one source states.
+
+**Why 50 users isn't the deciding factor**
+- SQLite allows only one writer at a time per database file [1]. But a write transaction usually takes only milliseconds, so writers can take turns, and SQLite handles more write concurrency than many people suspect [1].
+- Fifty people doing ordinary form-style work will rarely collide. Your write pattern matters more than your user count.
+- SQLite's own guidance says to choose a client/server database if many threads or processes need to write at the same instant and can't queue up and take turns [2].
+
+**SQLite fits if all of these are true**
+- The app runs on a single server. WAL mode is the setting that lets readers and a writer overlap. It requires that all processes using the database be on the same host, and it does not work over a network filesystem [3].
+- Writes are short and modest. Practitioners warn that WAL does not remove write contention from a write-heavy workload [4]. They also warn about long-running transactions (background jobs, analytics queries) sharing the same database as latency-sensitive endpoints [5].
+- You're fine with a simple backup routine. One guide says to back up a live database with the backup API or VACUUM INTO [6], not by copying files carelessly.
+- You don't expect to need replication, since SQLite doesn't support it natively [7].
+
+The payoff is almost no operational work. One comparison lists setup in seconds and zero operational overhead [7] for SQLite. Postgres takes more setup, and a managed service reduces that.
+
+**Postgres is the safer default if any of these apply**
+- You might run more than one app server, or deploy on containers or shared volumes.
+- You expect background jobs, imports, or reports that write while people are using the app.
+- You want separate database users and permissions.
+- You think the app may grow or become more important than "internal tool."
+
+Postgres is built for concurrent clients and multi-server setups. It handles concurrent clients, complex queries, and multi-server architectures [8]. Switching later is possible but takes real work, and starting on Postgres avoids that.
+
+**Caveats**
+- The sources are a mix of SQLite's own documentation and vendor or blog posts. I found no independent benchmark for a 50-user internal workload.
+- Several of the comparison pages compare SQLite to MySQL rather than Postgres. I used them only for the shared single-writer point.
+- What would change my advice: a single server, mostly reads, short writes, and nobody who wants to run a database. In that case SQLite with WAL mode is a reasonable choice.
+
+If you tell me where the app will be hosted and whether it has background jobs, I can narrow this down.
+
+Sources
+[1] How to improve the concurrent write limit due to SQLite? · pocketbase/pocketbase · Discussion #5524 · GitHub — https://github.com/pocketbase/pocketbase/discussions/5524 (search result age: 770 days ago)
+[2] Appropriate Uses For SQLite — https://www.sqlite.org/whentouse.html (search result age: 511 days ago)
+[3] Write-Ahead Logging — https://www.sqlite.org/wal.html (search result age: 60 days ago)
+[4] SQLite WAL Mode: Concurrency, Checkpoints, and Operational Pitfalls — https://nalar.dev/sqlite-wal-mode-concurrency-checkpoints-and-operational-pitfalls/ (search result age: 52 days ago)
+[5] SQLite Production API Concurrency: WAL Mode Limits [2026] — https://www.kunalganglani.com/blog/sqlite-production-api-wal (search result age: 39 days ago)
+[6] SQLite WAL Mode: How Write-Ahead Logging Works and When to Use It - SQL Docs — https://sqldocs.org/sqlite-write-ahead-logging/ (search result age: 17 days ago)
+[7] What Is SQLite? The Database That Runs Inside Your App — https://www.mindstudio.ai/blog/what-is-sqlite (search result age: 192 days ago)
+[8] SQLite vs PostgreSQL — https://intellizu.com/articles/sqlite-vs-postgresql/ (search result age: 142 days ago)

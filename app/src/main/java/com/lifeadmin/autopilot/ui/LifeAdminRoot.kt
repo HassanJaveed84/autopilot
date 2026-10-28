@@ -24,7 +24,6 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
-import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -32,8 +31,6 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.lifeadmin.autopilot.di.AppContainer
-import com.lifeadmin.autopilot.ui.ai.AiSettingsScreen
-import com.lifeadmin.autopilot.ui.ai.AiSettingsViewModel
 import com.lifeadmin.autopilot.ui.capture.CaptureSheet
 import com.lifeadmin.autopilot.ui.capture.CaptureViewModel
 import com.lifeadmin.autopilot.ui.components.AutopilotSnackbar
@@ -44,24 +41,18 @@ import com.lifeadmin.autopilot.ui.components.PaperBackground
 import com.lifeadmin.autopilot.ui.components.showToast
 import com.lifeadmin.autopilot.ui.detail.ResearchNav
 import com.lifeadmin.autopilot.ui.detail.TaskDetailScreen
-import com.lifeadmin.autopilot.ui.research.ApplyResearchScreen
-import com.lifeadmin.autopilot.ui.research.ApplyResearchViewModel
 import com.lifeadmin.autopilot.ui.research.ResearchBriefScreen
 import com.lifeadmin.autopilot.ui.research.ResearchBriefViewModel
-import com.lifeadmin.autopilot.ui.research.ResearchHistoryScreen
-import com.lifeadmin.autopilot.ui.research.ResearchHistoryViewModel
-import com.lifeadmin.autopilot.ui.research.ResearchPreflightScreen
-import com.lifeadmin.autopilot.ui.research.ResearchPreflightViewModel
-import com.lifeadmin.autopilot.ui.research.ResearchProgressScreen
-import com.lifeadmin.autopilot.ui.research.ResearchRunViewModel
+import com.lifeadmin.autopilot.ui.review.ProposalReviewScreen
+import com.lifeadmin.autopilot.ui.review.ProposalReviewViewModel
+import com.lifeadmin.autopilot.ui.research2.ResearchSessionScreen
+import com.lifeadmin.autopilot.ui.research2.Session2ViewModel
 import com.lifeadmin.autopilot.ui.detail.TaskDetailViewModel
 import com.lifeadmin.autopilot.ui.health.ReminderHealthScreen
 import com.lifeadmin.autopilot.ui.health.ReminderHealthViewModel
 import com.lifeadmin.autopilot.ui.health.rememberHealthIssue
 import com.lifeadmin.autopilot.ui.navigation.Routes
 import com.lifeadmin.autopilot.ui.navigation.TopLevelDestination
-import com.lifeadmin.autopilot.ui.plan.PlanScreen
-import com.lifeadmin.autopilot.ui.plan.PlanViewModel
 import com.lifeadmin.autopilot.ui.settings.LicensesScreen
 import com.lifeadmin.autopilot.ui.settings.SettingsScreen
 import com.lifeadmin.autopilot.ui.settings.SettingsViewModel
@@ -78,8 +69,8 @@ import kotlinx.coroutines.launch
 
 /**
  * App shell: three doing tabs (Today / Inbox / Tasks) with the persistent capture bar above them,
- * Settings as a header button, and the pushed destinations (task detail, plan, health, AI
- * settings). [openTaskRequests] carries validated task ids from notification taps.
+ * Settings as a header button, and the pushed destinations (task detail, Proposal Review, health,
+ * saved research). [openTaskRequests] carries validated task ids from notification taps.
  */
 @Composable
 fun LifeAdminRoot(
@@ -139,7 +130,6 @@ fun LifeAdminRoot(
     }
     fun openSettings() = navController.navigate(Routes.SETTINGS) { launchSingleTop = true }
     fun openHealth() = navController.navigate(Routes.HEALTH) { launchSingleTop = true }
-    fun openAiSettings() = navController.navigate(Routes.AI_SETTINGS) { launchSingleTop = true }
 
     PaperBackground {
         Scaffold(
@@ -174,7 +164,7 @@ fun LifeAdminRoot(
                     val vm: TaskListViewModel = viewModel(key = "inbox", factory = factoryOf {
                         TaskListViewModel(container.taskRepository, container.clock, container.zoneProvider, inboxOnly = true, settings = container.settingsRepository)
                     })
-                    InboxScreen(vm, snackbar, onOpenTask = ::openTask, onOpenSettings = ::openSettings, healthIssue = healthIssue, onPlanTask = { id -> navController.navigate(Routes.planTask(id)) { launchSingleTop = true } })
+                    InboxScreen(vm, snackbar, onOpenTask = ::openTask, onOpenSettings = ::openSettings, healthIssue = healthIssue)
                 }
                 composable(Routes.TASKS) {
                     val vm: TaskListViewModel = viewModel(key = "tasks", factory = factoryOf {
@@ -184,36 +174,18 @@ fun LifeAdminRoot(
                 }
                 composable(Routes.SETTINGS) {
                     val vm: SettingsViewModel = viewModel(factory = factoryOf {
-                        SettingsViewModel(container.settingsRepository, container.backupRepository) { container.reconcileAll("settings") }
+                        SettingsViewModel(
+                            container.settingsRepository, container.backupRepository, onSettingsChanged = { container.reconcileAll("settings") },
+                            savedResearch = container.researchThreads.observeSummaries().map { it.size }.catch { emit(0) }, legacyApiKey = container.legacyApiKey,
+                        )
                     })
                     SettingsScreen(
                         vm, snackbar, onBack = { navController.popBackStack() },
                         showHealth = showHealth, container = container, onOpenHealth = ::openHealth,
-                        onOpenAiSettings = ::openAiSettings, onOpenLicenses = { navController.navigate(Routes.LICENSES) { launchSingleTop = true } },
+                        onOpenResearch = { navController.navigate(Routes.investigations()) { launchSingleTop = true } }, onOpenLicenses = { navController.navigate(Routes.LICENSES) { launchSingleTop = true } },
                     )
                 }
                 composable(Routes.LICENSES) { LicensesScreen(onBack = { navController.popBackStack() }) }
-                composable(Routes.AI_SETTINGS) {
-                    val vm: AiSettingsViewModel = viewModel(factory = factoryOf {
-                        AiSettingsViewModel(container.settingsRepository, container.apiKeyStore, container.aiPlanning, container.clock, container.research, container.researchRepository)
-                    })
-                    AiSettingsScreen(vm, onBack = { navController.popBackStack() })
-                }
-                composable(
-                    Routes.PLAN,
-                    arguments = listOf(
-                        navArgument("text") { type = NavType.StringType; defaultValue = "" },
-                        navArgument("auto") { type = NavType.BoolType; defaultValue = false },
-                    ),
-                ) { entry ->
-                    val text = entry.arguments?.getString("text").orEmpty()
-                    val auto = entry.arguments?.getBoolean("auto") ?: false
-                    PlanDestination(container, navController, targetTaskId = null, initialText = text, autoRequest = auto, onReminderEnabled = onReminderEnabled)
-                }
-                composable(Routes.PLAN_TASK, arguments = listOf(navArgument("taskId") { type = NavType.StringType })) { entry ->
-                    val taskId = entry.arguments?.getString("taskId").orEmpty()
-                    PlanDestination(container, navController, targetTaskId = taskId, initialText = "", autoRequest = false, onReminderEnabled = onReminderEnabled)
-                }
                 composable(Routes.HEALTH) {
                     val vm: ReminderHealthViewModel = viewModel(factory = factoryOf { ReminderHealthViewModel(container) })
                     ReminderHealthScreen(
@@ -226,64 +198,65 @@ fun LifeAdminRoot(
                     val vm: TaskDetailViewModel = viewModel(key = "detail-$taskId", factory = factoryOf {
                         TaskDetailViewModel(
                             taskId, container.taskRepository, container.taskActions, container.settingsRepository, container.clock, container.zoneProvider, container.hintDismissals,
-                            researchBriefs = container.researchRepository.observeForTask(taskId), researchRun = container.research.state,
+                            researchBriefs = container.researchRepository.observeForTask(taskId),
+                            investigations = container.researchThreads.observeSummaries(taskId),
+                            proposalSets = container.proposalSets.observeForTarget(taskId), provenance = container.proposalSets.observeProvenance(taskId),
                         )
                     })
                     TaskDetailScreen(
                         vm, onBack = { navController.popBackStack() }, onReminderEnabled = onReminderEnabled,
-                        onMoveForward = { navController.navigate(Routes.planTask(taskId)) { launchSingleTop = true } },
-                        onOpenAiSettings = ::openAiSettings,
+                        onOpenReview = { setId -> navController.navigate(Routes.review(taskId, setId)) { launchSingleTop = true } },
                         research = ResearchNav(
-                            onResearch = { navController.navigate(Routes.researchNew(taskId)) { launchSingleTop = true } },
                             onOpenBrief = { briefId -> navController.navigate(Routes.researchBrief(taskId, briefId)) { launchSingleTop = true } },
-                            onOpenHistory = { navController.navigate(Routes.researchHistory(taskId)) { launchSingleTop = true } },
-                            onOpenRun = { runId, q -> navController.navigate(Routes.researchRun(taskId, runId, q)) { launchSingleTop = true } },
+                            onOpenHistory = { navController.navigate(Routes.investigations(taskId)) { launchSingleTop = true } },
+                            onOpenInvestigation = { id -> navController.navigate(Routes.investigation(id)) { launchSingleTop = true } },
                         ),
                     )
                 }
-                composable(Routes.RESEARCH_HISTORY, arguments = listOf(navArgument("taskId") { type = NavType.StringType })) { entry ->
-                    val taskId = entry.arguments?.getString("taskId").orEmpty()
-                    val vm: ResearchHistoryViewModel = viewModel(key = "research-history-$taskId", factory = factoryOf {
-                        ResearchHistoryViewModel(taskId, container.researchRepository, container.taskRepository, container.research, container.clock)
+                composable(Routes.INVESTIGATIONS, arguments = listOf(navArgument("task") { type = NavType.StringType; defaultValue = "" })) { entry ->
+                    val task = entry.arguments?.getString("task").orEmpty().ifBlank { null }
+                    val vm: com.lifeadmin.autopilot.ui.investigation.InvestigationHomeViewModel = viewModel(key = "investigations-$task", factory = factoryOf {
+                        com.lifeadmin.autopilot.ui.investigation.InvestigationHomeViewModel(container.researchThreads, container.taskRepository, container.clock, task)
                     })
-                    ResearchHistoryScreen(
-                        vm, zone = container.zoneProvider.current(), onBack = { navController.popBackStack() },
-                        onOpenBrief = { briefId -> navController.navigate(Routes.researchBrief(taskId, briefId)) { launchSingleTop = true } },
-                        onNewResearch = { navController.navigate(Routes.researchNew(taskId)) { launchSingleTop = true } },
-                    )
-                }
-                composable(
-                    Routes.RESEARCH_NEW,
-                    arguments = listOf(navArgument("taskId") { type = NavType.StringType }, navArgument("q") { type = NavType.StringType; defaultValue = "" }),
-                ) { entry ->
-                    val taskId = entry.arguments?.getString("taskId").orEmpty()
-                    val q = entry.arguments?.getString("q").orEmpty()
-                    val vm: ResearchPreflightViewModel = viewModel(
-                        key = "research-new-$taskId",
-                        factory = viewModelFactory { initializer { ResearchPreflightViewModel(createSavedStateHandle(), taskId, q, container.research, container.taskRepository) } },
-                    )
-                    ResearchPreflightScreen(
-                        vm, onBack = { navController.popBackStack() },
-                        onStarted = { runId, question ->
-                            navController.navigate(Routes.researchRun(taskId, runId, question)) { popUpTo(Routes.RESEARCH_NEW) { inclusive = true }; launchSingleTop = true }
-                        },
-                        onOpenAiSettings = ::openAiSettings,
-                    )
-                }
-                composable(
-                    Routes.RESEARCH_RUN,
-                    arguments = listOf(navArgument("taskId") { type = NavType.StringType }, navArgument("runId") { type = NavType.StringType }, navArgument("q") { type = NavType.StringType; defaultValue = "" }),
-                ) { entry ->
-                    val taskId = entry.arguments?.getString("taskId").orEmpty()
-                    val runId = entry.arguments?.getString("runId").orEmpty()
-                    val q = entry.arguments?.getString("q").orEmpty()
-                    val vm: ResearchRunViewModel = viewModel(key = "research-run-$runId", factory = factoryOf { ResearchRunViewModel(runId, taskId, q, container.research) })
-                    ResearchProgressScreen(
-                        vm, now = container.clock::now,
+                    com.lifeadmin.autopilot.ui.investigation.InvestigationHomeScreen(
+                        vm, zone = container.zoneProvider.current(), title = if (task != null) "Saved research for this task" else "Saved research",
                         onBack = { navController.popBackStack() },
-                        onOpenBrief = { briefId -> navController.navigate(Routes.researchBrief(taskId, briefId)) { popUpTo(Routes.RESEARCH_RUN) { inclusive = true }; launchSingleTop = true } },
-                        onTryAgain = { question -> navController.navigate(Routes.researchNew(taskId, question)) { popUpTo(Routes.RESEARCH_RUN) { inclusive = true }; launchSingleTop = true } },
-                        onOpenAiSettings = ::openAiSettings,
+                        onOpen = { id -> navController.navigate(Routes.investigation(id)) { launchSingleTop = true } },
+                    )
+                }
+                composable(Routes.INVESTIGATION, arguments = listOf(navArgument("investigationId") { type = NavType.StringType })) { entry ->
+                    val id = entry.arguments?.getString("investigationId").orEmpty()
+                    InvestigationThreadDestination(container, navController, investigationId = id)
+                }
+                composable(Routes.RESEARCH2_SESSION, arguments = listOf(navArgument("taskId") { type = NavType.StringType }, navArgument("sessionId") { type = NavType.StringType })) { entry ->
+                    val taskId = entry.arguments?.getString("taskId").orEmpty()
+                    val sessionId = entry.arguments?.getString("sessionId").orEmpty()
+                    val vm: Session2ViewModel = viewModel(
+                        key = "research2-session-$sessionId",
+                        factory = viewModelFactory {
+                            initializer { Session2ViewModel(createSavedStateHandle(), taskId, sessionId, container.sessionRepository, container.taskRepository, container.settingsRepository, container.clock, container.researchProposalSets, container.proposalSets) }
+                        },
+                    )
+                    ResearchSessionScreen(
+                        vm, zone = container.zoneProvider.current(),
+                        onBack = { navController.popBackStack() },
+                        onReview = { setId -> navController.navigate(Routes.review(taskId, setId)) { launchSingleTop = true } },
+                    )
+                }
+                composable(Routes.REVIEW, arguments = listOf(navArgument("taskId") { type = NavType.StringType }, navArgument("setId") { type = NavType.StringType })) { entry ->
+                    val taskId = entry.arguments?.getString("taskId").orEmpty()
+                    val setId = entry.arguments?.getString("setId").orEmpty()
+                    val vm: ProposalReviewViewModel = viewModel(
+                        key = "review-$setId",
+                        factory = viewModelFactory {
+                            initializer { ProposalReviewViewModel(createSavedStateHandle(), taskId, setId, container.proposalSets, container.taskRepository, container.proposalApplier, container.clock, container.zoneProvider) }
+                        },
+                    )
+                    ProposalReviewScreen(
+                        vm,
+                        onBack = { navController.popBackStack() },
+                        onOpenTask = { if (!navController.popBackStack(Routes.TASK_DETAIL, inclusive = false)) navController.navigate(Routes.taskDetail(taskId)) { launchSingleTop = true } },
+                        onOpenInvestigation = { id -> navController.navigate(Routes.investigation(id)) { launchSingleTop = true } },
                     )
                 }
                 composable(Routes.RESEARCH_BRIEF, arguments = listOf(navArgument("taskId") { type = NavType.StringType }, navArgument("briefId") { type = NavType.StringType })) { entry ->
@@ -291,28 +264,11 @@ fun LifeAdminRoot(
                     val briefId = entry.arguments?.getString("briefId").orEmpty()
                     val vm: ResearchBriefViewModel = viewModel(
                         key = "research-brief-$briefId",
-                        factory = viewModelFactory { initializer { ResearchBriefViewModel(createSavedStateHandle(), taskId, briefId, container.researchRepository, container.taskRepository, container.networkStatus, container.clock) } },
+                        factory = viewModelFactory { initializer { ResearchBriefViewModel(taskId, briefId, container.researchRepository, container.taskRepository, container.clock) } },
                     )
                     ResearchBriefScreen(
                         vm, zone = container.zoneProvider.current(),
                         onBack = { navController.popBackStack() },
-                        onReview = { selected -> navController.navigate(Routes.researchApply(taskId, briefId, selected)) { launchSingleTop = true } },
-                        onResearchAgain = { question -> navController.navigate(Routes.researchNew(taskId, question)) { launchSingleTop = true } },
-                    )
-                }
-                composable(
-                    Routes.RESEARCH_APPLY,
-                    arguments = listOf(navArgument("taskId") { type = NavType.StringType }, navArgument("briefId") { type = NavType.StringType }, navArgument("sel") { type = NavType.StringType; defaultValue = "" }),
-                ) { entry ->
-                    val taskId = entry.arguments?.getString("taskId").orEmpty()
-                    val briefId = entry.arguments?.getString("briefId").orEmpty()
-                    val selected = entry.arguments?.getString("sel").orEmpty().split(',').filter { it.isNotBlank() }.toSet()
-                    val vm: ApplyResearchViewModel = viewModel(key = "research-apply-$briefId-${selected.hashCode()}", factory = factoryOf {
-                        ApplyResearchViewModel(taskId, briefId, selected, container.researchRepository, container.taskRepository, container.researchActions)
-                    })
-                    ApplyResearchScreen(
-                        vm, onBack = { navController.popBackStack() },
-                        onDoneToTask = { navController.popBackStack(Routes.TASK_DETAIL, inclusive = false) },
                     )
                 }
             }
@@ -322,17 +278,12 @@ fun LifeAdminRoot(
     if (capturing) {
         val prefill = capturePrefill
         val vm: CaptureViewModel = viewModel(factory = factoryOf {
-            CaptureViewModel(container.taskActions, container.taskRepository, container.settingsRepository, container.apiKeyStore, container.aiPlanning, container.clock, container.zoneProvider)
+            CaptureViewModel(container.taskActions, container.taskRepository, container.settingsRepository, container.clock, container.zoneProvider)
         })
         LaunchedEffect(prefill) { if (prefill != null) { vm.prefill(prefill); capturePrefill = null } }
         CaptureSheet(
             vm,
             onDismiss = { capturing = false },
-            onPlanWithAi = { text ->
-                capturing = false
-                navController.navigate(Routes.plan(text, auto = true)) { launchSingleTop = true }
-            },
-            onOpenAiSettings = { capturing = false; openAiSettings() },
             onSaved = { id, withReminder, firstNudge ->
                 capturing = false
                 justSaved = id
@@ -352,34 +303,20 @@ fun LifeAdminRoot(
 }
 
 @Composable
-private fun PlanDestination(
-    container: AppContainer,
-    navController: NavHostController,
-    targetTaskId: String?,
-    initialText: String,
-    autoRequest: Boolean,
-    onReminderEnabled: () -> Unit,
-) {
-    val vm: PlanViewModel = viewModel(
-        key = "plan-${targetTaskId ?: "new"}",
-        factory = viewModelFactory {
-            initializer {
-                PlanViewModel(
-                    createSavedStateHandle(), container.aiPlanning, container.taskRepository, container.taskActions,
-                    container.settingsRepository, container.clock, container.zoneProvider, targetTaskId, initialText, autoRequest,
-                )
-            }
+private fun InvestigationThreadDestination(container: AppContainer, navController: androidx.navigation.NavHostController, investigationId: String) {
+    val vm: com.lifeadmin.autopilot.ui.investigation.InvestigationThreadViewModel = viewModel(
+        key = "investigation-$investigationId",
+        factory = factoryOf {
+            com.lifeadmin.autopilot.ui.investigation.InvestigationThreadViewModel(
+                investigationId, container.researchThreads, container.investigations, container.taskRepository, container.proposalSets, container.investigationProposals, container.clock,
+            )
         },
     )
-    PlanScreen(
-        vm, zone = container.zoneProvider.current(), now = container.clock::now,
+    com.lifeadmin.autopilot.ui.investigation.InvestigationThreadScreen(
+        vm, zone = container.zoneProvider.current(),
         onBack = { navController.popBackStack() },
-        onOpenTask = { id ->
-            // Replace the plan screen with the task (or return to it for an edit).
-            if (targetTaskId != null) navController.popBackStack()
-            else navController.navigate(Routes.taskDetail(id)) { popUpTo(Routes.PLAN) { inclusive = true } }
-        },
-        onOpenAiSettings = { navController.navigate(Routes.AI_SETTINGS) { launchSingleTop = true } },
-        onReminderEnabled = onReminderEnabled,
+        onReview = { tId, setId -> navController.navigate(Routes.review(tId, setId)) { launchSingleTop = true } },
+        onOpenTask = { tId -> navController.navigate(Routes.taskDetail(tId)) { launchSingleTop = true } },
+        onOpenLegacy = { invId -> vm.state.value.taskId?.let { tId -> navController.navigate(Routes.research2Session(tId, invId)) { launchSingleTop = true } } },
     )
 }

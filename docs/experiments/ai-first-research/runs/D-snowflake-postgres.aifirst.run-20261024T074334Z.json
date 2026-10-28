@@ -1,0 +1,268 @@
+{
+ "sanitization": {
+  "rawSha256": "9bf39e665ff712040b3e22f877a29d10dbdaf889acb1d1a366af6210172e1d28",
+  "removed": {
+   "emails": 0,
+   "phones": 0
+  },
+  "note": "Compact summary: request bodies and full reply segments omitted; cited text kept verbatim apart from emails/phones; no credential."
+ },
+ "scenario": "D-snowflake-postgres",
+ "engine": "aifirst",
+ "model": "claude-sonnet-5-5",
+ "ranAtUtc": "2026-10-24T07:43:53.790714545Z",
+ "searchBudget": 6,
+ "spendLimitCents": 500,
+ "totalUsd": 0.1993,
+ "turns": [
+  {
+   "question": "Should a customer-facing reporting API query Snowflake directly or serve precomputed reporting data from Postgres?",
+   "status": "COMPLETE",
+   "outcome": null,
+   "objective": null,
+   "config": "searchBudget=6 spendLimit=500¢ maxOutputTokens=16000 prompt=v1",
+   "elapsedMs": 19113,
+   "shown": "**Short answer:** For most customer-facing reporting APIs, serve precomputed data from Postgres, or from another serving layer. Don't point the API at a standard Snowflake warehouse. This is my judgment, not something a source states outright, and the assumptions below could change it. There is one real exception, covered further down.\n\n**Why Postgres usually wins (my reasoning, backed by the sources)**\n- **Cost shape.** Snowflake bills warehouses per second, with a 60-second minimum each time a warehouse starts or resumes [1]. A four-second query on a suspended warehouse costs a full minute. [1] Customer traffic is spread across the day, so you either keep a warehouse running or pay repeated resume minimums. Multi-cluster scaling adds to this. The rate is the warehouse's rate multiplied by the number of clusters running. [1]\n- **Latency.** A suspended warehouse loses its cache. When a warehouse suspends, its local SSD cache is cleared, so the next start re-reads data from remote storage, which is slower. [2] A Postgres table with the right indexes doesn't have this cold-start behavior.\n- **Predictability.** Snowflake's own guidance on concurrent app queries covers tuning concurrency settings and multi-cluster scaling. That is extra operational work for a workload that is usually simple lookups on precomputed rows.\n- **Isolation.** If the API queries Snowflake directly, customer traffic competes with your analysts and pipelines, unless you give it a dedicated warehouse. Postgres keeps customer load off your analytics platform.\n\n**The exception: Snowflake now has a purpose-built serving option**\n- Snowflake's interactive tables and interactive warehouses are generally available and target low-latency, high-concurrency workloads such as data-powered APIs [3]. That went GA in December 2025.\n- Since September 2026, interactive warehouses can query standard, dynamic, Iceberg and hybrid tables directly, without copying data into interactive tables [4].\n- Snowflake's own example pairs Postgres for transactions with an interactive warehouse serving fast, concurrent analytical queries [5] on mirrored data.\n- The trade-offs are cost and fit. Interactive warehouses are optimized to run continuously [6], so you pay for always-on compute. Per a third-party summary written at launch, they have a default 5-second timeout for SELECT queries [7]. I haven't checked whether that still holds, and the page was dated before the later zero-copy release. They also suit short, selective queries, so ad-hoc heavy aggregations are a poor fit. Snowflake also has hybrid tables, which it says can serve data directly at double-digit millisecond latency [8]. Most of this evidence is vendor material, so benchmark it yourself.\n\n**How I'd decide**\n\n| Your situation | Lean toward |\n|---|---|\n| Fixed set of reports, data refreshed hourly or daily, you already run Postgres | Postgres with precomputed tables |\n| Customers need to slice by arbitrary filters or dimensions over large data | Snowflake interactive warehouse, or a dedicated OLAP engine |\n| Data must be fresh within seconds | Snowflake interactive, or a streaming path into your serving store |\n| Low or spiky traffic, no Postgres yet | Direct Snowflake on a dedicated warehouse, with resource monitors and timeouts, as a stopgap |\n| Strict per-tenant security and a single governed source of truth | Snowflake's governance is a point in its favor. In Postgres you'd have to rebuild that access control. |\n\n**If you go with Postgres**\n- You take on a sync pipeline from Snowflake, a staleness window, and schema drift.\n- Check that your aggregates can be precomputed. Postgres is much weaker than Snowflake at scanning large tables on demand.\n- Show a \"last updated\" time in the API response.\n\n**What I couldn't verify**\n- I found no independent benchmarks or head-to-head cost comparisons. The interactive-warehouse performance claims come mostly from Snowflake and from blogs.\n- Region availability and limits (timeouts, scaling behavior) change. Confirm them in the current Snowflake docs for your region and edition before committing.\n- Your numbers would change the answer: requests per second, latency target, data volume per customer, freshness needed, and whether queries are fixed or ad hoc. If you share them, I can narrow this down.\n\nSources\n[1] Snowflake Pricing in 2026: Credits, Warehouse Sizes, Storage and a Worked Bill — https://www.owox.com/blog/articles/snowflake-pricing-cost-control (search result age: 13 days ago)\n[2] 8 best practices to reduce Snowflake costs (2026) — https://www.flexera.com/blog/finops/reduce-snowflake-costs/ (search result age: 68 days ago)\n[3] Dec 11, 2025: Interactive tables and interactive warehouses (*General availability*) — https://docs.snowflake.com/en/release-notes/2025/other/2025-12-11-interactive-tables-ga (search result age: 317 days ago)\n[4] Sep 14, 2026: Zero-copy support for all table formats in interactive warehouses (*General availability*) — https://docs.snowflake.com/en/release-notes/2026/other/2026-09-14-interactive-zero-copy-ga (search result age: 40 days ago)\n[5] Zero-Copy Interactive Analytics in Snowflake — https://www.snowflake.com/en/blog/engineering/zero-copy-interactive-analytics/ (search result age: 39 days ago)\n[6] Getting Started with Snowflake Interactive Tables — https://www.snowflake.com/en/developers/guides/getting-started-with-interactive-tables/ (search result age: 354 days ago)\n[7] Snowflake interactive tables and interactive warehouses — https://medium.com/@wondts/snowflake-interactive-tables-and-interactive-warehouses-f9a13547bcef (search result age: 313 days ago)\n[8] Serving Low-Latency Data with Hybrid Tables — https://www.snowflake.com/en/developers/guides/hybrid-tables-serving-layer/ (search result age: 125 days ago)",
+   "claims": [],
+   "ledger": [
+    {
+     "stage": "AI_FIRST",
+     "model": "claude-sonnet-5-5",
+     "outcome": "COMPLETE",
+     "usageStatus": "COMPLETE",
+     "inputTokens": 69185,
+     "outputTokens": 2093,
+     "cacheReadTokens": 0,
+     "cacheWriteTokens": 0,
+     "webSearches": 4,
+     "estimatedMicros": 199300,
+     "durationMs": 19064
+    }
+   ],
+   "calls": [
+    {
+     "maxSearches": 6,
+     "stop": "END",
+     "elapsedMs": 19064,
+     "continuesPausedTurn": false,
+     "searches": [
+      {
+       "query": "Snowflake customer-facing application low latency high concurrency queries best practices",
+       "error": "",
+       "results": [
+        {
+         "url": "https://www.dataexpert.io/blog/snowflake-query-tuning-best-practices-for-low-latency",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.snowflake.com/en/developers/guides/well-architected-framework-performance/",
+         "pageAge": "363 days ago"
+        },
+        {
+         "url": "https://docs.snowflake.com/en/user-guide/tables-hybrid-best-practices",
+         "pageAge": ""
+        },
+        {
+         "url": "https://medium.com/snowflake/real-time-analytics-on-snowflake-a-repeatable-benchmark-for-sub-second-latency-at-scale-49b666f2deb2",
+         "pageAge": "36 days ago"
+        },
+        {
+         "url": "https://www.snowflake.com/en/developers/guides/hybrid-tables-serving-layer/",
+         "pageAge": "125 days ago"
+        },
+        {
+         "url": "https://select.dev/posts/snowflake-query-optimization",
+         "pageAge": "985 days ago"
+        },
+        {
+         "url": "https://www.flexera.com/blog/finops/snowflake-performance-tuning/",
+         "pageAge": "148 days ago"
+        },
+        {
+         "url": "https://overcast.blog/13-ways-to-improve-snowflake-performance-b537ccee0333?gi=f3da1d375e6a",
+         "pageAge": "297 days ago"
+        },
+        {
+         "url": "https://snowflakemasters.in/snowflake-performance-tuning/",
+         "pageAge": "592 days ago"
+        }
+       ]
+      },
+      {
+       "query": "Snowflake interactive tables interactive warehouses low-latency",
+       "error": "",
+       "results": [
+        {
+         "url": "https://medium.com/@neeluvickey05/snowflake-interactive-warehouses-and-tables-a-game-changer-for-low-latency-analytics-fac696a0d7b3",
+         "pageAge": "329 days ago"
+        },
+        {
+         "url": "https://docs.snowflake.cn/en/user-guide/interactive",
+         "pageAge": "365 days ago"
+        },
+        {
+         "url": "https://medium.com/towards-data-engineering/snowflake-interactive-tables-warehouses-an-end-to-end-implementation-guide-for-real-time-4318bf134224",
+         "pageAge": "237 days ago"
+        },
+        {
+         "url": "https://www.snowflake.com/en/developers/guides/getting-started-with-interactive-tables/",
+         "pageAge": "354 days ago"
+        },
+        {
+         "url": "https://www.snowflake.com/en/blog/engineering/Interactive-analytics-tables-warehouses/",
+         "pageAge": "129 days ago"
+        },
+        {
+         "url": "https://www.snowflake.com/en/blog/introducing-interactive-analytics/",
+         "pageAge": "25 days ago"
+        },
+        {
+         "url": "https://blog.devgenius.io/inside-snowflake-the-game-changing-world-of-interactive-tables-warehouses-bfce41374db1?gi=0cc054bbc1f3",
+         "pageAge": "321 days ago"
+        },
+        {
+         "url": "https://yukidata.com/snowflake-interactive-tables-warehouses/",
+         "pageAge": "314 days ago"
+        },
+        {
+         "url": "https://greybeam-blog.ghost.io/snowflake-interactive-tables/",
+         "pageAge": "98 days ago"
+        }
+       ]
+      },
+      {
+       "query": "Snowflake warehouse cost auto-suspend minimum 60 seconds billing concurrency multi-cluster",
+       "error": "",
+       "results": [
+        {
+         "url": "https://www.flexera.com/blog/finops/reduce-snowflake-costs/",
+         "pageAge": "68 days ago"
+        },
+        {
+         "url": "https://saketchaturvedi.medium.com/mastering-snowflake-billing-sizing-and-auto-scaling-explained-3ceea8a5b896",
+         "pageAge": "438 days ago"
+        },
+        {
+         "url": "https://www.owox.com/blog/articles/snowflake-pricing-cost-control",
+         "pageAge": "13 days ago"
+        },
+        {
+         "url": "https://zop.dev/resources/blogs/snowflake-finops-compute-credit-trap",
+         "pageAge": "173 days ago"
+        },
+        {
+         "url": "https://agentsql.com/blog/snowflake-warehouse-size",
+         "pageAge": "69 days ago"
+        },
+        {
+         "url": "https://nicheelab.com/en/articles/snowflake/warehouse-sizing/",
+         "pageAge": "71 days ago"
+        },
+        {
+         "url": "https://datapipelinebuilders.com/knowledge/snowflake/snowflake-pricing-explained",
+         "pageAge": "21 days ago"
+        },
+        {
+         "url": "https://insignyx.com/blog/snowflake-idle-warehouses-auto-suspend",
+         "pageAge": "129 days ago"
+        },
+        {
+         "url": "https://leanopstech.com/blog/snowflake-pricing-cost-optimization-2026/",
+         "pageAge": "214 days ago"
+        }
+       ]
+      },
+      {
+       "query": "Snowflake interactive tables warehouses generally available",
+       "error": "",
+       "results": [
+        {
+         "url": "https://docs.snowflake.com/en/release-notes/2025/other/2025-12-11-interactive-tables-ga",
+         "pageAge": "317 days ago"
+        },
+        {
+         "url": "https://docs.snowflake.cn/en/user-guide/interactive",
+         "pageAge": "365 days ago"
+        },
+        {
+         "url": "https://docs.snowflake.com/en/release-notes/2026/other/2026-09-14-interactive-zero-copy-ga",
+         "pageAge": "40 days ago"
+        },
+        {
+         "url": "https://www.snowflake.com/en/blog/engineering/zero-copy-interactive-analytics/",
+         "pageAge": "39 days ago"
+        },
+        {
+         "url": "https://medium.com/@wondts/snowflake-interactive-tables-and-interactive-warehouses-f9a13547bcef",
+         "pageAge": "313 days ago"
+        },
+        {
+         "url": "https://docs.snowflake.com/en/release-notes/2025/other/2025-11-04-interactive-tables-and-interactive-warehouses",
+         "pageAge": "354 days ago"
+        },
+        {
+         "url": "https://medium.com/towardsdev/unlocking-real-time-insights-a-guide-to-snowflake-interactive-tables-and-interactive-warehouses-da76a4759d05",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.snowflake.com/en/developers/guides/getting-started-with-interactive-analytics/",
+         "pageAge": ""
+        },
+        {
+         "url": "https://blog.devgenius.io/inside-snowflake-the-game-changing-world-of-interactive-tables-warehouses-bfce41374db1?gi=0cc054bbc1f3",
+         "pageAge": "321 days ago"
+        }
+       ]
+      }
+     ],
+     "citations": [
+      {
+       "url": "https://www.owox.com/blog/articles/snowflake-pricing-cost-control",
+       "citedText": "## Compute: credits per hour by warehouse size\n### Per-second billing and the 60-second minimum\nSnowflake bills warehouses **per second, with a 60-sec..."
+      },
+      {
+       "url": "https://www.owox.com/blog/articles/snowflake-pricing-cost-control",
+       "citedText": "A query that takes four seconds on a suspended warehouse costs a full minute. "
+      },
+      {
+       "url": "https://www.owox.com/blog/articles/snowflake-pricing-cost-control",
+       "citedText": "The rate is the warehouse’s rate multiplied by the number of clusters running, so a Medium that scales to three clusters during the morning rush is us..."
+      },
+      {
+       "url": "https://www.flexera.com/blog/finops/reduce-snowflake-costs/",
+       "citedText": "Here’s why: when a warehouse suspends, its local SSD cache is cleared. The next time it starts, it has to re-read micro-partitions from remote cloud s..."
+      },
+      {
+       "url": "https://docs.snowflake.com/en/release-notes/2025/other/2025-12-11-interactive-tables-ga",
+       "citedText": "Interactive tables and interactive warehouses are now generally available. "
+      },
+      {
+       "url": "https://docs.snowflake.com/en/release-notes/2025/other/2025-12-11-interactive-tables-ga",
+       "citedText": "Together, interactive tables and interactive warehouses deliver low-latency query performance for high-concurrency, interactive workloads such as real..."
+      },
+      {
+       "url": "https://docs.snowflake.com/en/release-notes/2026/other/2026-09-14-interactive-zero-copy-ga",
+       "citedText": "You can use interactive warehouses to query standard tables, dynamic tables, Iceberg tables, and hybrid tables directly, without copying or transformi..."
+      },
+      {
+       "url": "https://www.snowflake.com/en/blog/engineering/zero-copy-interactive-analytics/",
+       "citedText": "- An Interactive warehouse serves fast, concurrent analytical queries against the mirrored tables.\n"
+      },
+      {
+       "url": "https://www.snowflake.com/en/developers/guides/getting-started-with-interactive-tables/",
+       "citedText": "This type of warehouse is optimized to run continuously, serving high volumes of concurrent queries. "
+      },
+      {
+       "url": "https://medium.com/@wondts/snowflake-interactive-tables-and-interactive-warehouses-f9a13547bcef",
+       "citedText": "- **Query Timeout:** Best for short queries, with a default **5-second timeout** for SELECT commands. \n\n"
+      },
+      {
+       "url": "https://www.snowflake.com/en/developers/guides/hybrid-tables-serving-layer/",
+       "citedText": "Hybrid Tables can eliminate this intermediate layer entirely by serving data directly from Snowflake at double-digit millisecond latency. "
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

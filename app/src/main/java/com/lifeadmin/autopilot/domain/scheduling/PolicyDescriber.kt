@@ -19,6 +19,11 @@ object PolicyDescriber {
             ReminderKind.EVERY_N_DAYS ->
                 if (policy.dayInterval <= 1) "Daily at $times" else "Every ${policy.dayInterval} days at $times"
         }
-        return if (policy.zoneMode == ZoneMode.FIXED_ZONE && policy.zoneId != null) "$base (${policy.zoneId})" else base
+        val extras = listOfNotNull(
+            "routine".takeIf { policy.isRoutine },
+            "may ring in quiet hours".takeIf { policy.ringInQuietHours },
+        )
+        val withExtras = if (extras.isEmpty()) base else base + " · " + extras.joinToString(" · ")
+        return if (policy.zoneMode == ZoneMode.FIXED_ZONE && policy.zoneId != null) "$withExtras (${policy.zoneId})" else withExtras
     }
 }

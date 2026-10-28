@@ -35,7 +35,7 @@ import com.lifeadmin.autopilot.ui.theme.AutopilotShapes
 import com.lifeadmin.autopilot.ui.theme.AutopilotTheme
 
 /**
- * Bottom sheet host used by Capture, Follow-up, Snooze, Waiting and AI setup: 28dp top corners,
+ * Bottom sheet host used by Capture, Follow-up, Snooze and Waiting: 28dp top corners,
  * a 36×4 drag handle, a Bricolage title with a 48dp close button, keyboard-aware content.
  *
  * [footer] (the sheet's primary actions) is pinned below the scrolling [content] and above the

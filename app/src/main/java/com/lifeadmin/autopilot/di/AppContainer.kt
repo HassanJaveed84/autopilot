@@ -3,17 +3,6 @@ package com.lifeadmin.autopilot.di
 import android.content.Context
 import android.util.Log
 import com.lifeadmin.autopilot.BuildConfig
-import com.lifeadmin.autopilot.ai.AiPlanningService
-import com.lifeadmin.autopilot.ai.AndroidNetworkStatus
-import com.lifeadmin.autopilot.ai.NetworkStatus
-import com.lifeadmin.autopilot.ai.TaskPlanningProvider
-import com.lifeadmin.autopilot.ai.anthropic.AnthropicResearchProvider
-import com.lifeadmin.autopilot.ai.anthropic.AnthropicTaskPlanningProvider
-import com.lifeadmin.autopilot.ai.research.ResearchActions
-import com.lifeadmin.autopilot.ai.research.ResearchProvider
-import com.lifeadmin.autopilot.ai.research.ResearchService
-import com.lifeadmin.autopilot.ai.security.ApiKeyStore
-import com.lifeadmin.autopilot.ai.security.EncryptedApiKeyStore
 import com.lifeadmin.autopilot.domain.usecase.HintDismissals
 import com.lifeadmin.autopilot.domain.usecase.SharedPrefsHintDismissals
 import com.lifeadmin.autopilot.core.AppClock
@@ -22,6 +11,8 @@ import com.lifeadmin.autopilot.core.ZoneProvider
 import com.lifeadmin.autopilot.data.local.AppDatabase
 import com.lifeadmin.autopilot.data.repository.BackupRepository
 import com.lifeadmin.autopilot.data.repository.DataStoreSettingsRepository
+import com.lifeadmin.autopilot.data.repository.LegacyApiKey
+import com.lifeadmin.autopilot.data.repository.SharedPrefsLegacyApiKey
 import com.lifeadmin.autopilot.data.repository.ResearchRepository
 import com.lifeadmin.autopilot.data.repository.SettingsRepository
 import com.lifeadmin.autopilot.data.repository.TaskRepository
@@ -57,10 +48,8 @@ class AppContainer(
     val alarmDriver: AlarmDriver = AndroidAlarmDriver(context),
     val notificationPublisher: NotificationPublisher = AndroidNotificationPublisher(context),
     val environmentProbe: EnvironmentProbe = AndroidEnvironmentProbe(context, alarmDriver),
-    val apiKeyStore: ApiKeyStore = EncryptedApiKeyStore(context),
-    val planningProvider: TaskPlanningProvider = AnthropicTaskPlanningProvider(),
-    val researchProvider: ResearchProvider = AnthropicResearchProvider(),
-    val networkStatus: NetworkStatus = AndroidNetworkStatus(context),
+    /** The Anthropic key a build with built-in AI may have stored; only ever detected and removed. */
+    val legacyApiKey: LegacyApiKey = SharedPrefsLegacyApiKey(context),
     val hintDismissals: HintDismissals = SharedPrefsHintDismissals(context),
 ) {
     val appScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -79,22 +68,39 @@ class AppContainer(
 
     val taskActions: TaskActions = TaskActions(database, taskRepository, settingsRepository, clock, zoneProvider)
 
-    /** Optional AI planning (M2). Never writes tasks; approval goes through [taskRepository]. */
-    val aiPlanning: AiPlanningService = AiPlanningService(
-        settingsRepository, apiKeyStore, planningProvider, taskRepository, clock, zoneProvider, ids, networkStatus,
-    )
-
-    /** Saved research briefs (M3); readable offline. */
+    /** Saved research briefs (M3); read-only since built-in research was retired. */
     val researchRepository: ResearchRepository = ResearchRepository(database, clock, ids)
 
-    /** Consented web research (M3). One run at a time, in app scope so it survives navigation. */
-    val research: ResearchService = ResearchService(
-        settingsRepository, apiKeyStore, aiPlanning, researchProvider, taskRepository, researchRepository,
-        clock, zoneProvider, ids, appScope, networkStatus,
-    )
+    /** Saved M3A.2 research sessions, read through their v7 investigations; read-only since M4. */
+    val sessionRepository: com.lifeadmin.autopilot.data.repository.ResearchSessionRepository = com.lifeadmin.autopilot.data.repository.ResearchSessionRepository(database)
 
-    /** Applies user-selected research moves through the transactional, idempotent edit path. */
-    val researchActions: ResearchActions = ResearchActions(taskRepository, researchRepository, clock)
+    /** Durable drafts (production kickoff M1): never tasks, never reminders. */
+    val draftRepository: com.lifeadmin.autopilot.data.repository.DraftRepository = com.lifeadmin.autopilot.data.repository.DraftRepository(database, clock, ids)
+
+    /** Proposal sets and provenance records (M1). Saving a set never touches a task. */
+    val proposalSets: com.lifeadmin.autopilot.data.repository.ProposalSetRepository = com.lifeadmin.autopilot.data.repository.ProposalSetRepository(database)
+
+    /** The one write path from a proposal to a task: transactional, conflict-aware, undoable (M1). */
+    val proposalApplier: com.lifeadmin.autopilot.data.repository.ProposalApplier =
+        com.lifeadmin.autopilot.data.repository.ProposalApplier(database, taskRepository, proposalSets, clock, ids)
+
+    /** ChatGPT round trip: an incoming `ap=v1` link becomes a pending proposal set for review, never a direct write. */
+    val handoffImporter: com.lifeadmin.autopilot.share.applink.HandoffImporter =
+        com.lifeadmin.autopilot.share.applink.HandoffImporter(taskRepository, proposalSets, proposalApplier, clock)
+
+    /** Legacy M3A.2 session proposals as canonical proposal sets (M2): still reviewable from a saved session. */
+    val researchProposalSets: com.lifeadmin.autopilot.ai.research2.ResearchProposalSets =
+        com.lifeadmin.autopilot.ai.research2.ResearchProposalSets(sessionRepository, proposalSets, proposalApplier, clock)
+
+    /** Legacy read path: research saved by the retired M4 engine (and migrated M3A.2 sessions). */
+    val investigations: com.lifeadmin.autopilot.data.repository.InvestigationRepository = com.lifeadmin.autopilot.data.repository.InvestigationRepository(database)
+
+    /** Saved Research Online threads (AI-first), in the same Room tables; read-only since built-in research was retired. */
+    val researchThreads: com.lifeadmin.autopilot.data.repository.AfThreadRepository = com.lifeadmin.autopilot.data.repository.AfThreadRepository(database)
+
+    /** Proposals of legacy M4 turns, still reviewed and applied through the one Proposal Review. */
+    val investigationProposals: com.lifeadmin.autopilot.ai.investigation.InvestigationProposalSets =
+        com.lifeadmin.autopilot.ai.investigation.InvestigationProposalSets(investigations, proposalSets, proposalApplier, clock)
 
     val backupRepository: BackupRepository = BackupRepository(
         database, clock, ids, BuildConfig.VERSION_NAME,
@@ -124,5 +130,7 @@ class AppContainer(
         runCatching { ReconcileWorker.schedule(context) }.onFailure { Log.w("LifeAdmin", "WorkManager unavailable: ${it.javaClass.simpleName}") }
         lastForegroundReconcile = System.currentTimeMillis()
         appScope.launch { runCatching { reconcileAll("app_start") } }
+        // Research saved while a turn was running (by a build with built-in research) can never finish: it becomes Interrupted with what it had.
+        appScope.launch { runCatching { researchThreads.settleInterrupted(clock.now()) } }
     }
 }

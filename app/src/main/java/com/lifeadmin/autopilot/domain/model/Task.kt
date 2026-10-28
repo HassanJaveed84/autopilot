@@ -22,7 +22,25 @@ data class Task(
     val snoozeRemindAtEnd: Boolean = true,
     val waitingReason: String? = null,
     val waitingCheckInAt: Instant? = null,
-)
+    /** Revision counter: every user change and every applied proposal increments it (handoff §4.2). */
+    val rev: Int = 0,
+    /** A date the task relates to ("the trip is Nov 12"); never a deadline by itself (PLAN-041). */
+    val eventLocalDate: LocalDate? = null,
+    val eventLabel: String? = null,
+    /** The day the user intends to work on it ("Friday"); not a deadline (PLAN-040). */
+    val intendedLocalDate: LocalDate? = null,
+    /** A separately approved planning target with its stated basis; never shown as a deadline (PLAN-041, OD-6). */
+    val targetLocalDate: LocalDate? = null,
+    val targetBasis: String? = null,
+    /**
+     * "Done for tonight" on a routine (schema v8): policy nudges whose slot is before this instant
+     * are skipped, the task stays open and the next cycle's nudges are scheduled as usual.
+     */
+    val cycleDoneUntil: Instant? = null,
+) {
+    /** True when the user stated (or approved) a latest acceptable completion. */
+    val hasDeadline: Boolean get() = deadlineType != DeadlineType.NONE
+}
 
 data class TaskStep(
     val id: String,
@@ -31,6 +49,9 @@ data class TaskStep(
     val title: String,
     val isDone: Boolean = false,
     val completedAt: Instant? = null,
+    val origin: ContentOrigin = ContentOrigin.USER,
+    /** Provenance record id when the step came from an applied proposal (INT-031). */
+    val provenanceId: String? = null,
 )
 
 data class ReminderPolicy(
@@ -49,7 +70,20 @@ data class ReminderPolicy(
     val lastEditedAt: Instant,
     val generation: Int = 0,
     val times: List<LocalTime> = emptyList(),
-)
+    /**
+     * Schema v8: a confirmed routine ("every night"). Its nudges repeat every cycle and are
+     * answered with "Done for tonight"; the task stays open. Only meaningful for recurring kinds.
+     */
+    val routine: Boolean = false,
+    /**
+     * Schema v8: the user allowed this task's nudges to ring during the app's quiet hours. It only
+     * lifts the app's own quiet hours; Android's notification settings and Do Not Disturb still apply.
+     */
+    val ringInQuietHours: Boolean = false,
+) {
+    /** True for a recurring schedule the user confirmed as a routine. */
+    val isRoutine: Boolean get() = enabled && routine && kind != ReminderKind.ONCE
+}
 
 data class ReminderOccurrence(
     val id: String,

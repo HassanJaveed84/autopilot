@@ -27,11 +27,16 @@ Inputs: task, policy, settings, `now`, device zone, and the set of already-settl
 1. DONE / CANCELED / PAUSED / archived → nothing.
 2. Candidate streams, merged in time order:
    * ACTIONABLE or INBOX with an enabled policy → policy slots. While snoozed, slots before
-     `snoozedUntil` are suppressed; slots at/after it resume.
+     `snoozedUntil` are suppressed; slots at/after it resume. For a confirmed routine
+     (`policy.routine`, recurring kinds only) slots before `task.cycleDoneUntil` ("Done for
+     tonight") are suppressed the same way; the task stays open (schema v8).
    * WAITING → only the explicit `waitingCheckInAt`.
    * Active snooze with "remind me when it ends" → `snoozedUntil`.
 3. Slots ≤ now are skipped. Slots in quiet hours are deferred to the end of the window
    (DEFER_AND_COALESCE, default) or skipped (SKIP); per-policy override wins over the global setting.
+   A policy with `ringInQuietHours` (an explicit per-task choice, schema v8) ignores the app's
+   quiet hours for all of that task's streams, including the snooze end. Android's notification
+   settings and Do Not Disturb still apply.
 4. Instants already DELIVERED / SUPPRESSED / MISSED are skipped (idempotent across clock changes).
 5. The first remaining candidate is *the* next reminder. Only one future occurrence per task exists.
 
@@ -88,6 +93,11 @@ shown in the health panel. Reconcile is idempotent (tested 3× in a row → same
 ## Notification actions
 * **Done** → `TaskRepository.complete` (transaction, generation bump) → future alarms canceled →
   notification dismissed → event logged.
+* **Done for tonight / today** (routines only, replaces Done as the first action) →
+  `TaskRepository.finishCycle`: sets `cycleDoneUntil` to the next 05:00 local, clears a pending
+  snooze, bumps the generation, logs `OCCURRENCE_DONE`; the next cycle's nudge is scheduled. The
+  receiver re-checks Room and only clears the notification if the task is no longer an open
+  routine; it never falls back to completing the task. Permanent Done stays on the detail screen.
 * **Snooze** → default target (per-policy minutes, else global preset; default "tomorrow 09:00")
   with a snooze-end reminder; intervening reminders are suppressed.
 * **Open / tap** → `MainActivity` with a validated task id → task detail.

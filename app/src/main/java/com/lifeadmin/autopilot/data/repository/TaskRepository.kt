@@ -32,6 +32,8 @@ import com.lifeadmin.autopilot.domain.model.TaskStatus
 import com.lifeadmin.autopilot.domain.model.TaskStep
 import com.lifeadmin.autopilot.domain.model.ZoneMode
 import com.lifeadmin.autopilot.domain.scheduling.PolicyDescriber
+import com.lifeadmin.autopilot.domain.scheduling.ReminderPlanner
+import com.lifeadmin.autopilot.domain.scheduling.RoutineCycle
 import com.lifeadmin.autopilot.domain.scheduling.ReminderPresets
 import com.lifeadmin.autopilot.domain.usecase.ScheduleCoordinator
 import com.lifeadmin.autopilot.domain.usecase.TaskStateMachine
@@ -83,8 +85,8 @@ class TaskRepository(
     private val db: AppDatabase,
     private val clock: AppClock,
     private val ids: IdGenerator,
-    private val zoneProvider: () -> ZoneId,
-    private val coordinator: ScheduleCoordinator,
+    internal val zoneProvider: () -> ZoneId,
+    internal val coordinator: ScheduleCoordinator,
     private val diagnostics: DiagnosticsRecorder = DiagnosticsRecorder.None,
 ) {
     private val taskDao = db.taskDao()
@@ -92,6 +94,7 @@ class TaskRepository(
     private val policyDao = db.policyDao()
     private val occurrenceDao = db.occurrenceDao()
     private val eventDao = db.eventDao()
+    private val provenanceDao = db.provenanceDao()
 
     // ---------------------------------------------------------------- queries
 
@@ -218,6 +221,7 @@ class TaskRepository(
                 val policy = when {
                     customPolicy != null -> customPolicy.copy(
                         id = blank.id, taskId = id, lastEditedAt = now, times = customPolicy.times.distinct().sorted(),
+                        routine = customPolicy.routine && customPolicy.kind != ReminderKind.ONCE,
                         zoneId = if (customPolicy.zoneMode == ZoneMode.FIXED_ZONE) customPolicy.zoneId ?: zone.id else null,
                     )
                     draft.preset != null -> ReminderPresets.applyTo(blank, draft.preset, now.atZone(zone).toLocalDate())
@@ -329,7 +333,7 @@ class TaskRepository(
                     updated = updated.copy(status = TaskStatus.WAITING, waitingReason = cmd.waitingReason?.take(MAX_STEP), waitingCheckInAt = cmd.waitingCheckInAt)
                     changed += "status"
                 }
-                taskDao.update(updated.copy(updatedAt = now))
+                update(updated.copy(updatedAt = now))
                 val addedStepIds = ArrayList<String>()
                 if (steps.isNotEmpty()) {
                     var order = stepDao.maxSortOrder(cmd.taskId)
@@ -379,7 +383,7 @@ class TaskRepository(
                 }
                 if (changed.isEmpty()) return@withTransaction
                 val now = clock.now()
-                taskDao.update(t.copy(title = cleanTitle, notes = cleanNotes, priority = priority, updatedAt = now))
+                update(t.copy(title = cleanTitle, notes = cleanNotes, priority = priority, updatedAt = now))
                 log(taskId, now, EventType.EDITED, "Edited ${changed.joinToString()}", mapOf("fields" to changed.joinToString(",")))
             }
         }
@@ -395,7 +399,7 @@ class TaskRepository(
             val t = requireTask(taskId)
             val now = clock.now()
             val zone = zoneProvider()
-            taskDao.update(
+            update(
                 t.copy(
                     deadlineType = type,
                     deadlineLocalDate = if (type == DeadlineType.DATE_ONLY) date else null,
@@ -429,7 +433,7 @@ class TaskRepository(
                     waitingReason = if (to == TaskStatus.WAITING) waitingReason?.trim()?.take(MAX_STEP)?.ifBlank { null } else null,
                     waitingCheckInAt = if (to == TaskStatus.WAITING) checkInAt else null,
                 )
-                taskDao.update(updated)
+                update(updated)
                 bumpGeneration(taskId)
                 val summary = buildString {
                     append(if (t.status == to) "Waiting details updated" else "${t.status.label()} → ${to.label()}")
@@ -448,7 +452,7 @@ class TaskRepository(
                 val t = requireTask(taskId)
                 require(TaskStateMachine.canReopen(t.status)) { "Only Done or Canceled tasks can be reopened" }
                 val now = clock.now()
-                taskDao.update(t.copy(status = TaskStatus.ACTIONABLE, completedAt = null, updatedAt = now, snoozedUntil = null))
+                update(t.copy(status = TaskStatus.ACTIONABLE, completedAt = null, updatedAt = now, snoozedUntil = null))
                 bumpGeneration(taskId)
                 log(taskId, now, EventType.REOPENED, "Reopened from ${t.status.label()}", mapOf("from" to t.status.name))
             }
@@ -462,7 +466,7 @@ class TaskRepository(
                 require(!t.status.isTerminal) { "Done or Canceled tasks cannot be snoozed" }
                 val now = clock.now()
                 require(until > now) { "Snooze must end in the future" }
-                taskDao.update(t.copy(snoozedUntil = until, snoozeRemindAtEnd = remindAtEnd, updatedAt = now))
+                update(t.copy(snoozedUntil = until, snoozeRemindAtEnd = remindAtEnd, updatedAt = now))
                 bumpGeneration(taskId)
                 diagnostics.record(
                     DiagnosticEntry(
@@ -485,10 +489,60 @@ class TaskRepository(
                 val t = requireTask(taskId)
                 if (t.snoozedUntil == null) return@withTransaction
                 val now = clock.now()
-                taskDao.update(t.copy(snoozedUntil = null, updatedAt = now))
+                update(t.copy(snoozedUntil = null, updatedAt = now))
                 bumpGeneration(taskId)
                 diagnostics.record(DiagnosticEntry(id = ids.newId(), at = now, type = DiagnosticType.UNSNOOZED, taskId = taskId, source = "user"))
                 log(taskId, now, EventType.SNOOZE_CLEARED, "Snooze cleared")
+            }
+        }
+    }
+
+    /**
+     * "Done for tonight" on a routine: silences the rest of the current cycle (until the next
+     * [RoutineCycle.CYCLE_START]) without completing the task, and clears a pending snooze so its
+     * end doesn't ring either. The next cycle's nudges are planned as usual. Repeating it in the
+     * same cycle changes nothing. Throws [ValidationException] for anything that isn't an open routine.
+     *
+     * [answeringSlot] is the slot of the notification being answered (from the notification
+     * action). When it belongs to an earlier cycle — last night's nudge held by quiet hours until
+     * morning — only that cycle is answered: the event is logged and tonight's nudge stays on.
+     *
+     * @return when the routine's nudges resume.
+     */
+    suspend fun finishCycle(taskId: String, answeringSlot: Instant? = null): Instant = coordinator.mutateTask(taskId, dismissNotification = true) {
+        db.withTransaction {
+            val t = requireTask(taskId)
+            val policy = getPolicy(taskId)
+            if (!RoutineCycle.canFinishCycle(t.toDomain(), policy)) throw ValidationException("“Done for tonight” is only for open routines")
+            val now = clock.now()
+            val zone = ReminderPlanner.policyZone(policy, zoneProvider())
+            val until = RoutineCycle.cycleEnd(answeringSlot?.takeIf { it <= now } ?: now, zone)
+            if (until <= now) {
+                log(taskId, now, EventType.OCCURRENCE_DONE, "${RoutineCycle.notificationLabel(answeringSlot!!, now, zone)} · the next nudge is still on", mapOf("slot" to answeringSlot.toString()))
+                return@withTransaction until
+            }
+            if (t.cycleDoneUntil == until && t.snoozedUntil == null) return@withTransaction until
+            update(t.copy(cycleDoneUntil = until, snoozedUntil = null, updatedAt = now))
+            bumpGeneration(taskId)
+            log(taskId, now, EventType.OCCURRENCE_DONE, "${RoutineCycle.label(now, zone)} · the routine continues", mapOf("until" to until.toString()))
+            until
+        }
+    }
+
+    /** Slot of the task's most recently delivered reminder: the one its notification shows. */
+    suspend fun latestDeliveredSlot(taskId: String): Instant? =
+        db.occurrenceDao().getAllForTask(taskId).filter { it.status == OccurrenceStatus.DELIVERED && it.deliveredAt != null }.maxByOrNull { it.deliveredAt!! }?.slotAt
+
+    /** The inverse of [finishCycle] (Undo): this cycle's remaining nudges come back. No-op when nothing is finished. */
+    suspend fun undoFinishCycle(taskId: String) {
+        coordinator.mutateTask(taskId) {
+            db.withTransaction {
+                val t = requireTask(taskId)
+                val now = clock.now()
+                if (t.cycleDoneUntil?.let { it > now } != true) return@withTransaction
+                update(t.copy(cycleDoneUntil = null, updatedAt = now))
+                bumpGeneration(taskId)
+                log(taskId, now, EventType.OCCURRENCE_UNDONE, "Undid “done for now” · the rest of this cycle's nudges are back")
             }
         }
     }
@@ -502,6 +556,7 @@ class TaskRepository(
                 val now = clock.now()
                 val next = policy.copy(
                     id = existing?.id ?: policy.id,
+                    routine = policy.routine && policy.kind != ReminderKind.ONCE,
                     generation = (existing?.generation ?: 0) + 1,
                     lastEditedAt = now,
                     times = policy.times.distinct().sorted(),
@@ -520,7 +575,7 @@ class TaskRepository(
                 val t = requireTask(taskId)
                 if (t.archivedAt != null) return@withTransaction
                 val now = clock.now()
-                taskDao.update(t.copy(archivedAt = now, updatedAt = now))
+                update(t.copy(archivedAt = now, updatedAt = now))
                 bumpGeneration(taskId)
                 log(taskId, now, EventType.ARCHIVED, "Archived")
             }
@@ -533,17 +588,23 @@ class TaskRepository(
                 val t = requireTask(taskId)
                 if (t.archivedAt == null) return@withTransaction
                 val now = clock.now()
-                taskDao.update(t.copy(archivedAt = null, updatedAt = now))
+                update(t.copy(archivedAt = null, updatedAt = now))
                 bumpGeneration(taskId)
                 log(taskId, now, EventType.UNARCHIVED, "Restored from archive")
             }
         }
     }
 
-    /** Hard delete; steps, policy, slots, occurrences and events cascade. */
+    /** Hard delete; dependent task content cascades, while proposal history needs explicit cleanup. */
     suspend fun delete(taskId: String) {
         coordinator.mutateTask(taskId, dismissNotification = true) {
-            taskDao.delete(taskId)
+            db.withTransaction {
+                // Proposal sets and provenance intentionally have no foreign keys. Delete them with
+                // the task so a recreated import target cannot inherit stale applied proposals.
+                db.proposalSetDao().deleteForTask(taskId)
+                provenanceDao.deleteForTask(taskId)
+                taskDao.delete(taskId)
+            }
         }
     }
 
@@ -578,8 +639,16 @@ class TaskRepository(
         db.withTransaction {
             val s = stepDao.get(stepId) ?: return@withTransaction
             if (s.title == clean) return@withTransaction
+            val now = clock.now()
             stepDao.upsert(s.copy(title = clean))
-            touch(s.taskId, clock.now())
+            // The user is now the latest editor; the research/planning origin stays (INT-030).
+            s.provenanceId?.let { pid ->
+                provenanceDao.get(pid)?.let { e ->
+                    val record = com.lifeadmin.autopilot.domain.proposal.ProposalJson.decodeRecord(e.payload)?.copy(editedByUser = true, editedAtMs = now.toEpochMilli())
+                    if (record != null) provenanceDao.upsert(e.copy(editedByUser = true, payload = com.lifeadmin.autopilot.domain.proposal.ProposalJson.encodeRecord(record)))
+                }
+            }
+            touch(s.taskId, now)
         }
     }
 
@@ -629,7 +698,7 @@ class TaskRepository(
         val now = clock.now()
         steps.forEach { stepDao.delete(it) }
         val notes = if (notesAfterApply != null) validateNotes(notesBeforeApply) else t.notes
-        taskDao.update(t.copy(notes = notes, updatedAt = now))
+        update(t.copy(notes = notes, updatedAt = now))
         log(taskId, now, EventType.EDITED, "Undid applied research changes", mapOf("source" to "ai_research_undo", PROPOSAL_KEY to "$proposalId:undo"))
         inTransaction?.invoke()
         true
@@ -637,14 +706,17 @@ class TaskRepository(
 
     // ---------------------------------------------------------------- helpers
 
-    private suspend fun requireTask(taskId: String): TaskEntity =
+    internal suspend fun requireTask(taskId: String): TaskEntity =
         taskDao.get(taskId) ?: throw NoSuchElementException("Task not found")
 
-    private suspend fun touch(taskId: String, now: Instant) {
-        taskDao.get(taskId)?.let { taskDao.update(it.copy(updatedAt = now)) }
+    /** Every write to a task row goes through here: `rev` counts user changes and applied proposals alike (handoff §4.2). */
+    internal suspend fun update(t: TaskEntity) = taskDao.update(t.copy(rev = t.rev + 1))
+
+    internal suspend fun touch(taskId: String, now: Instant) {
+        taskDao.get(taskId)?.let { update(it.copy(updatedAt = now)) }
     }
 
-    private suspend fun bumpGeneration(taskId: String) {
+    internal suspend fun bumpGeneration(taskId: String) {
         val p = policyDao.getForTask(taskId)
         if (p == null) {
             writePolicy(ReminderPolicy(id = ids.newId(), taskId = taskId, lastEditedAt = clock.now(), generation = 1))
@@ -653,13 +725,13 @@ class TaskRepository(
         }
     }
 
-    private suspend fun writePolicy(policy: ReminderPolicy) {
+    internal suspend fun writePolicy(policy: ReminderPolicy) {
         policyDao.upsert(policy.toEntity())
         policyDao.deleteSlots(policy.id)
         policyDao.insertSlots(policy.times.mapIndexed { i, t -> ReminderTimeSlotEntity(ids.newId(), policy.id, t, i) })
     }
 
-    private suspend fun log(taskId: String, at: Instant, type: EventType, summary: String, metadata: Map<String, String> = emptyMap()) {
+    internal suspend fun log(taskId: String, at: Instant, type: EventType, summary: String, metadata: Map<String, String> = emptyMap()) {
         eventDao.insert(TaskEventEntity(ids.newId(), taskId, at, type, summary.take(MAX_SUMMARY), encodeMetadata(metadata)))
     }
 
@@ -692,6 +764,8 @@ class TaskRepository(
             if (t.length > MAX_STEP) throw ValidationException("Step is too long (max $MAX_STEP characters)")
             return t
         }
+
+        fun validateStepOrNull(raw: String): String? = try { validateStep(raw) } catch (e: ValidationException) { null }
 
         fun validateDeadline(type: DeadlineType, date: LocalDate?, instant: Instant?) {
             when (type) {

@@ -1,0 +1,31 @@
+{
+ "sanitization": {
+  "rawSha256": "e17f0a9f9a649f398826ff75a0f30593a8cf2d8036fdfffdc2ce655cabd8d3c9",
+  "removed": {
+   "emails": 0,
+   "phones": 0
+  },
+  "note": "Compact summary: request bodies and full reply segments omitted; cited text kept verbatim apart from emails/phones; no credential."
+ },
+ "scenario": "Nb-union-station-ambiguous",
+ "engine": "m4",
+ "model": "claude-sonnet-5-5",
+ "ranAtUtc": "2026-10-24T07:49:30.530032560Z",
+ "searchBudget": 3,
+ "spendLimitCents": 300,
+ "totalUsd": 0.0,
+ "turns": [
+  {
+   "question": "What is the address of Union Station?",
+   "status": "CLARIFYING",
+   "outcome": null,
+   "objective": null,
+   "config": null,
+   "elapsedMs": null,
+   "shown": "M4 asked for clarification before authorization: Which one do you mean? Name the city or area, so the answer is about the right place.",
+   "claims": [],
+   "ledger": [],
+   "calls": []
+  }
+ ]
+}

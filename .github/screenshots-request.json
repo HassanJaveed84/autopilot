@@ -1,26 +1,7 @@
 {
-  "reason": "M3 hardening pass: final research screens after review fixes (light/dark 1.0, light 1.3 and 2.0)",
+  "reason": "Owner review of the simplified app after retiring built-in AI (retire-embedded-ai): tabs, task detail with Discuss in ChatGPT, capture, saved research read-only, settings — phone light 1.0",
   "variants": [
-    {
-      "display": "phone",
-      "theme": "light",
-      "font_scale": "1.0"
-    },
-    {
-      "display": "phone",
-      "theme": "dark",
-      "font_scale": "1.0"
-    },
-    {
-      "display": "phone",
-      "theme": "light",
-      "font_scale": "1.3"
-    },
-    {
-      "display": "phone",
-      "theme": "light",
-      "font_scale": "2.0"
-    }
+    { "display": "phone", "theme": "light", "font_scale": "1.0" }
   ],
-  "tests": "com.lifeadmin.autopilot.ScreenshotTourResearch"
+  "tests": "com.lifeadmin.autopilot.ScreenshotTour#b_tabs,com.lifeadmin.autopilot.ScreenshotTour#c_taskDetail,com.lifeadmin.autopilot.ScreenshotTour#e_capture,com.lifeadmin.autopilot.ScreenshotTour#eq_savedResearch,com.lifeadmin.autopilot.ScreenshotTour#f_settingsAndHealth"
 }

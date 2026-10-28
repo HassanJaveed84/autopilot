@@ -1,0 +1,134 @@
+{
+ "sanitization": {
+  "rawSha256": "558ea9d67cf17c6cd816731a03810eb0d686f0f9a9044eef298c1e0cc78346ee",
+  "removed": {
+   "emails": 0,
+   "phones": 0
+  },
+  "note": "Compact summary: request bodies and full reply segments omitted; cited text kept verbatim apart from emails/phones; no credential."
+ },
+ "scenario": "A3-rijksmuseum-hours",
+ "engine": "aifirst",
+ "model": "claude-sonnet-5-5",
+ "ranAtUtc": "2026-10-24T07:51:54.096984500Z",
+ "searchBudget": 3,
+ "spendLimitCents": 300,
+ "totalUsd": 0.05,
+ "turns": [
+  {
+   "question": "What are the opening hours of the Rijksmuseum in Amsterdam?",
+   "status": "COMPLETE",
+   "outcome": null,
+   "objective": null,
+   "config": "searchBudget=3 spendLimit=300¢ maxOutputTokens=16000 prompt=v1",
+   "elapsedMs": 6430,
+   "shown": "The Rijksmuseum is open every day from 9:00 am to 5:00 pm. That includes today, Saturday, and public holidays.\n\n- **Official source:** The museum's own page says it opens every day of the year from 9am to 5pm, including all public holidays. [1]\n- **Booking:** You must book a start time to visit. This applies to everyone, including Museumkaart holders. [2] Once inside, you can stay as long as you like during opening hours. [1] A limited number of tickets are sold at the entrance while stocks last. [1] The museum recommends buying online in advance.\n- **Shop and café:** These are open from 9 am to 6 pm. Between 5 and 6 pm you can enter them without a museum ticket. [1]\n- **Gardens:** The official page says the gardens are open only in summer, from 9 to 18h. [1] They may be closed now that it's late October. The museum's visit page, however, describes the garden as free to visit. I couldn't confirm the garden's current status.\n- **Restaurant:** RIJKS restaurant serves lunch Wednesday to Sunday and dinner Tuesday to Sunday. [1]\n\n**Last entry:** Sources disagree. Third-party sites give 4:30 pm in some places and 4:00 pm in others. The official pages I found don't state a last-entry time. If you plan to arrive late, book an earlier slot.\n\n**How current this is:** The official pages I read don't show a date. Several independent sites from 2026 agree with them. Special closures or events can still change hours, so check the museum's \"Opening hours and prices\" page before you go.\n\nSources\n[1] Opening hours and prices - Rijksmuseum — https://www.rijksmuseum.nl/en/visit/practical-info/opening-hours-and-prices\n[2] Visit the Rijksmuseum - Rijksmuseum — https://www.rijksmuseum.nl/en/visit (search result age: 5107 days ago)",
+   "claims": [],
+   "ledger": [
+    {
+     "stage": "AI_FIRST",
+     "model": "claude-sonnet-5-5",
+     "outcome": "COMPLETE",
+     "usageStatus": "COMPLETE",
+     "inputTokens": 16470,
+     "outputTokens": 706,
+     "cacheReadTokens": 0,
+     "cacheWriteTokens": 0,
+     "webSearches": 1,
+     "estimatedMicros": 50000,
+     "durationMs": 6335
+    }
+   ],
+   "calls": [
+    {
+     "maxSearches": 3,
+     "stop": "END",
+     "elapsedMs": 6335,
+     "continuesPausedTurn": false,
+     "searches": [
+      {
+       "query": "Rijksmuseum opening hours",
+       "error": "",
+       "results": [
+        {
+         "url": "https://www.rijksmuseum.nl/en/visit/practical-info/opening-hours-and-prices",
+         "pageAge": ""
+        },
+        {
+         "url": "https://www.rijksmuseum.nl/en/visit",
+         "pageAge": "5107 days ago"
+        },
+        {
+         "url": "https://www.getyourguide.com/explorer/amsterdam-ttd36/visit-rijksmuseum/",
+         "pageAge": "123 days ago"
+        },
+        {
+         "url": "https://www.tripadvisor.com.sg/Attraction_Review-g188590-d189379-Reviews-Rijksmuseum-Amsterdam_North_Holland_Province.html",
+         "pageAge": "458 days ago"
+        },
+        {
+         "url": "https://www.tripadvisor.com/Attraction_Review-g188590-d189379-Reviews-Rijksmuseum-Amsterdam_North_Holland_Province.html",
+         "pageAge": "458 days ago"
+        },
+        {
+         "url": "https://thetourguy.com/travel-blog/netherlands/amsterdam/rijksmuseum/how-to-visit-the-rijksmuseum/",
+         "pageAge": "227 days ago"
+        },
+        {
+         "url": "https://rijksmuseum-amsterdam.com/opening-hours/",
+         "pageAge": "255 days ago"
+        },
+        {
+         "url": "https://rijksmuseum-guide.com/plan-your-visit/",
+         "pageAge": "162 days ago"
+        },
+        {
+         "url": "https://www.travelguide.amsterdam/en/museum-amsterdam/rijksmuseum/tickets-queue/",
+         "pageAge": "246 days ago"
+        },
+        {
+         "url": "https://www.tickets-amsterdam.com/rijksmuseum/opening-hours/",
+         "pageAge": "1233 days ago"
+        }
+       ]
+      }
+     ],
+     "citations": [
+      {
+       "url": "https://www.rijksmuseum.nl/en/visit/practical-info/opening-hours-and-prices",
+       "citedText": "# Admissions and opening hours\nWe open our doors for you every day of the year from 9am to 5pm, including all public holidays.\n\n"
+      },
+      {
+       "url": "https://www.rijksmuseum.nl/en/visit",
+       "citedText": "** Booking a start time is required for a visit to the Rijksmuseum. This applies to everyone, including Museumkaart holders.\n\n"
+      },
+      {
+       "url": "https://www.rijksmuseum.nl/en/visit/practical-info/opening-hours-and-prices",
+       "citedText": "- Once inside you can stay as long as you want during opening hours.\n"
+      },
+      {
+       "url": "https://www.rijksmuseum.nl/en/visit/practical-info/opening-hours-and-prices",
+       "citedText": "A limited number of tickets are also available at the museum entrance, while stocks last.\n\n"
+      },
+      {
+       "url": "https://www.rijksmuseum.nl/en/visit/practical-info/opening-hours-and-prices",
+       "citedText": "## Shop, café and gardens\nThe Shop and The Café are open from 9 am to 6 pm. "
+      },
+      {
+       "url": "https://www.rijksmuseum.nl/en/visit/practical-info/opening-hours-and-prices",
+       "citedText": "Between 5 and 6 pm you can enter without an entrance ticket.\n\n"
+      },
+      {
+       "url": "https://www.rijksmuseum.nl/en/visit/practical-info/opening-hours-and-prices",
+       "citedText": "The green gardens around the museum are only open during summer. Opening hours are from 9 to 18h.\n\n"
+      },
+      {
+       "url": "https://www.rijksmuseum.nl/en/visit/practical-info/opening-hours-and-prices",
+       "citedText": "RIJKS restaurant is open on Wednesday to Sunday for lunch and on Tuesday to Sunday for dinner.\n\n"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

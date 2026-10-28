@@ -27,6 +27,11 @@ data class ReminderNotification(
     val dueLabel: String = "",
     /** Where the Snooze action lands, e.g. "tomorrow 09:00" or "11:42"; blank hides it from the label. */
     val snoozeLabel: String = "",
+    /**
+     * Set for a routine: the first action becomes this per-cycle completion ("Done for tonight")
+     * instead of the permanent Done, which stays available in the app.
+     */
+    val doneForNowLabel: String? = null,
 )
 
 data class TestNotification(

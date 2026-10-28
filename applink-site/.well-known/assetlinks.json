@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.lifeadmin.autopilot",
+    "sha256_cert_fingerprints": ["A5:C5:6F:43:16:77:81:B6:8B:5F:10:70:BF:36:A6:AF:17:76:D5:6C:1D:BB:B8:8D:C2:44:BD:BD:A2:56:21:46"]
+  }
+}]
