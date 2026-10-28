@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="RichStepsExperimentTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-10-28T17:45:03.451Z" hostname="vm" time="0.166">
+  <properties/>
+  <testcase name="richStepsBecomeOneReviewItemEach" classname="RichStepsExperimentTest" time="0.066"/>
+  <testcase name="modelMistakesFailClosed" classname="RichStepsExperimentTest" time="0.034"/>
+  <testcase name="sizes" classname="RichStepsExperimentTest" time="0.051"/>
+  <testcase name="detailsForAnExistingStepKeepTheUsersWordsAndSkipDuplicates" classname="RichStepsExperimentTest" time="0.003"/>
+  <testcase name="theOldAppSaysNewerVersionForEveryV2LinkThatFits" classname="RichStepsExperimentTest" time="0.001"/>
+  <testcase name="v1LinksReadExactlyAsBefore" classname="RichStepsExperimentTest" time="0.006"/>
+  <system-out><![CDATA[| Model output | Result |
+|---|---|
+| label + raw https:// | accepted: [Product page] https://www.chanel.com/us/p/107460/ |
+| label + fully encoded URL | accepted: [Product page] https://www.chanel.com/us/p/107460/ |
+| URL only, no label | accepted: [null] https://www.chanel.com/us/p/107460/ |
+| ChatGPT citation ?utm_source=chatgpt.com raw = | accepted: [Chanel] https://www.chanel.com/us/p/107460/?utm_source=chatgpt.com |
+| query with %26 (correct) | accepted: [Shop] https://shop.example.com/p?size=50ml&color=blue |
+| query with raw & (mistake) | refused: UNKNOWN_FIELD |
+| URL path %20 not re-encoded (mistake) | refused: BAD_LINK |
+| URL path %2520 (correct) | accepted: [Form] https://example.gov/forms/DS%2082.pdf |
+| raw + in label (mistake) | refused: AMBIGUOUS_PLUS |
+| sl before any s | refused: DETAIL_WITHOUT_STEP |
+| sd after a note, not right after its step | refused: DETAIL_WITHOUT_STEP |
+| link cut short (no end=1) | refused: INCOMPLETE |
+| end=1 not last | refused: DUPLICATE_FIELD |
+| javascript: URL | refused: BAD_LINK |
+| intent: URL | refused: DISALLOWED_CHARACTER |
+| user-info spoof | refused: BAD_LINK |
+| no scheme | refused: BAD_LINK |
+| http (not https) | accepted: [Old site] http://example.org/page |
+| 6 links on one step | refused: TOO_MANY_ITEMS |
+| 5 description paragraphs | refused: TOO_MANY_ITEMS |
+| sd with %0A line break | refused: DISALLOWED_CHARACTER |
+| raw # anchor in URL (mistake) | refused: NOT_A_LINK (java.net.URI rejects a second #) |
+
+| Scenario | Fields | Canonical URL chars | Tolerant URL chars | v2 parses | 0.2.0 parser says |
+|---|---|---|---|---|---|
+| 1 perfume step, 3 paragraphs, product URL | 9 | 697 | 665 | yes | NEWER_VERSION |
+| 3 rich steps (gift plan) | 15 | 1045 | 977 | yes | NEWER_VERSION |
+| Research step, 2 paragraphs, 5 URLs | 12 | 1096 | 1002 | yes | NEWER_VERSION |
+| Plain v1 (1 decision, 3 steps, 1 note) | 8 | 331 | 325 | yes | Valid |
+| Mixed: 1 d, 1 n, 3 rich + 3 plain steps | 20 | 1257 | 1183 | yes | NEWER_VERSION |
+| Worst case allowed by the item caps | 114 | 31193 | 30793 | yes | TOO_BIG |
+
+SAMPLE perfume (canonical):
+https://hassanjaveed84.github.io/autopilot/import#ap=v2&r=3f2b8c1e-7d4a-4e6b-9a51-0c8d2e7f6b13&t=Thank-you%20gift%20for%20Omar&s=Buy%20Bleu%20de%20Chanel%20EDP%2050%20mL&sd=Estimated%20price%3A%20about%20%24135%20before%20tax%3B%20check%20the%20total%20at%20checkout.&sd=Gift%20packaging%3A%20choose%20the%20complimentary%20gift%20wrap%20at%20checkout%2C%20or%20ask%20for%20the%20box%20and%20ribbon%20in%20store.&sd=Card%3A%20%E2%80%9COmar%2C%20thank%20you%20for%20standing%20next%20to%20me.%20Wear%20this%20to%20the%20next%20good%20night%20out.%20%E2%80%94%20Sam%E2%80%9D&sl=Product%20page%20https%3A%2F%2Fwww.chanel.com%2Fus%2Ffragrance%2Fp%2F107460%2Fbleu-de-chanel-eau-de-parfum-spray%2F&end=1
+SAMPLE perfume (tolerant):
+https://hassanjaveed84.github.io/autopilot/import#ap=v2&r=3f2b8c1e-7d4a-4e6b-9a51-0c8d2e7f6b13&t=Thank-you%20gift%20for%20Omar&s=Buy%20Bleu%20de%20Chanel%20EDP%2050%20mL&sd=Estimated%20price:%20about%20$135%20before%20tax;%20check%20the%20total%20at%20checkout.&sd=Gift%20packaging:%20choose%20the%20complimentary%20gift%20wrap%20at%20checkout,%20or%20ask%20for%20the%20box%20and%20ribbon%20in%20store.&sd=Card:%20%E2%80%9COmar,%20thank%20you%20for%20standing%20next%20to%20me.%20Wear%20this%20to%20the%20next%20good%20night%20out.%20%E2%80%94%20Sam%E2%80%9D&sl=Product%20page%20https://www.chanel.com/us/fragrance/p/107460/bleu-de-chanel-eau-de-parfum-spray/&end=1
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
